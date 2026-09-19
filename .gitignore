@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+out/
+*.class
+
+# ModDevGradle run directories
+run/
+runs/
+run-data/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+bin/
+eclipse/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local secrets
+*.local.properties
