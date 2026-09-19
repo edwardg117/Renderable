@@ -21,6 +21,9 @@ class MeshStatsTest {
         MeshStats m = new MeshStats();
         assertSame(m.get(STONE), m.get(new BlockKey("minecraft:stone")));
         assertTrue(m.snapshot().isEmpty(), "an accumulator with no calls is not reported");
+        assertSame(m, m.get(STONE).owner);
+        MeshStats other = new MeshStats();
+        assertNotSame(m.get(STONE), other.get(STONE));
     }
 
     @Test

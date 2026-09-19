@@ -374,6 +374,23 @@ class SessionTest {
     }
 
     @Test
+    void batchedVerticesFollowTheSameRules() {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(press);
+        at(0); s.onRenderPre(0, 0);
+        s.vertices(7);                                // outside any call: ignored
+        at(1); s.begin(a, Bucket.BLOCK_ENTITY);
+        s.vertices(24);
+        s.vertex();
+        at(2); s.begin(null, Bucket.LIGHT);
+        s.vertices(5);                                // keyless inner timing: ignored
+        at(3); s.end();
+        at(4); s.end();
+        at(10); s.onRenderPre(0, 0);
+        assertEquals(25, a.vertices);
+    }
+
+    @Test
     void meshStatsSurviveIntoTheResult() {
         Session s = session(10_000);
         at(0); s.onRenderPre(0, 0);

@@ -147,6 +147,13 @@ public final class Session {
         if (a != null) a.vertices++;
     }
 
+    /** Counts {@code n} vertices on the innermost open call if it has a key; same rules as {@link #vertex()}. */
+    public void vertices(int n) {
+        if (depth == 0 || depth > MAX_DEPTH) return;
+        Accumulator a = stack[depth - 1];
+        if (a != null) a.vertices += n;
+    }
+
     /** Freeze the session into a result. The frame currently open is dropped because it has no end. */
     public SessionResult finish() {
         List<FrameRecord> frameList = List.copyOf(frames);

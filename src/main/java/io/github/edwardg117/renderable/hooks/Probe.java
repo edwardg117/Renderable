@@ -193,28 +193,45 @@ public final class Probe {
         s.vertex();
     }
 
-    /** Sodium mesh build, any thread: one block model rendered into a section mesh. */
+    /** {@code n} vertices on the innermost keyed call at once (Sodium's batched push). Render thread only. */
+    public static void vertices(int n) {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return;
+        if (!seenVertices) {
+            seenVertices = true;
+            SEEN[Hook.VERTICES.ordinal()] = true;
+        }
+        s.vertices(n);
+    }
+
+    /**
+     * Sodium mesh build, any thread: one block model rendered into a section mesh. A cached accumulator from
+     * an earlier session is replaced rather than reused.
+     */
     public static void meshBlock(BlockState state, long elapsedNanos) {
         Session s = session;
         if (s == null) return;
         if (!meshSeen) meshSeen = true;
         Block block = state.getBlock();
         MeshAccumulator a = MESH_BY_OBJECT.get(block);
-        if (a == null) {
+        if (a == null || a.owner != s.mesh()) {
             a = s.mesh().get(KeyFactory.block(block));
             MESH_BY_OBJECT.put(block, a);
         }
         a.add(elapsedNanos);
     }
 
-    /** Sodium mesh build, any thread: one fluid rendered into a section mesh, keyed by its block. */
+    /**
+     * Sodium mesh build, any thread: one fluid rendered into a section mesh, keyed by its block. A cached
+     * accumulator from an earlier session is replaced rather than reused.
+     */
     public static void meshFluid(FluidState fluidState, long elapsedNanos) {
         Session s = session;
         if (s == null) return;
         if (!meshSeen) meshSeen = true;
         Fluid fluid = fluidState.getType();
         MeshAccumulator a = MESH_BY_OBJECT.get(fluid);
-        if (a == null) {
+        if (a == null || a.owner != s.mesh()) {
             a = s.mesh().get(KeyFactory.fluidBlock(fluid));
             MESH_BY_OBJECT.put(fluid, a);
         }

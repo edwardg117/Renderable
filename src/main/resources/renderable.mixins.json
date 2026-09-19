@@ -12,7 +12,11 @@
     "LevelMixin",
     "LevelLightEngineMixin",
     "BufferBuilderMixin",
-    "flywheel.FlywheelRenderDispatcherMixin"
+    "flywheel.FlywheelRenderDispatcherMixin",
+    "sodium.ChunkBuilderTaskAccessor",
+    "sodium.ChunkBuilderMeshingTaskMixin",
+    "sodium.RenderSectionManagerMixin",
+    "sodium.SodiumBufferBuilderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -13,6 +13,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.material.Fluid;
@@ -50,13 +51,18 @@ final class KeyFactory {
     }
 
     static BlockKey block(Block block) {
-        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
+        ResourceLocation id = BuiltInRegistries.BLOCK.getKeyOrNull(block);
         return new BlockKey(id == null ? block.getClass().getName() : id.toString());
     }
 
-    /** Fluids are reported under the block they render as (water, lava, a mod's fluid block). */
+    /** Fluids are reported under the block they render as (water, lava, a mod's fluid block), or by fluid id if there is none. */
     static BlockKey fluidBlock(Fluid fluid) {
-        return block(fluid.defaultFluidState().createLegacyBlock().getBlock());
+        Block block = fluid.defaultFluidState().createLegacyBlock().getBlock();
+        if (block == Blocks.AIR) {
+            ResourceLocation id = BuiltInRegistries.FLUID.getKeyOrNull(fluid);
+            return new BlockKey(id == null ? fluid.getClass().getName() : id.toString());
+        }
+        return block(block);
     }
 
     static SectionKey section(String dimension, int x, int y, int z) {
