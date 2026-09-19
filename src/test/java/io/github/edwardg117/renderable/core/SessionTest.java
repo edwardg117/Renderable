@@ -117,4 +117,156 @@ class SessionTest {
         assertEquals(16 * MS, c.hitchMinExcessNanos());
         assertEquals(30.0, c.durationSeconds(), 1e-9);
     }
+
+    final BlockEntityKey press = new BlockEntityKey("create:mechanical_press", "minecraft:overworld", 1, 2, 3);
+    final BlockEntityKey mixer = new BlockEntityKey("create:mechanical_mixer", "minecraft:overworld", 4, 5, 6);
+    final EntityKey cow = new EntityKey("minecraft:cow", 7, "");
+
+    @Test
+    void callsAttributeToKeyAndOnlyOutermostBucket() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        Accumulator a = s.accumulator(press);
+        Accumulator b = s.accumulator(cow);
+        at(1);  s.begin(a, Bucket.BLOCK_ENTITY);
+        at(3);  s.begin(b, Bucket.ENTITY);      // nested inside the block entity
+        at(6);  s.end();                        // cow: 3 ms
+        at(11); s.end();                        // press: 10 ms including the cow
+        at(12); s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        assertEquals(10 * MS, a.renderNanos);
+        assertEquals(1, a.calls);
+        assertEquals(3 * MS, b.renderNanos);
+        assertEquals(2, s.timedCalls());
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(10 * MS, f.bucket(Bucket.BLOCK_ENTITY));
+        assertEquals(0, f.bucket(Bucket.ENTITY), "inner call must not be counted in a second bucket");
+        assertEquals(2 * MS, f.otherRenderNanos());
+        assertSame(a, s.accumulator(press), "same key returns the same accumulator");
+    }
+
+    @Test
+    void tickBucketsGoToTickNanos() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        Accumulator a = s.accumulator(press);
+        at(1); s.begin(a, Bucket.BE_TICK);
+        at(3); s.end();
+        at(10); s.onRenderPre(0, 0);
+        assertEquals(2 * MS, a.tickNanos);
+        assertEquals(0, a.renderNanos);
+        assertEquals(1, a.tickCalls);
+        assertEquals(0, a.calls);
+        assertEquals(2 * MS, s.framesView().get(0).bucket(Bucket.BE_TICK));
+    }
+
+    @Test
+    void topContributorsPerFrameAreRankedAndReset() {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(press);
+        Accumulator b = s.accumulator(mixer);
+        Accumulator c = s.accumulator(cow);
+
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(b, Bucket.BLOCK_ENTITY); at(4); s.end();   // mixer 3
+        at(4); s.begin(a, Bucket.BLOCK_ENTITY); at(9); s.end();   // press 5
+        at(9); s.begin(c, Bucket.ENTITY);       at(10); s.end();  // cow 1
+        at(20); s.onRenderPre(0, 0);
+
+        List<TopEntry> top = s.framesView().get(0).top();
+        assertEquals(3, top.size());
+        assertEquals(press, top.get(0).key());
+        assertEquals(5 * MS, top.get(0).nanos());
+        assertEquals(mixer, top.get(1).key());
+        assertEquals(cow, top.get(2).key());
+        assertEquals(0, a.frameNanos(), "frame scratch must reset at the boundary");
+
+        at(21); s.begin(b, Bucket.BLOCK_ENTITY); at(23); s.end(); // mixer 2, only key this frame
+        at(40); s.onRenderPre(0, 0);
+        List<TopEntry> top2 = s.framesView().get(1).top();
+        assertEquals(1, top2.size());
+        assertEquals(mixer, top2.get(0).key());
+        assertEquals(2 * MS, top2.get(0).nanos());
+
+        assertEquals(5 * MS, a.maxFrameNanos);
+        assertEquals(3 * MS, b.maxFrameNanos, "peak is the biggest single frame, not the total");
+    }
+
+    @Test
+    void topListIsCappedAtConfiguredSize() {
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 2, 0), clock, 0);
+        at(0); s.onRenderPre(0, 0);
+        for (int i = 0; i < 5; i++) {
+            Accumulator a = s.accumulator(new EntityKey("minecraft:zombie", i, ""));
+            at(10 * i); s.begin(a, Bucket.ENTITY); at(10 * i + i + 1); s.end(); // costs 1..5 ms
+        }
+        at(100); s.onRenderPre(0, 0);
+        List<TopEntry> top = s.framesView().get(0).top();
+        assertEquals(2, top.size());
+        assertEquals(5 * MS, top.get(0).nanos());
+        assertEquals(4 * MS, top.get(1).nanos());
+    }
+
+    @Test
+    void sameKeyTwiceInOneFrameSumsInTop() {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(press);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(a, Bucket.BLOCK_ENTITY); at(3); s.end();
+        at(5); s.begin(a, Bucket.BLOCK_ENTITY); at(9); s.end();
+        at(20); s.onRenderPre(0, 0);
+        List<TopEntry> top = s.framesView().get(0).top();
+        assertEquals(1, top.size());
+        assertEquals(6 * MS, top.get(0).nanos());
+        assertEquals(2, a.calls);
+    }
+
+    @Test
+    void shadowPassAddsToShadowNanos() {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(press);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(a, Bucket.BLOCK_ENTITY); at(3); s.end();
+        s.shadowPass = true;
+        at(4); s.begin(a, Bucket.BLOCK_ENTITY); at(5); s.end();
+        s.shadowPass = false;
+        assertEquals(3 * MS, a.renderNanos);
+        assertEquals(1 * MS, a.shadowNanos);
+    }
+
+    @Test
+    void endWithoutBeginIsIgnored() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        assertDoesNotThrow(s::end);
+        assertEquals(0, s.timedCalls());
+    }
+
+    @Test
+    void nestingDeeperThanTheStackIsSafe() {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(press);
+        at(0); s.onRenderPre(0, 0);
+        at(1);
+        for (int i = 0; i < 100; i++) s.begin(a, Bucket.BLOCK_ENTITY);
+        at(2);
+        for (int i = 0; i < 100; i++) s.end();
+        at(10); s.onRenderPre(0, 0);
+        assertEquals(Session.MAX_DEPTH, a.calls, "calls beyond the stack are dropped, not misattributed");
+        assertEquals(1 * MS, s.framesView().get(0).bucket(Bucket.BLOCK_ENTITY));
+    }
+
+    @Test
+    void callsBeforeFirstFrameCountTowardsKeyButNotFrame() {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(press);
+        at(0); s.begin(a, Bucket.BLOCK_ENTITY); at(2); s.end();
+        at(3); s.onRenderPre(0, 0);
+        at(10); s.onRenderPre(0, 0);
+        assertEquals(2 * MS, a.renderNanos);
+        assertEquals(0, s.framesView().get(0).bucket(Bucket.BLOCK_ENTITY));
+        assertTrue(s.framesView().get(0).top().isEmpty());
+    }
 }
