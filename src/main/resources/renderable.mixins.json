@@ -6,7 +6,8 @@
   "plugin": "io.github.edwardg117.renderable.hooks.RenderableMixinPlugin",
   "client": [
     "BlockEntityRenderDispatcherMixin",
-    "EntityRenderDispatcherMixin"
+    "EntityRenderDispatcherMixin",
+    "ParticleEngineMixin"
   ],
   "injectors": {
     "defaultRequire": 1
