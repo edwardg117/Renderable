@@ -97,7 +97,7 @@ public final class ProfilerController implements Probe.Listener {
         session = new Session(config, System::nanoTime, System.currentTimeMillis());
         WorldOverlay.clear();
         Probe.setListener(this);
-        Probe.attach(session);
+        Probe.attach(session, mc.level.dimension().location().toString());
         chat("Renderable: sampling for " + seconds + " s. Press the key again or run /renderable stop to end early.");
     }
 

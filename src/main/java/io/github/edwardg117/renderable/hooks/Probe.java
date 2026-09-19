@@ -2,16 +2,22 @@ package io.github.edwardg117.renderable.hooks;
 
 import io.github.edwardg117.renderable.core.Accumulator;
 import io.github.edwardg117.renderable.core.Bucket;
+import io.github.edwardg117.renderable.core.MeshAccumulator;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.hooks.compat.IrisCompat;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.FluidState;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The single static entry point every hook calls (spec §4). Mixins check {@link #ACTIVE} first, so the idle
@@ -42,6 +48,13 @@ public final class Probe {
     private static final IdentityHashMap<Object, Accumulator> BY_INSTANCE = new IdentityHashMap<>(4096);
     private static final HashMap<Class<?>, Accumulator> BY_CLASS = new HashMap<>(256);
     private static final boolean[] SEEN = new boolean[Hook.values().length];
+    /** Mesh accumulators by Block or Fluid instance; written from Sodium's worker threads. */
+    private static final ConcurrentHashMap<Object, MeshAccumulator> MESH_BY_OBJECT = new ConcurrentHashMap<>(512);
+    /** Dimension of the level the session was started in, for section keys built on worker threads. */
+    private static volatile String dimension = "unknown";
+    /** Set from worker threads; SEEN is a plain array only the render thread writes, so this is mirrored into it. */
+    private static volatile boolean meshSeen;
+    private static boolean seenVertices;
 
     private Probe() {
     }
@@ -54,10 +67,19 @@ public final class Probe {
         return listener;
     }
 
-    /** Attaches a session. Must be called on the render thread: bucket-only hooks compare against it. */
-    public static void attach(Session s) {
+    /**
+     * Attaches a session. Must be called on the render thread: bucket-only hooks and vertex counting compare
+     * against it. {@code levelDimension} names the dimension for section keys.
+     *
+     * The write order is load-bearing: renderThread and session are plain fields, and the volatile write to
+     * ACTIVE publishes them. Every hook reads ACTIVE first, so a thread that sees ACTIVE also sees the rest.
+     */
+    public static void attach(Session s, String levelDimension) {
         BY_INSTANCE.clear();
         BY_CLASS.clear();
+        MESH_BY_OBJECT.clear();
+        seenVertices = false;
+        dimension = levelDimension;
         renderThread = Thread.currentThread();
         session = s;
         ACTIVE = true;
@@ -68,6 +90,7 @@ public final class Probe {
         session = null;
         BY_INSTANCE.clear();
         BY_CLASS.clear();
+        MESH_BY_OBJECT.clear();
     }
 
     /** The running session, or null. */
@@ -77,6 +100,7 @@ public final class Probe {
 
     /** Names of hooks that have fired at least once, in enum order. */
     public static List<String> hooksApplied() {
+        if (meshSeen) SEEN[Hook.SODIUM_MESH.ordinal()] = true;
         List<String> out = new ArrayList<>();
         for (Hook h : Hook.values()) {
             if (SEEN[h.ordinal()]) out.add(h.name());
@@ -152,6 +176,57 @@ public final class Probe {
     public static void end() {
         Session s = session;
         if (s != null) s.end();
+    }
+
+    /**
+     * One vertex on the innermost keyed call (spec §4.3). Runs for every vertex the game emits while sampling,
+     * so it is one null check, one thread check and one increment. Vanilla mesh workers also emit vertices;
+     * those are ignored because they have no keyed call.
+     */
+    public static void vertex() {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return;
+        if (!seenVertices) {
+            seenVertices = true;
+            SEEN[Hook.VERTICES.ordinal()] = true;
+        }
+        s.vertex();
+    }
+
+    /** Sodium mesh build, any thread: one block model rendered into a section mesh. */
+    public static void meshBlock(BlockState state, long elapsedNanos) {
+        Session s = session;
+        if (s == null) return;
+        if (!meshSeen) meshSeen = true;
+        Block block = state.getBlock();
+        MeshAccumulator a = MESH_BY_OBJECT.get(block);
+        if (a == null) {
+            a = s.mesh().get(KeyFactory.block(block));
+            MESH_BY_OBJECT.put(block, a);
+        }
+        a.add(elapsedNanos);
+    }
+
+    /** Sodium mesh build, any thread: one fluid rendered into a section mesh, keyed by its block. */
+    public static void meshFluid(FluidState fluidState, long elapsedNanos) {
+        Session s = session;
+        if (s == null) return;
+        if (!meshSeen) meshSeen = true;
+        Fluid fluid = fluidState.getType();
+        MeshAccumulator a = MESH_BY_OBJECT.get(fluid);
+        if (a == null) {
+            a = s.mesh().get(KeyFactory.fluidBlock(fluid));
+            MESH_BY_OBJECT.put(fluid, a);
+        }
+        a.add(elapsedNanos);
+    }
+
+    /** Sodium mesh build, any thread: one section rebuilt, in section coordinates. */
+    public static void meshSection(int sectionX, int sectionY, int sectionZ, long elapsedNanos) {
+        Session s = session;
+        if (s == null) return;
+        if (!meshSeen) meshSeen = true;
+        s.mesh().get(KeyFactory.section(dimension, sectionX, sectionY, sectionZ)).add(elapsedNanos);
     }
 
     private static Accumulator instanceAccumulator(Session s, BlockEntity be) {

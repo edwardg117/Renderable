@@ -1,16 +1,21 @@
 package io.github.edwardg117.renderable.hooks;
 
 import io.github.edwardg117.renderable.core.BlockEntityKey;
+import io.github.edwardg117.renderable.core.BlockKey;
 import io.github.edwardg117.renderable.core.EntityKey;
 import io.github.edwardg117.renderable.core.ParticleKey;
+import io.github.edwardg117.renderable.core.SectionKey;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.material.Fluid;
 
 /** Turns Minecraft objects into core keys. Called once per object per session, so it may allocate. */
 final class KeyFactory {
@@ -42,5 +47,19 @@ final class KeyFactory {
 
     static ParticleKey particle(Class<?> particleClass) {
         return new ParticleKey(particleClass.getName());
+    }
+
+    static BlockKey block(Block block) {
+        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
+        return new BlockKey(id == null ? block.getClass().getName() : id.toString());
+    }
+
+    /** Fluids are reported under the block they render as (water, lava, a mod's fluid block). */
+    static BlockKey fluidBlock(Fluid fluid) {
+        return block(fluid.defaultFluidState().createLegacyBlock().getBlock());
+    }
+
+    static SectionKey section(String dimension, int x, int y, int z) {
+        return new SectionKey(dimension, x, y, z);
     }
 }
