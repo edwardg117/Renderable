@@ -2,6 +2,7 @@ package io.github.edwardg117.renderable.hooks;
 
 import io.github.edwardg117.renderable.core.BlockEntityKey;
 import io.github.edwardg117.renderable.core.EntityKey;
+import io.github.edwardg117.renderable.core.ParticleKey;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
@@ -37,5 +38,9 @@ final class KeyFactory {
             name = "";
         }
         return new EntityKey(typeId, e.getId(), name);
+    }
+
+    static ParticleKey particle(Class<?> particleClass) {
+        return new ParticleKey(particleClass.getName());
     }
 }
