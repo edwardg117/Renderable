@@ -4,12 +4,15 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.github.edwardg117.renderable.core.Environment;
+import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TestSessions;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -29,7 +32,7 @@ class JsonReportWriterTest {
     @Test
     void schemaModEnvironmentAndSession() {
         JsonObject o = parse();
-        assertEquals(1, o.get("schema").getAsInt());
+        assertEquals(2, o.get("schema").getAsInt());
         assertEquals("0.1.0", o.getAsJsonObject("mod").get("version").getAsString());
         assertEquals("1.21.1", o.getAsJsonObject("environment").get("minecraft").getAsString());
         assertEquals(2, o.getAsJsonObject("environment").getAsJsonArray("hooksApplied").size());
@@ -40,6 +43,7 @@ class JsonReportWriterTest {
         assertEquals(0.384, session.get("durationSeconds").getAsDouble(), 1e-9);
         assertEquals(120, session.get("timedCalls").getAsLong());
         assertEquals(5, session.getAsJsonObject("config").get("topContributorsPerFrame").getAsInt());
+        assertEquals(0, session.get("unbalancedFrames").getAsInt());
         assertTrue(session.get("startedAt").getAsString().startsWith("2024-09-18T") || session.get("startedAt").getAsString().startsWith("2024-09-19T"));
 
         JsonObject stats = o.getAsJsonObject("stats");
@@ -97,6 +101,48 @@ class JsonReportWriterTest {
         assertEquals(0, o.getAsJsonArray("particles").size());
         assertEquals(0, o.getAsJsonArray("blocks").size());
         assertEquals(0, o.getAsJsonArray("sections").size());
-        assertEquals(0, o.getAsJsonObject("flywheel").getAsJsonArray("visuals").size());
+        JsonObject flywheel = o.getAsJsonObject("flywheel");
+        assertEquals(0, flywheel.get("bucketUs").getAsLong());
+        assertEquals(0, flywheel.get("samples").getAsInt());
+        assertTrue(flywheel.getAsJsonObject("visualCounts").entrySet().isEmpty());
+        assertEquals(1.0, press.get("callsPerFrame").getAsDouble(), 1e-9);
+    }
+
+    @Test
+    void phase2Sections() {
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(TestSessions.phase2(), environment(), "0.2.0")).getAsJsonObject();
+
+        JsonObject f10 = o.getAsJsonArray("frames").get(10).getAsJsonObject().getAsJsonObject("bucketsUs");
+        assertEquals(300, f10.get("light").getAsLong());
+        assertEquals(1_200, f10.get("flywheel").getAsLong());
+        assertEquals(400, f10.get("be tick").getAsLong());
+        assertEquals(100, f10.get("particle tick").getAsLong());
+
+        JsonObject flame = o.getAsJsonArray("particles").get(0).getAsJsonObject();
+        assertEquals("particle:net.minecraft.client.particle.FlameParticle", flame.get("key").getAsString());
+        assertEquals("FlameParticle", flame.get("label").getAsString());
+        assertEquals(6_000, flame.get("renderUs").getAsLong());
+        assertEquals(2_000, flame.get("tickUs").getAsLong());
+        assertEquals(60, flame.get("calls").getAsLong());
+        assertEquals(40, flame.get("tickCalls").getAsLong());
+        assertEquals(3.0, flame.get("callsPerFrame").getAsDouble(), 1e-9);
+
+        JsonObject flywheel = o.getAsJsonObject("flywheel");
+        assertEquals(24_000, flywheel.get("bucketUs").getAsLong());
+        assertEquals(6.25, flywheel.get("sharePercent").getAsDouble(), 1e-9);
+        assertEquals(3, flywheel.get("samples").getAsInt());
+        assertEquals(120.0, flywheel.get("avgBlockEntities").getAsDouble(), 1e-9);
+        assertEquals(10.0, flywheel.get("avgEntities").getAsDouble(), 1e-9);
+        assertEquals(0.0, flywheel.get("avgEffects").getAsDouble(), 1e-9);
+        assertEquals(120.0, flywheel.getAsJsonObject("visualCounts").get(TestSessions.PRESS_VISUAL).getAsDouble(), 1e-9);
+    }
+
+    @Test
+    void visualCountsAreSortedByAverage() {
+        SessionResult withFw = TextReportWriterTest.withFlywheel(TestSessions.sample(),
+                new FlywheelStats(3, 120, 10, 0, Map.of("b", 1.0, "a", 2.0, "c", 2.0)), 0);
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(withFw, environment(), "0.2.0")).getAsJsonObject();
+        List<String> keys = new ArrayList<>(o.getAsJsonObject("flywheel").getAsJsonObject("visualCounts").keySet());
+        assertEquals(List.of("a", "c", "b"), keys);
     }
 }

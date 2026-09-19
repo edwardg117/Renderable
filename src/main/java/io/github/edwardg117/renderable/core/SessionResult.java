@@ -22,6 +22,13 @@ public record SessionResult(SessionConfig config,
         return frames.size();
     }
 
+    /** Sum of one bucket over every frame of the session, in nanoseconds. */
+    public long bucketTotalNanos(Bucket b) {
+        long sum = 0;
+        for (FrameRecord f : frames) sum += f.bucket(b);
+        return sum;
+    }
+
     public long hitchTotalNanos() {
         long sum = 0;
         for (FrameRecord h : hitches) sum += h.totalNanos();

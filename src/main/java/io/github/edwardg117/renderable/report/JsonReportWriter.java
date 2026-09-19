@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.Environment;
+import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
 import io.github.edwardg117.renderable.core.ProfileKey;
@@ -15,10 +16,11 @@ import io.github.edwardg117.renderable.core.TopEntry;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /** Spec §6.2: complete, untruncated machine-readable report. */
 public final class JsonReportWriter {
-    public static final int SCHEMA = 1;
+    public static final int SCHEMA = 2;
 
     private JsonReportWriter() {
     }
@@ -46,6 +48,7 @@ public final class JsonReportWriter {
         session.addProperty("hitchThresholdMs", r.hitchThresholdNanos() / 1e6);
         session.addProperty("overheadEstimateMs", r.overheadEstimateMs());
         session.addProperty("timedCalls", r.timedCalls());
+        session.addProperty("unbalancedFrames", r.unbalancedFrames());
         JsonObject config = new JsonObject();
         config.addProperty("durationSeconds", r.config().durationSeconds());
         config.addProperty("hitchMedianMultiplier", r.config().hitchMedianMultiplier());
@@ -109,14 +112,21 @@ public final class JsonReportWriter {
 
         root.add("blockEntities", category(r, ProfileKey.Category.BLOCK_ENTITY, "byType", "byPosition"));
         root.add("entities", category(r, ProfileKey.Category.ENTITY, "byType", "individuals"));
-        root.add("particles", ranked(Ranking.byKey(r, ProfileKey.Category.PARTICLE)));
-        root.add("blocks", ranked(Ranking.byKey(r, ProfileKey.Category.BLOCK)));
-        root.add("sections", ranked(Ranking.byKey(r, ProfileKey.Category.SECTION)));
+        root.add("particles", ranked(Ranking.byKey(r, ProfileKey.Category.PARTICLE), r.frameCount()));
+        root.add("blocks", ranked(Ranking.byKey(r, ProfileKey.Category.BLOCK), r.frameCount()));
+        root.add("sections", ranked(Ranking.byKey(r, ProfileKey.Category.SECTION), r.frameCount()));
         JsonObject flywheel = new JsonObject();
-        long flywheelNanos = 0;
-        for (FrameRecord f : r.frames()) flywheelNanos += f.bucket(Bucket.FLYWHEEL);
+        long flywheelNanos = r.bucketTotalNanos(Bucket.FLYWHEEL);
         flywheel.addProperty("bucketUs", flywheelNanos / 1000);
-        flywheel.add("visuals", ranked(Ranking.byKey(r, ProfileKey.Category.VISUAL)));
+        flywheel.addProperty("sharePercent", st.totalNanos() == 0 ? 0.0 : 100.0 * flywheelNanos / st.totalNanos());
+        FlywheelStats fw = r.flywheel();
+        flywheel.addProperty("samples", fw.samples());
+        flywheel.addProperty("avgBlockEntities", fw.avgBlockEntities());
+        flywheel.addProperty("avgEntities", fw.avgEntities());
+        flywheel.addProperty("avgEffects", fw.avgEffects());
+        JsonObject visualCounts = new JsonObject();
+        for (Map.Entry<String, Double> e : fw.byAverageDesc()) visualCounts.addProperty(e.getKey(), e.getValue());
+        flywheel.add("visualCounts", visualCounts);
         root.add("flywheel", flywheel);
 
         return new GsonBuilder().setPrettyPrinting().create().toJson(root);
@@ -124,12 +134,12 @@ public final class JsonReportWriter {
 
     private static JsonObject category(SessionResult r, ProfileKey.Category c, String typeName, String keyName) {
         JsonObject o = new JsonObject();
-        o.add(typeName, ranked(Ranking.byType(r, c)));
-        o.add(keyName, ranked(Ranking.byKey(r, c)));
+        o.add(typeName, ranked(Ranking.byType(r, c), r.frameCount()));
+        o.add(keyName, ranked(Ranking.byKey(r, c), r.frameCount()));
         return o;
     }
 
-    private static JsonArray ranked(List<RankedEntry> entries) {
+    private static JsonArray ranked(List<RankedEntry> entries, int frames) {
         JsonArray arr = new JsonArray();
         for (RankedEntry e : entries) {
             JsonObject o = new JsonObject();
@@ -139,6 +149,7 @@ public final class JsonReportWriter {
             o.addProperty("members", e.members());
             o.addProperty("calls", e.calls());
             o.addProperty("tickCalls", e.tickCalls());
+            o.addProperty("callsPerFrame", e.callsPerFrame(frames));
             o.addProperty("renderUs", e.renderNanos() / 1000);
             o.addProperty("tickUs", e.tickNanos() / 1000);
             o.addProperty("shadowUs", e.shadowNanos() / 1000);
