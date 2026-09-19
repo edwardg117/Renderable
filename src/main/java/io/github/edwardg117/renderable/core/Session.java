@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
@@ -45,6 +46,15 @@ public final class Session {
     /** Set by the Iris integration (phase 2) while the shadow pass is rendering. */
     public boolean shadowPass;
 
+    /** Frames that started with a call still open, because a hook threw past its end(). The stack is reset. */
+    private int unbalancedFrames;
+
+    private int visualSamples;
+    private long visualBlockEntities;
+    private long visualEntities;
+    private long visualEffects;
+    private final LinkedHashMap<String, Long> visualByClass = new LinkedHashMap<>();
+
     public Session(SessionConfig config, LongSupplier clock, long wallStartMillis) {
         this.config = config;
         this.clock = clock;
@@ -78,6 +88,38 @@ public final class Session {
         return timedCalls;
     }
 
+    /** Number of frame boundaries at which the attribution stack was found unbalanced and reset. */
+    public int unbalancedFrames() {
+        return unbalancedFrames;
+    }
+
+    /**
+     * Records one sample of Flywheel visual counts (spec §4.2). Called about once per second by the
+     * controller, so it may allocate. Classes absent from a sample count as zero for that sample.
+     */
+    public void recordVisualCounts(int blockEntities, int entities, int effects, Map<String, Integer> byClass) {
+        visualSamples++;
+        visualBlockEntities += blockEntities;
+        visualEntities += entities;
+        visualEffects += effects;
+        for (Map.Entry<String, Integer> e : byClass.entrySet()) {
+            visualByClass.merge(e.getKey(), (long) e.getValue(), Long::sum);
+        }
+    }
+
+    private FlywheelStats flywheelStats() {
+        if (visualSamples == 0) return FlywheelStats.none();
+        LinkedHashMap<String, Double> avg = new LinkedHashMap<>();
+        for (Map.Entry<String, Long> e : visualByClass.entrySet()) {
+            avg.put(e.getKey(), (double) e.getValue() / visualSamples);
+        }
+        return new FlywheelStats(visualSamples,
+                (double) visualBlockEntities / visualSamples,
+                (double) visualEntities / visualSamples,
+                (double) visualEffects / visualSamples,
+                Map.copyOf(avg));
+    }
+
     /** Snapshot of all accumulators; safe to call after the session is finished. */
     public Map<ProfileKey, Accumulator> accumulators() {
         return Map.copyOf(accumulators);
@@ -96,10 +138,14 @@ public final class Session {
         List<FrameRecord> hitches = HitchDetector.detect(frameList, threshold);
         double overheadMs = timedCalls * config.calibratedCallNanos() / 1_000_000.0;
         return new SessionResult(config, wallStartMillis, frameList, accumulators(), stats, threshold, hitches,
-                timedCalls, overheadMs);
+                timedCalls, overheadMs, unbalancedFrames, flywheelStats());
     }
 
-    /** Start timing a call attributed to {@code a} in {@code bucket}. Must be paired with {@link #end()}. */
+    /**
+     * Start timing a call attributed to {@code a} in {@code bucket}. Must be paired with {@link #end()}.
+     * {@code a} may be null for work that has no key (light updates, Flywheel, chunk upload): the bucket is
+     * still credited when the call is outermost, but nothing is added to an accumulator or to the frame's top list.
+     */
     public void begin(Accumulator a, Bucket bucket) {
         long now = clock.getAsLong();
         if (depth < MAX_DEPTH) {
@@ -122,21 +168,25 @@ public final class Session {
         stack[depth] = null;
         timedCalls++;
 
-        if (bucket.isRender()) {
-            a.renderNanos += elapsed;
-            a.calls++;
-            if (shadowPass) a.shadowNanos += elapsed;
-        } else {
-            a.tickNanos += elapsed;
-            a.tickCalls++;
+        if (a != null) {
+            if (bucket.isRender()) {
+                a.renderNanos += elapsed;
+                a.calls++;
+                if (shadowPass) a.shadowNanos += elapsed;
+            } else {
+                a.tickNanos += elapsed;
+                a.tickCalls++;
+            }
         }
 
         if (frameStartNanos >= 0) {
-            if (!a.inFrame) {
-                a.inFrame = true;
-                touched.add(a);
+            if (a != null) {
+                if (!a.inFrame) {
+                    a.inFrame = true;
+                    touched.add(a);
+                }
+                a.frameNanos += elapsed;
             }
-            a.frameNanos += elapsed;
             if (depth == 0) {
                 buckets[bucket.ordinal()] += elapsed;
             }
@@ -160,6 +210,12 @@ public final class Session {
         }
         lastGcCount = gcCountTotal;
         lastGcMillis = gcMillisTotal;
+
+        if (depth != 0) {
+            unbalancedFrames++;
+            depth = 0;
+            Arrays.fill(stack, null);
+        }
 
         boolean done = false;
         if (frameStartNanos >= 0) {

@@ -14,7 +14,9 @@ public record SessionResult(SessionConfig config,
                             long hitchThresholdNanos,
                             List<FrameRecord> hitches,
                             long timedCalls,
-                            double overheadEstimateMs) {
+                            double overheadEstimateMs,
+                            int unbalancedFrames,
+                            FlywheelStats flywheel) {
 
     public int frameCount() {
         return frames.size();

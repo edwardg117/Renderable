@@ -56,6 +56,19 @@ class KeysTest {
         assertEquals(0, a.frameNanos());
     }
 
+    @Test
+    void particleKeyFormats() {
+        ParticleKey vanilla = new ParticleKey("net.minecraft.client.particle.FlameParticle");
+        assertEquals(ProfileKey.Category.PARTICLE, vanilla.category());
+        assertEquals("net.minecraft.client.particle.FlameParticle", vanilla.typeId());
+        assertEquals("FlameParticle", vanilla.label());
+        assertEquals("particle:net.minecraft.client.particle.FlameParticle", vanilla.serialize());
+
+        ParticleKey modded = new ParticleKey("com.simibubi.create.content.fluids.particle.FluidParticle");
+        assertEquals("com.simibubi.create.content.fluids.particle.FluidParticle", modded.label());
+        assertEquals(new ParticleKey("a.B"), new ParticleKey("a.B"));
+    }
+
     /** Guards the architecture rule: core has no Minecraft, NeoForge, Mojang or LWJGL imports. */
     @Test
     void coreHasNoMinecraftImports() throws IOException {

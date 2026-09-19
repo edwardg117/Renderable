@@ -292,4 +292,61 @@ class SessionTest {
         assertEquals(5, r.frames().get(15).gcMillis());
         assertEquals(TestSessions.WALL_START, r.wallStartMillis());
     }
+
+    @Test
+    void bucketOnlyTimingFillsTheBucketWithoutAKey() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(null, Bucket.LIGHT); at(4); s.end();
+        at(5); s.begin(null, Bucket.FLYWHEEL);
+        at(6); s.begin(s.accumulator(press), Bucket.BLOCK_ENTITY); at(7); s.end(); // nested inside flywheel
+        at(9); s.end();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(3 * MS, f.bucket(Bucket.LIGHT));
+        assertEquals(4 * MS, f.bucket(Bucket.FLYWHEEL));
+        assertEquals(0, f.bucket(Bucket.BLOCK_ENTITY), "inner keyed call is not counted in a second bucket");
+        assertEquals(1 * MS, s.accumulator(press).renderNanos);
+        assertEquals(3, s.timedCalls());
+        assertEquals(1, f.top().size(), "bucket-only timings never appear in top");
+        assertEquals(press, f.top().get(0).key());
+        assertTrue(s.accumulators().values().stream().noneMatch(a -> a.key == null));
+    }
+
+    @Test
+    void unbalancedStackIsResetAtTheFrameBoundary() {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(press);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(a, Bucket.BLOCK_ENTITY);            // a hook threw past its end()
+        at(10); s.onRenderPre(0, 0);
+        assertEquals(1, s.unbalancedFrames());
+
+        at(11); s.begin(a, Bucket.BLOCK_ENTITY); at(13); s.end();
+        at(20); s.onRenderPre(0, 0);
+        assertEquals(2 * MS, s.framesView().get(1).bucket(Bucket.BLOCK_ENTITY), "attribution works again after the reset");
+        assertEquals(1, s.unbalancedFrames());
+        assertEquals(1, s.finish().unbalancedFrames());
+    }
+
+    @Test
+    void visualCountsAverageOverSamples() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        s.recordVisualCounts(100, 10, 0, java.util.Map.of("a.PressVisual", 100, "b.FanVisual", 5));
+        s.recordVisualCounts(140, 10, 2, java.util.Map.of("a.PressVisual", 140));
+        at(10); s.onRenderPre(0, 0);
+        FlywheelStats fw = s.finish().flywheel();
+        assertEquals(2, fw.samples());
+        assertEquals(120.0, fw.avgBlockEntities(), 1e-9);
+        assertEquals(10.0, fw.avgEntities(), 1e-9);
+        assertEquals(1.0, fw.avgEffects(), 1e-9);
+        assertEquals(120.0, fw.avgByClass().get("a.PressVisual"), 1e-9);
+        assertEquals(2.5, fw.avgByClass().get("b.FanVisual"), 1e-9, "a class absent from a sample counts as zero");
+        assertEquals(131.0, fw.total(), 1e-9);
+
+        assertEquals(0, TestSessions.sample().flywheel().samples());
+        assertTrue(TestSessions.sample().flywheel().avgByClass().isEmpty());
+    }
 }
