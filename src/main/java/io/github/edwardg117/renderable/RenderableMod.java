@@ -4,6 +4,8 @@ import io.github.edwardg117.renderable.hooks.FrameEvents;
 import io.github.edwardg117.renderable.hooks.Probe;
 import io.github.edwardg117.renderable.ui.Keybinds;
 import io.github.edwardg117.renderable.ui.RenderableCommand;
+import io.github.edwardg117.renderable.ui.SamplingHud;
+import io.github.edwardg117.renderable.ui.WorldOverlay;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -25,9 +27,11 @@ public final class RenderableMod {
         container.registerConfig(ModConfig.Type.CLIENT, RenderableConfig.SPEC);
 
         modBus.addListener(Keybinds::register);
+        modBus.addListener(SamplingHud::register);
 
         NeoForge.EVENT_BUS.register(FrameEvents.class);
         NeoForge.EVENT_BUS.register(Keybinds.class);
+        NeoForge.EVENT_BUS.register(WorldOverlay.class);
         NeoForge.EVENT_BUS.addListener(RenderableCommand::register);
 
         Probe.setListener(ProfilerController.get());

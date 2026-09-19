@@ -48,6 +48,22 @@ public final class RenderableCommand {
                     c.openFolder();
                     return 1;
                 }))
+                .then(Commands.literal("overlay")
+                        .executes(ctx -> {
+                            WorldOverlay.toggle();
+                            ProfilerController.chat("Renderable: overlay " + (WorldOverlay.isEnabled() ? "on" : "off"));
+                            return 1;
+                        })
+                        .then(Commands.literal("on").executes(ctx -> {
+                            WorldOverlay.setEnabled(true);
+                            ProfilerController.chat("Renderable: overlay on");
+                            return 1;
+                        }))
+                        .then(Commands.literal("off").executes(ctx -> {
+                            WorldOverlay.setEnabled(false);
+                            ProfilerController.chat("Renderable: overlay off");
+                            return 1;
+                        })))
                 .then(Commands.literal("debug")
                         .requires(src -> RenderableConfig.DEBUG_COMMANDS.get())
                         .then(Commands.literal("stall")

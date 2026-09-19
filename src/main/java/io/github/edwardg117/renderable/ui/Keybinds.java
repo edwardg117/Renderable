@@ -36,7 +36,8 @@ public final class Keybinds {
         }
     }
 
-    /** Task 11 replaces this with the overlay toggle. */
     private static void onOverlayKey() {
+        WorldOverlay.toggle();
+        ProfilerController.chat("Renderable: overlay " + (WorldOverlay.isEnabled() ? "on" : "off"));
     }
 }

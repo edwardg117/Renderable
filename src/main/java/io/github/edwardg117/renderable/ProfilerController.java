@@ -13,6 +13,7 @@ import io.github.edwardg117.renderable.report.EnvironmentCollector;
 import io.github.edwardg117.renderable.report.JsonReportWriter;
 import io.github.edwardg117.renderable.report.ReportFiles;
 import io.github.edwardg117.renderable.report.TextReportWriter;
+import io.github.edwardg117.renderable.ui.WorldOverlay;
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -90,6 +91,7 @@ public final class ProfilerController implements Probe.Listener {
                 RenderableConfig.TOP_CONTRIBUTORS_PER_FRAME.get(),
                 calibratedCallNanos);
         session = new Session(config, System::nanoTime, System.currentTimeMillis());
+        WorldOverlay.clear();
         Probe.setListener(this);
         Probe.attach(session);
         chat("Renderable: sampling for " + seconds + " s. Press the key again or run /renderable stop to end early.");
@@ -139,6 +141,7 @@ public final class ProfilerController implements Probe.Listener {
         lastEnvironment = env;
         lastReportText = text;
         lastFolder = written.folder();
+        WorldOverlay.setResult(result);
 
         chat(finishedMessage(result, written));
     }
