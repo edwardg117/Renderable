@@ -3,6 +3,7 @@ package io.github.edwardg117.renderable.ui.screen;
 import io.github.edwardg117.renderable.core.BlockEntityKey;
 import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.EntityKey;
+import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /** Builds the rows for each tab from a finished session. */
@@ -33,6 +35,8 @@ public final class Rows {
             case HITCHES -> hitches(r);
             case BLOCK_ENTITIES -> ranked(r, ProfileKey.Category.BLOCK_ENTITY, sort, expanded);
             case ENTITIES -> ranked(r, ProfileKey.Category.ENTITY, sort, expanded);
+            case PARTICLES -> particles(r, sort);
+            case FLYWHEEL -> flywheel(r);
         };
     }
 
@@ -48,15 +52,22 @@ public final class Rows {
         rows.add(Row.plain("GC", st.gcCount() + " collections, " + st.gcMillis() + " ms paused"));
         rows.add(Row.plain("Renderable overhead", String.format(Locale.ROOT, "%.2f ms over %s timed calls",
                 r.overheadEstimateMs(), Fmt.count(r.timedCalls()))));
+        if (r.unbalancedFrames() > 0) {
+            rows.add(Row.plain("Attribution stack reset", r.unbalancedFrames() + " frames (a hook threw past its end call)"));
+        }
         rows.add(Row.plain("", ""));
 
         rows.add(Row.heading("Average split per frame"));
         rows.add(Row.plain("tick", Fmt.ms2(st.avgTickNanos()) + " ms"));
         for (Bucket b : Bucket.VALUES) {
-            if (st.avgBucket(b) > 0) rows.add(Row.plain("  " + b.label(), Fmt.ms2(st.avgBucket(b)) + " ms"));
+            if (!b.isRender() && st.avgBucket(b) > 0) rows.add(Row.plain("  " + b.label(), Fmt.ms2(st.avgBucket(b)) + " ms"));
         }
-        rows.add(Row.plain("other render", Fmt.ms2(st.avgOtherRenderNanos()) + " ms"));
-        rows.add(Row.plain("other tick", Fmt.ms2(st.avgOtherTickNanos()) + " ms"));
+        rows.add(Row.plain("  other tick", Fmt.ms2(st.avgOtherTickNanos()) + " ms"));
+        rows.add(Row.plain("render", Fmt.ms2(st.avgRenderNanos()) + " ms"));
+        for (Bucket b : Bucket.VALUES) {
+            if (b.isRender() && st.avgBucket(b) > 0) rows.add(Row.plain("  " + b.label(), Fmt.ms2(st.avgBucket(b)) + " ms"));
+        }
+        rows.add(Row.plain("  other render", Fmt.ms2(st.avgOtherRenderNanos()) + " ms"));
         rows.add(Row.plain("swap / wait", Fmt.ms2(st.avgSwapNanos()) + " ms"));
         rows.add(Row.plain("", ""));
 
@@ -108,6 +119,10 @@ public final class Rows {
         int frames = r.frameCount();
         long total = r.stats().totalNanos();
         List<Row> rows = new ArrayList<>();
+        if (category == ProfileKey.Category.BLOCK_ENTITY
+                && (r.bucketTotalNanos(Bucket.FLYWHEEL) > 0 || r.flywheel().total() > 0)) {
+            rows.add(Row.heading("Flywheel-instanced machines are not timed here; see the Flywheel tab"));
+        }
         for (RankedEntry t : Ranking.sort(Ranking.byType(r, category), sort)) {
             rows.add(new Row(cells(t.typeId() + "  (" + t.members() + ")", t, frames, total),
                     null, t.typeId(), true, true, 0, null, -1));
@@ -119,6 +134,52 @@ public final class Rows {
             }
         }
         if (rows.isEmpty()) rows.add(Row.plain("(no data)"));
+        return rows;
+    }
+
+    /** Spec §5.3 Particles tab: one row per particle class. */
+    static List<Row> particles(SessionResult r, Ranking.Sort sort) {
+        int frames = r.frameCount();
+        long total = r.stats().totalNanos();
+        List<Row> rows = new ArrayList<>();
+        for (RankedEntry e : Ranking.sort(Ranking.byKey(r, ProfileKey.Category.PARTICLE), sort)) {
+            rows.add(new Row(new String[]{
+                    e.label(),
+                    Fmt.us(e.renderUsPerFrame(frames)),
+                    Fmt.us(e.tickUsPerFrame(frames)),
+                    Fmt.pct(e.sharePercent(total)),
+                    Fmt.us(e.callsPerFrame(frames)),
+                    Fmt.us(e.verticesPerFrame(frames))},
+                    e.key(), e.typeId(), false, false, 0, null, -1));
+        }
+        if (rows.isEmpty()) rows.add(Row.plain("(no particles rendered)"));
+        return rows;
+    }
+
+    /** Spec §5.3 Flywheel tab: the bucket, then the averaged visual counts by class. */
+    static List<Row> flywheel(SessionResult r) {
+        int frames = r.frameCount();
+        long total = r.stats().totalNanos();
+        long bucket = r.bucketTotalNanos(Bucket.FLYWHEEL);
+        FlywheelStats fw = r.flywheel();
+        List<Row> rows = new ArrayList<>();
+        rows.add(new Row(new String[]{"Flywheel bucket",
+                Fmt.us(frames == 0 ? 0 : bucket / 1000.0 / frames) + " us/f",
+                Fmt.pct(total == 0 ? 0 : 100.0 * bucket / total)},
+                null, null, true, false, 0, null, -1));
+        if (fw.samples() == 0) {
+            rows.add(Row.plain("(no Flywheel visualization ran)"));
+            return rows;
+        }
+        rows.add(new Row(new String[]{"Visuals, average over " + fw.samples() + " samples",
+                Fmt.us(fw.total()), ""},
+                null, null, true, false, 0, null, -1));
+        for (Map.Entry<String, Double> e : fw.byAverageDesc()) {
+            String k = e.getKey();
+            String label = k.substring(k.lastIndexOf('.') + 1);
+            rows.add(new Row(new String[]{label, Fmt.us(e.getValue()), ""},
+                    null, null, false, false, 1, null, -1));
+        }
         return rows;
     }
 

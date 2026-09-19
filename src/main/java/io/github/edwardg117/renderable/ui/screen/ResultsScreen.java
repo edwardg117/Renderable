@@ -21,9 +21,11 @@ import java.util.Set;
 /** Spec §5.3. */
 public final class ResultsScreen extends Screen {
     private static final int TAB_Y = 4;
-    private static final int SUMMARY_Y = 30;
-    private static final int HEADER_Y = 52;
-    private static final int LIST_Y = 64;
+    private static final int TABS_PER_ROW = 4;
+    private static final int TAB_ROW_HEIGHT = 22;
+    private static final int SUMMARY_Y = 52;
+    private static final int HEADER_Y = 74;
+    private static final int LIST_Y = 86;
     private static final int BOTTOM_BAR = 32;
     private static final int ROW_HEIGHT = 12;
 
@@ -50,14 +52,16 @@ public final class ResultsScreen extends Screen {
 
     @Override
     protected void init() {
-        int tabPitch = Math.min(88, (width - 122) / 4);   // 4 left margin + 4 gap + 110 sort + 4 right margin
+        int tabPitch = Math.min(88, (width - 122) / TABS_PER_ROW);   // 4 left margin + 4 gap + 110 sort + 4 right margin
         int tabWidth = tabPitch - 4;
-        int x = 4;
-        for (Tab t : Tab.values()) {
-            Button b = Button.builder(Component.literal(t.title()), btn -> selectTab(t)).bounds(x, TAB_Y, tabWidth, 20).build();
+        Tab[] tabs = Tab.values();
+        for (int i = 0; i < tabs.length; i++) {
+            Tab t = tabs[i];
+            int x = 4 + (i % TABS_PER_ROW) * tabPitch;
+            int y = TAB_Y + (i / TABS_PER_ROW) * TAB_ROW_HEIGHT;
+            Button b = Button.builder(Component.literal(t.title()), btn -> selectTab(t)).bounds(x, y, tabWidth, 20).build();
             b.active = t != tab;
             addRenderableWidget(b);
-            x += tabPitch;
         }
         sortButton = Button.builder(sortLabel(), b -> {
             sort = sort.next();
@@ -130,7 +134,7 @@ public final class ResultsScreen extends Screen {
         boolean hasEntity = selected != null && selected.entityId() >= 0;
         highlightButton.active = hasPos;
         teleportButton.active = hasPos || hasEntity;
-        sortButton.visible = tab == Tab.BLOCK_ENTITIES || tab == Tab.ENTITIES;
+        sortButton.visible = tab.sortable();
     }
 
     private void highlightSelected() {

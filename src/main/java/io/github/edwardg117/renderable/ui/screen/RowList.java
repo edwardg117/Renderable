@@ -64,7 +64,9 @@ public final class RowList extends ObjectSelectionList<RowList.Entry> {
 
             String first = row.cells()[0];
             if (row.expandable()) first = (screen.isExpanded(row.typeId()) ? "v " : "> ") + first;
-            g.drawString(font, font.plainSubstrByWidth(first, colW[0] - indentPx), left + 4 + indentPx, top + 2, color, false);
+            // A single-cell row (a heading or full-width note) spans the whole row width instead of just column 0.
+            int firstWidth = row.cells().length == 1 ? width - 8 - indentPx : colW[0] - indentPx;
+            g.drawString(font, font.plainSubstrByWidth(first, firstWidth), left + 4 + indentPx, top + 2, color, false);
 
             for (int i = 1; i < row.cells().length && i < colX.length; i++) {
                 String cell = row.cells()[i];

@@ -1,11 +1,13 @@
 package io.github.edwardg117.renderable.ui.screen;
 
-/** Tabs of the results screen and the column layout each one uses. */
+/** Tabs of the results screen and the column layout each one uses. Four per row on the screen. */
 public enum Tab {
     FRAMES("Frames", Columns.METRIC_VALUE),
     HITCHES("Hitches", Columns.HITCH),
     BLOCK_ENTITIES("Block Entities", Columns.RANKED),
-    ENTITIES("Entities", Columns.RANKED);
+    ENTITIES("Entities", Columns.RANKED),
+    PARTICLES("Particles", Columns.PARTICLE),
+    FLYWHEEL("Flywheel", Columns.FLYWHEEL);
 
     private final String title;
     private final Columns columns;
@@ -23,6 +25,11 @@ public enum Tab {
         return columns;
     }
 
+    /** True for tabs whose rows are ranked entries the Sort button can reorder. */
+    public boolean sortable() {
+        return this == BLOCK_ENTITIES || this == ENTITIES || this == PARTICLES;
+    }
+
     /**
      * Column headers, relative weights and alignment. {@link #layout(int)} turns weights into pixel offsets.
      * Kept as a nested class so enum constants can reference the constants without a forward-reference error.
@@ -30,7 +37,7 @@ public enum Tab {
     public record Columns(String[] headers, int[] weights, boolean[] rightAlign) {
         static final Columns METRIC_VALUE = new Columns(
                 new String[]{"metric", "value"},
-                new int[]{1, 3},
+                new int[]{2, 3},
                 new boolean[]{false, false});
         static final Columns HITCH = new Columns(
                 new String[]{"frame", "total ms", "split"},
@@ -40,6 +47,14 @@ public enum Tab {
                 new String[]{"name", "render us/f", "tick us/f", "share", "peak ms", "shadow", "verts/f", "calls"},
                 new int[]{5, 1, 1, 1, 1, 1, 1, 1},
                 new boolean[]{false, true, true, true, true, true, true, true});
+        static final Columns PARTICLE = new Columns(
+                new String[]{"class", "render us/f", "tick us/f", "share", "avg live", "verts/f"},
+                new int[]{5, 1, 1, 1, 1, 1},
+                new boolean[]{false, true, true, true, true, true});
+        static final Columns FLYWHEEL = new Columns(
+                new String[]{"visual class", "avg count", "share"},
+                new int[]{6, 1, 1},
+                new boolean[]{false, true, true});
 
         /** Returns {x offsets, widths} for a row of the given pixel width. Each column keeps 4 px of padding. */
         public int[][] layout(int rowWidth) {

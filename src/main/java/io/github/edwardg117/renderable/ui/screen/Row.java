@@ -21,6 +21,6 @@ public record Row(String[] cells,
     }
 
     public static Row heading(String text) {
-        return new Row(new String[]{text, ""}, null, null, true, false, 0, null, -1);
+        return new Row(new String[]{text}, null, null, true, false, 0, null, -1);
     }
 }
