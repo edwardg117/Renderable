@@ -14,6 +14,7 @@ import io.github.edwardg117.renderable.report.JsonReportWriter;
 import io.github.edwardg117.renderable.report.ReportFiles;
 import io.github.edwardg117.renderable.report.TextReportWriter;
 import io.github.edwardg117.renderable.ui.WorldOverlay;
+import io.github.edwardg117.renderable.ui.screen.ResultsScreen;
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -144,6 +145,10 @@ public final class ProfilerController implements Probe.Listener {
         WorldOverlay.setResult(result);
 
         chat(finishedMessage(result, written));
+
+        if (RenderableConfig.OPEN_RESULTS_ON_FINISH.get()) {
+            openResults();
+        }
     }
 
     private static MutableComponent finishedMessage(SessionResult r, ReportFiles.Written w) {
@@ -181,13 +186,13 @@ public final class ProfilerController implements Probe.Listener {
         Util.getPlatform().openPath(lastFolder);
     }
 
-    /** Replaced by the results screen in Task 12. */
     public void openResults() {
         if (lastResult == null) {
             chat("Renderable: no finished session yet.");
             return;
         }
-        chat("Renderable: results screen not built yet; see the report files.");
+        Minecraft mc = Minecraft.getInstance();
+        mc.tell(() -> mc.setScreen(new ResultsScreen(lastResult, lastEnvironment)));
     }
 
     /** Debug: sleep the render thread inside a fake block entity on the next frame (spec §5.1). */

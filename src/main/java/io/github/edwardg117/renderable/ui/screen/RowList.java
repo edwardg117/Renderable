@@ -1,0 +1,86 @@
+package io.github.edwardg117.renderable.ui.screen;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.ObjectSelectionList;
+import net.minecraft.network.chat.Component;
+
+import java.util.List;
+
+/** Scrollable list of {@link Row}s with column layout supplied by the screen. */
+public final class RowList extends ObjectSelectionList<RowList.Entry> {
+    private final ResultsScreen screen;
+    private Tab tab = Tab.FRAMES;
+    private int[] colX = {0};
+    private int[] colW = {100};
+
+    public RowList(Minecraft mc, ResultsScreen screen, int width, int height, int y, int itemHeight) {
+        super(mc, width, height, y, itemHeight);
+        this.screen = screen;
+    }
+
+    public void setLayout(int[] x, int[] w) {
+        this.colX = x;
+        this.colW = w;
+    }
+
+    public void setRows(Tab tab, List<Row> rows) {
+        this.tab = tab;
+        clearEntries();
+        for (Row r : rows) addEntry(new Entry(r));
+        setScrollAmount(0);
+    }
+
+    @Override
+    public int getRowWidth() {
+        return width - 20;
+    }
+
+    @Override
+    protected int getScrollbarPosition() {
+        return width - 8;
+    }
+
+    public final class Entry extends ObjectSelectionList.Entry<Entry> {
+        final Row row;
+
+        Entry(Row row) {
+            this.row = row;
+        }
+
+        @Override
+        public Component getNarration() {
+            return Component.literal(row.cells()[0]);
+        }
+
+        @Override
+        public void render(GuiGraphics g, int index, int top, int left, int width, int height,
+                           int mouseX, int mouseY, boolean hovering, float partialTick) {
+            Font font = minecraft.font;
+            int color = row.group() ? 0xFFFFFF : 0xC8C8C8;
+            int indentPx = row.indent() * 12;
+            boolean[] right = tab.columns().rightAlign();
+
+            String first = row.cells()[0];
+            if (row.expandable()) first = (screen.isExpanded(row.typeId()) ? "v " : "> ") + first;
+            g.drawString(font, font.plainSubstrByWidth(first, colW[0] - indentPx), left + 4 + indentPx, top + 2, color, false);
+
+            for (int i = 1; i < row.cells().length && i < colX.length; i++) {
+                String cell = row.cells()[i];
+                int cx = left + 4 + colX[i];
+                if (right[i]) {
+                    g.drawString(font, cell, cx + colW[i] - font.width(cell), top + 2, color, false);
+                } else {
+                    g.drawString(font, font.plainSubstrByWidth(cell, colW[i]), cx, top + 2, color, false);
+                }
+            }
+        }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            screen.onRowClicked(row);
+            return true;
+        }
+    }
+}
