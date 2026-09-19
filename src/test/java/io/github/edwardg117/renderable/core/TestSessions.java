@@ -20,6 +20,11 @@ public final class TestSessions {
     public static final EntityKey PLAYER = new EntityKey("minecraft:player", 1, "Steve");
     public static final ParticleKey FLAME = new ParticleKey("net.minecraft.client.particle.FlameParticle");
     public static final String PRESS_VISUAL = "com.simibubi.create.content.kinetics.press.PressVisual";
+    public static final BlockKey STONE = new BlockKey("minecraft:stone");
+    public static final BlockKey SHAFT = new BlockKey("create:shaft");
+    public static final BlockKey WATER = new BlockKey("minecraft:water");
+    public static final SectionKey SECTION_A = new SectionKey("minecraft:overworld", 0, 4, 0);
+    public static final SectionKey SECTION_B = new SectionKey("minecraft:overworld", 1, 4, 0);
 
     public static final long WALL_START = 1_726_700_000_000L;
 
@@ -66,8 +71,23 @@ public final class TestSessions {
         return s.finish();
     }
 
+    /** Phase 2 fixture; see {@link #build(boolean)}. */
+    public static SessionResult phase2() {
+        return build(false);
+    }
+
     /**
-     * Phase 2 fixture: the {@link #sample()} skeleton plus particles, ticks, light, Flywheel and visual samples.
+     * Phase 3 fixture: {@link #phase2()} plus 100 vertices per press render and 20 per mixer render (2000 and
+     * 400 over 20 frames), and mesh data: stone 400 calls 8 ms, shaft 50 calls 5 ms, water 20 calls 1 ms,
+     * section (0,4,0) 3 rebuilds 9 ms, section (1,4,0) 1 rebuild 2 ms. Over the 0.384 s session that is
+     * stone 20.833 ms/s and 20.0 us/call, section (0,4,0) 7.8125 rebuilds/s and 3.00 ms per rebuild.
+     */
+    public static SessionResult phase3() {
+        return build(true);
+    }
+
+    /**
+     * The phase 2 skeleton: the {@link #sample()} frames plus particles, ticks, light, Flywheel and visual samples.
      *
      * Per frame: 0.1 ms other render, press 2 ms (60 in frame 10), press2 1.5, mixer 1, cow 0.5, player 0.3,
      * flywheel 1.2 (bucket only), three FlameParticle renders of 0.1, light 0.3 (bucket only), 2 ms other render;
@@ -81,7 +101,7 @@ public final class TestSessions {
      * swap 6.10. FlameParticle 6 ms render over 60 calls (3.0 per frame), 2 ms tick over 40 calls.
      * 14 timed calls per frame, 280 total, at 25 ns = 0.007 ms overhead. Flywheel: 3 samples, avg 120/10/0.
      */
-    public static SessionResult phase2() {
+    private static SessionResult build(boolean phase3) {
         long[] now = {0};
         Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25), () -> now[0], WALL_START);
         Accumulator press = s.accumulator(PRESS);
@@ -107,9 +127,13 @@ public final class TestSessions {
             long pressCost = i == 10 ? 60 * MS : 2 * MS;
 
             t += 100_000;
-            now[0] = t; s.begin(press, Bucket.BLOCK_ENTITY);  t += pressCost;  now[0] = t; s.end();
+            now[0] = t; s.begin(press, Bucket.BLOCK_ENTITY);
+            if (phase3) for (int v = 0; v < 100; v++) s.vertex();
+            t += pressCost; now[0] = t; s.end();
             now[0] = t; s.begin(press2, Bucket.BLOCK_ENTITY); t += 1_500_000;  now[0] = t; s.end();
-            now[0] = t; s.begin(mixer, Bucket.BLOCK_ENTITY);  t += 1 * MS;     now[0] = t; s.end();
+            now[0] = t; s.begin(mixer, Bucket.BLOCK_ENTITY);
+            if (phase3) for (int v = 0; v < 20; v++) s.vertex();
+            t += 1 * MS; now[0] = t; s.end();
             now[0] = t; s.begin(cow, Bucket.ENTITY);          t += 500_000;    now[0] = t; s.end();
             now[0] = t; s.begin(player, Bucket.ENTITY);       t += 300_000;    now[0] = t; s.end();
             now[0] = t; s.begin(null, Bucket.FLYWHEEL);       t += 1_200_000;  now[0] = t; s.end();
@@ -130,6 +154,14 @@ public final class TestSessions {
             now[0] = t; s.onTickPost();
 
             t = frameStart + (i == 10 ? 80 : 16) * MS;
+        }
+
+        if (phase3) {
+            for (int i = 0; i < 400; i++) s.mesh().get(STONE).add(20_000);
+            for (int i = 0; i < 50; i++) s.mesh().get(SHAFT).add(100_000);
+            for (int i = 0; i < 20; i++) s.mesh().get(WATER).add(50_000);
+            for (int i = 0; i < 3; i++) s.mesh().get(SECTION_A).add(3 * MS);
+            s.mesh().get(SECTION_B).add(2 * MS);
         }
         return s.finish();
     }

@@ -87,4 +87,28 @@ class RankingTest {
         assertEquals(List.of("BLOCK_ENTITY_RENDER"), env.hooksApplied());
         assertTrue(Environment.empty().entries().isEmpty());
     }
+
+    @Test
+    void meshRowsRankByTimeOrByCalls() {
+        SessionResult p3 = TestSessions.phase3();
+        List<MeshEntry> blocks = Ranking.mesh(p3, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME);
+        assertEquals(List.of("minecraft:stone", "create:shaft", "minecraft:water"),
+                blocks.stream().map(e -> e.key().label()).toList());
+        assertEquals(400, blocks.get(0).calls());
+        assertEquals(8 * MS, blocks.get(0).nanos());
+        assertEquals(20.0, blocks.get(0).usPerCall(), 1e-9);
+        assertEquals(8 / 0.384, blocks.get(0).msPerSecond(p3.stats().durationSeconds()), 1e-9);
+
+        List<MeshEntry> sections = Ranking.mesh(p3, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS);
+        assertEquals(2, sections.size());
+        assertEquals(new SectionKey("minecraft:overworld", 0, 4, 0), sections.get(0).key());
+        assertEquals(3, sections.get(0).calls());
+        assertEquals(9 * MS, sections.get(0).nanos());
+        assertEquals(3 / 0.384, sections.get(0).callsPerSecond(p3.stats().durationSeconds()), 1e-9);
+        assertTrue(Ranking.mesh(p3, ProfileKey.Category.PARTICLE, Ranking.MeshSort.TIME).isEmpty());
+
+        assertEquals(2000, p3.accumulators().get(PRESS).vertices);
+        assertEquals(400, p3.accumulators().get(MIXER).vertices);
+        assertTrue(TestSessions.phase2().mesh().isEmpty());
+    }
 }
