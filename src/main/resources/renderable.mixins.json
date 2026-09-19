@@ -11,6 +11,7 @@
     "BoundTickingBlockEntityMixin",
     "LevelMixin",
     "LevelLightEngineMixin",
+    "BufferBuilderMixin",
     "flywheel.FlywheelRenderDispatcherMixin"
   ],
   "injectors": {
