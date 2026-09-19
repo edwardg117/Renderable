@@ -7,7 +7,9 @@
   "client": [
     "BlockEntityRenderDispatcherMixin",
     "EntityRenderDispatcherMixin",
-    "ParticleEngineMixin"
+    "ParticleEngineMixin",
+    "BoundTickingBlockEntityMixin",
+    "LevelMixin"
   ],
   "injectors": {
     "defaultRequire": 1
