@@ -3,7 +3,11 @@
   "minVersion": "0.8",
   "package": "io.github.edwardg117.renderable.hooks.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": [],
+  "plugin": "io.github.edwardg117.renderable.hooks.RenderableMixinPlugin",
+  "client": [
+    "BlockEntityRenderDispatcherMixin",
+    "EntityRenderDispatcherMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

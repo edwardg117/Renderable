@@ -1,9 +1,11 @@
 package io.github.edwardg117.renderable;
 
+import io.github.edwardg117.renderable.hooks.FrameEvents;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +18,7 @@ public final class RenderableMod {
 
     public RenderableMod(IEventBus modBus, ModContainer container) {
         VERSION = container.getModInfo().getVersion().toString();
+        NeoForge.EVENT_BUS.register(FrameEvents.class);
         LOGGER.info("Renderable {} loaded", VERSION);
     }
 }
