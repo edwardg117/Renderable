@@ -6,15 +6,18 @@ public final class Splits {
     private Splits() {
     }
 
-    /** Average per-frame split: tick, every bucket, other render, other tick, swap. Two decimals. */
+    /**
+     * Average per-frame split: tick, each non-zero render bucket, other render, swap. The parts sum to the
+     * average frame. Two decimals.
+     */
     public static String average(FrameStats st) {
         StringBuilder sb = new StringBuilder();
         sb.append("tick ").append(Fmt.ms2(st.avgTickNanos()));
         for (Bucket b : Bucket.VALUES) {
-            sb.append(" | ").append(b.label()).append(' ').append(Fmt.ms2(st.avgBucket(b)));
+            long v = st.avgBucket(b);
+            if (b.isRender() && v > 0) sb.append(" | ").append(b.label()).append(' ').append(Fmt.ms2(v));
         }
         sb.append(" | other render ").append(Fmt.ms2(st.avgOtherRenderNanos()));
-        sb.append(" | other tick ").append(Fmt.ms2(st.avgOtherTickNanos()));
         sb.append(" | swap/wait ").append(Fmt.ms2(st.avgSwapNanos()));
         return sb.toString();
     }

@@ -33,7 +33,7 @@ class TextReportWriterTest {
         String s = TextReportWriter.write(r, env, "0.1.0");
         assertTrue(s.contains("  Sampled 0.4 s, 20 frames, avg 19.2 ms (52 fps), p50 16.0, p95 16.0, p99 80.0, max 80.0 ms\n"), s);
         assertTrue(s.contains("  Hitches: 1 frames over 32.0 ms threshold, totalling 0.1 s (20.8% of wall time)\n"), s);
-        assertTrue(s.contains("  Time split (avg ms/frame): tick 1.00 | block entity 7.40 |"), s);
+        assertTrue(s.contains("  Time split (avg ms/frame): tick 1.00 | block entity 7.40 | entity 0.80 | other render 2.10 | swap/wait 7.90\n"), s);
         assertTrue(s.contains("  GC: 1 collections, 5 ms paused\n"), s);
         assertTrue(s.contains("  Renderable overhead: about 0.00 ms over 120 timed calls\n"), s);
     }
