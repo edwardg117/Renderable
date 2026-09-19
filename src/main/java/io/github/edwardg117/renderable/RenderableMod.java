@@ -28,6 +28,7 @@ public final class RenderableMod {
 
         modBus.addListener(Keybinds::register);
         modBus.addListener(SamplingHud::register);
+        modBus.addListener(WorldOverlay::register);
 
         NeoForge.EVENT_BUS.register(FrameEvents.class);
         NeoForge.EVENT_BUS.register(Keybinds.class);
