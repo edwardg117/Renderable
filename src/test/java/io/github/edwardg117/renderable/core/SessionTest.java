@@ -349,4 +349,39 @@ class SessionTest {
         assertEquals(0, TestSessions.sample().flywheel().samples());
         assertTrue(TestSessions.sample().flywheel().avgByClass().isEmpty());
     }
+
+    @Test
+    void verticesCountOnTheInnermostKeyedCall() {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(press);
+        Accumulator b = s.accumulator(cow);
+        at(0); s.onRenderPre(0, 0);
+        s.vertex();                                   // outside any call: ignored
+        at(1); s.begin(a, Bucket.BLOCK_ENTITY);
+        s.vertex(); s.vertex(); s.vertex();
+        at(2); s.begin(b, Bucket.ENTITY);
+        s.vertex(); s.vertex();
+        at(3); s.end();
+        s.vertex();
+        at(4); s.end();
+        at(5); s.begin(null, Bucket.LIGHT);
+        s.vertex();                                   // bucket-only timing has no key: ignored
+        at(6); s.end();
+        at(10); s.onRenderPre(0, 0);
+        assertEquals(4, a.vertices);
+        assertEquals(2, b.vertices);
+        assertTrue(s.finish().mesh().isEmpty(), "mesh is empty for a session with no mesh work");
+    }
+
+    @Test
+    void meshStatsSurviveIntoTheResult() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        s.mesh().get(new BlockKey("minecraft:stone")).add(4 * MS);
+        at(10); s.onRenderPre(0, 0);
+        List<MeshEntry> mesh = s.finish().mesh();
+        assertEquals(1, mesh.size());
+        assertEquals(new BlockKey("minecraft:stone"), mesh.get(0).key());
+        assertEquals(4 * MS, mesh.get(0).nanos());
+    }
 }

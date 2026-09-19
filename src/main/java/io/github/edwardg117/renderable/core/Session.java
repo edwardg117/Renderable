@@ -36,6 +36,7 @@ public final class Session {
 
     private final Map<ProfileKey, Accumulator> accumulators = new HashMap<>(1024);
     private final ArrayList<Accumulator> touched = new ArrayList<>(1024);
+    private final MeshStats mesh = new MeshStats();
 
     private final Accumulator[] stack = new Accumulator[MAX_DEPTH];
     private final long[] stackStart = new long[MAX_DEPTH];
@@ -130,6 +131,22 @@ public final class Session {
         return accumulators.computeIfAbsent(key, Accumulator::new);
     }
 
+    /** Mesh-build accumulators, safe to write from any thread (spec §3.4). */
+    public MeshStats mesh() {
+        return mesh;
+    }
+
+    /**
+     * Counts one vertex on the innermost open call if it has a key (spec §4.3). Render thread only. A keyless
+     * inner timing (bucket-only work) hides the outer key, and vertices emitted deeper than {@link #MAX_DEPTH}
+     * are dropped rather than credited to an ancestor, matching {@link #end()}.
+     */
+    public void vertex() {
+        if (depth == 0 || depth > MAX_DEPTH) return;
+        Accumulator a = stack[depth - 1];
+        if (a != null) a.vertices++;
+    }
+
     /** Freeze the session into a result. The frame currently open is dropped because it has no end. */
     public SessionResult finish() {
         List<FrameRecord> frameList = List.copyOf(frames);
@@ -138,7 +155,7 @@ public final class Session {
         List<FrameRecord> hitches = HitchDetector.detect(frameList, threshold);
         double overheadMs = timedCalls * config.calibratedCallNanos() / 1_000_000.0;
         return new SessionResult(config, wallStartMillis, frameList, accumulators(), stats, threshold, hitches,
-                timedCalls, overheadMs, unbalancedFrames, flywheelStats());
+                timedCalls, overheadMs, unbalancedFrames, flywheelStats(), mesh.snapshot());
     }
 
     /**

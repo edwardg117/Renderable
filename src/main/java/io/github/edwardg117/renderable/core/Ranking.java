@@ -18,6 +18,9 @@ public final class Ranking {
         }
     }
 
+    /** Orderings for the mesh tables. */
+    public enum MeshSort { TIME, CALLS }
+
     private Ranking() {
     }
 
@@ -52,6 +55,19 @@ public final class Ranking {
             if (a.key.category() == category && a.key.typeId().equals(typeId)) out.add(RankedEntry.of(a));
         }
         return sort(out, Sort.TOTAL);
+    }
+
+    /** Mesh rows of one category, ordered by nanoseconds or by calls, descending, ties by label. */
+    public static List<MeshEntry> mesh(SessionResult r, ProfileKey.Category category, MeshSort sort) {
+        List<MeshEntry> out = new ArrayList<>();
+        for (MeshEntry e : r.mesh()) {
+            if (e.key().category() == category) out.add(e);
+        }
+        Comparator<MeshEntry> by = sort == MeshSort.CALLS
+                ? Comparator.comparingLong(MeshEntry::calls)
+                : Comparator.comparingLong(MeshEntry::nanos);
+        out.sort(by.reversed().thenComparing(e -> e.key().label()));
+        return out;
     }
 
     /** Returns a new list sorted by the chosen column, descending, ties broken by label. */

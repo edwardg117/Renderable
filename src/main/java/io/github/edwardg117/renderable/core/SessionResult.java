@@ -16,7 +16,8 @@ public record SessionResult(SessionConfig config,
                             long timedCalls,
                             double overheadEstimateMs,
                             int unbalancedFrames,
-                            FlywheelStats flywheel) {
+                            FlywheelStats flywheel,
+                            List<MeshEntry> mesh) {
 
     public int frameCount() {
         return frames.size();

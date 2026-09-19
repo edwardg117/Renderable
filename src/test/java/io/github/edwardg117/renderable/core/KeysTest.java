@@ -69,6 +69,25 @@ class KeysTest {
         assertEquals(new ParticleKey("a.B"), new ParticleKey("a.B"));
     }
 
+    @Test
+    void blockAndSectionKeysFormat() {
+        BlockKey stone = new BlockKey("minecraft:stone");
+        assertEquals(ProfileKey.Category.BLOCK, stone.category());
+        assertEquals("minecraft:stone", stone.typeId());
+        assertEquals("minecraft:stone", stone.label());
+        assertEquals("block:minecraft:stone", stone.serialize());
+
+        SectionKey s = new SectionKey("minecraft:overworld", 12, 4, -3);
+        assertEquals(ProfileKey.Category.SECTION, s.category());
+        assertEquals("section", s.typeId());
+        assertEquals("section 12 4 -3", s.label());
+        assertEquals("section@minecraft:overworld:12,4,-3", s.serialize());
+        assertEquals(200, s.centerX());
+        assertEquals(72, s.centerY());
+        assertEquals(-40, s.centerZ());
+        assertEquals(new SectionKey("d", 1, 2, 3), new SectionKey("d", 1, 2, 3));
+    }
+
     /** Guards the architecture rule: core has no Minecraft, NeoForge, Mojang or LWJGL imports. */
     @Test
     void coreHasNoMinecraftImports() throws IOException {

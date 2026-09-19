@@ -144,7 +144,7 @@ class TextReportWriterTest {
     static SessionResult withFlywheel(SessionResult base, FlywheelStats fw, int unbalanced) {
         return new SessionResult(base.config(), base.wallStartMillis(), base.frames(), base.accumulators(),
                 base.stats(), base.hitchThresholdNanos(), base.hitches(), base.timedCalls(),
-                base.overheadEstimateMs(), unbalanced, fw);
+                base.overheadEstimateMs(), unbalanced, fw, base.mesh());
     }
 
     @Test
