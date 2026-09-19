@@ -9,7 +9,9 @@
     "EntityRenderDispatcherMixin",
     "ParticleEngineMixin",
     "BoundTickingBlockEntityMixin",
-    "LevelMixin"
+    "LevelMixin",
+    "LevelLightEngineMixin",
+    "flywheel.FlywheelRenderDispatcherMixin"
   ],
   "injectors": {
     "defaultRequire": 1

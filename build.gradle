@@ -46,6 +46,13 @@ neoForge {
             gameDirectory = project.file('run')
             systemProperty 'forge.logging.markers', 'REGISTRIES'
             logLevel = org.slf4j.event.Level.INFO
+
+            // -PquickPlay="New World" auto-joins the save folder run/saves/<name> at launch so classes that only
+            // load in a level (LevelLightEngine, Flywheel's RenderDispatcherImpl, Sodium's chunk builder) can be
+            // checked with -Dmixin.debug.export=true without a human at the keyboard.
+            if (project.hasProperty('quickPlay')) {
+                programArguments.addAll('--quickPlaySingleplayer', project.property('quickPlay').toString())
+            }
         }
     }
 

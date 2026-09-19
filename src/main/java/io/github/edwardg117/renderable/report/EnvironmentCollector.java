@@ -2,6 +2,8 @@ package io.github.edwardg117.renderable.report;
 
 import com.mojang.blaze3d.platform.GlStateManager;
 import io.github.edwardg117.renderable.core.Environment;
+import io.github.edwardg117.renderable.hooks.compat.FlywheelCompat;
+import io.github.edwardg117.renderable.hooks.compat.IrisCompat;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
@@ -47,7 +49,9 @@ public final class EnvironmentCollector {
 
         m.put("sodium", modVersion("sodium"));
         m.put("iris", modVersion("iris"));
+        m.put("shaderPack", safe(IrisCompat::packName));
         m.put("flywheel", modVersion("flywheel"));
+        m.put("flywheelBackend", safe(FlywheelCompat::backendName));
         m.put("distanthorizons", modVersion("distanthorizons"));
 
         if (mc.level != null) {
@@ -72,7 +76,7 @@ public final class EnvironmentCollector {
         try {
             String v = s.get();
             return v == null ? "unknown" : v;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | LinkageError e) {
             return "unknown";
         }
     }

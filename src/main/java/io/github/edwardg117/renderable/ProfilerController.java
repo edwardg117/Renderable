@@ -9,6 +9,7 @@ import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.hooks.Probe;
+import io.github.edwardg117.renderable.hooks.compat.FlywheelCompat;
 import io.github.edwardg117.renderable.report.EnvironmentCollector;
 import io.github.edwardg117.renderable.report.JsonReportWriter;
 import io.github.edwardg117.renderable.report.ReportFiles;
@@ -37,6 +38,7 @@ public final class ProfilerController implements Probe.Listener {
     private Session session;
     private long calibratedCallNanos = -1;
     private int pendingStallMs;
+    private long lastVisualSampleSecond = -1;
 
     private SessionResult lastResult;
     private Environment lastEnvironment;
@@ -91,6 +93,7 @@ public final class ProfilerController implements Probe.Listener {
                 RenderableConfig.HITCH_MIN_EXCESS_MS.get(),
                 RenderableConfig.TOP_CONTRIBUTORS_PER_FRAME.get(),
                 calibratedCallNanos);
+        lastVisualSampleSecond = -1;
         session = new Session(config, System::nanoTime, System.currentTimeMillis());
         WorldOverlay.clear();
         Probe.setListener(this);
@@ -207,6 +210,12 @@ public final class ProfilerController implements Probe.Listener {
 
     @Override
     public void onFrameStarted(Session s) {
+        long second = s.elapsedNanos() / 1_000_000_000L;
+        if (second != lastVisualSampleSecond) {
+            lastVisualSampleSecond = second;
+            sampleFlywheel(s);
+        }
+
         int ms = pendingStallMs;
         if (ms <= 0) return;
         pendingStallMs = 0;
@@ -218,6 +227,18 @@ public final class ProfilerController implements Probe.Listener {
             Thread.currentThread().interrupt();
         } finally {
             s.end();
+        }
+    }
+
+    /** Spec §4.2: Flywheel visual counts, sampled about once per second. Runs at frame start, outside Flywheel's own
+     * frame work; the sample is inside the frame, so its cost shows up in that frame's other render. */
+    private static void sampleFlywheel(Session s) {
+        if (!FlywheelCompat.PRESENT) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
+        FlywheelCompat.Counts counts = FlywheelCompat.sample(mc.level);
+        if (counts != null) {
+            s.recordVisualCounts(counts.blockEntities(), counts.entities(), counts.effects(), counts.byClass());
         }
     }
 
