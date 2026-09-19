@@ -242,8 +242,8 @@ without needing a naturally slow mod.
 
 ### 5.2 HUD while sampling
 
-One line, top left, below the vanilla debug area: `Renderable: 12.0 / 30 s · 960 frames ·
-3 hitches`. The hitch count while sampling uses a rolling median of the last 120 frames since
+One line, top centre so it never collides with the F3 overlay: `Renderable: 12.0 / 30 s |
+960 frames | 3 hitches`. The hitch count while sampling uses a rolling median of the last 120 frames since
 the final median is unknown; the results screen recomputes with the full session.
 
 ### 5.3 Results screen
