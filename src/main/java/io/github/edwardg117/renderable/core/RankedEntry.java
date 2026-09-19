@@ -47,6 +47,11 @@ public record RankedEntry(String label,
         return frames == 0 ? 0 : totalNanos() / 1000.0 / frames;
     }
 
+    /** Render calls per frame. For particles this is the average number alive and rendered each frame. */
+    public double callsPerFrame(int frames) {
+        return frames == 0 ? 0 : (double) calls / frames;
+    }
+
     public double renderUsPerFrame(int frames) {
         return frames == 0 ? 0 : renderNanos / 1000.0 / frames;
     }
