@@ -58,7 +58,34 @@ neoForge {
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
+    // The pack's rendering stack from the Modrinth Maven. Sodium and Create ship the real mod jar nested
+    // under META-INF/jarjar, so extractNestedModJars below pulls those out for the compile classpath.
+    // Named packModJars, not packMods, because the -PpackMods project property (used below and by the
+    // dev client run) shadows a same-named bare identifier here and the configuration silently never gets created.
+    packModJars
 }
+
+var extractNestedModJars = tasks.register('extractNestedModJars', Sync) {
+    description = 'Extracts the Sodium mod jar and its libraries, and Flywheel from Create, out of their JarJar containers.'
+    from(configurations.packModJars.collect { f ->
+        zipTree(f).matching {
+            if (f.name.startsWith('sodium')) {
+                include 'META-INF/jarjar/net.caffeinemc.sodium-*.jar'
+                include 'META-INF/jarjar/fabric-*.jar'
+            } else {
+                include 'META-INF/jarjar/flywheel-*.jar'
+            }
+        }
+    })
+    into layout.buildDirectory.dir('nested-mod-jars')
+    eachFile { it.path = it.name }
+    includeEmptyDirs = false
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+var nestedModJars = fileTree(layout.buildDirectory.dir('nested-mod-jars')) {
+    include '*.jar'
+}.builtBy(extractNestedModJars)
 
 dependencies {
     testImplementation platform('org.junit:junit-bom:5.11.4')
@@ -66,15 +93,71 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'com.google.code.gson:gson:2.10.1'
 
-    // Pass -PpackMods to run the dev client with the pack's rendering stack (Sodium, Iris,
-    // Create with Flywheel, Enchantable Machinery). Slower to start; needed for acceptance checks.
-    if (project.hasProperty('packMods')) {
-        localRuntime "maven.modrinth:sodium:${sodium_version}"
-        localRuntime "maven.modrinth:iris:${iris_version}"
-        localRuntime "maven.modrinth:create:${create_version}"
-        localRuntime "maven.modrinth:kotlin-for-forge:${kotlin_for_forge_version}"
-        localRuntime "maven.modrinth:create-enchantable-machinery:${enchantable_machinery_version}"
+    packModJars "maven.modrinth:sodium:${sodium_version}"
+    packModJars "maven.modrinth:iris:${iris_version}"
+    packModJars "maven.modrinth:create:${create_version}"
+
+    // Third-party classes the optional mixins and compat classes reference. Never on the runtime classpath.
+    compileOnly "maven.modrinth:iris:${iris_version}"
+    compileOnly nestedModJars
+}
+
+// The pack's rendering stack for the dev client. Sodium's Modrinth artifact is a LIBRARY container whose
+// IModFileCandidateLocator service merges it with its nested mod jar. Observed: that merge only happens for
+// jars in the game's mods folder; on the Gradle classpath the two halves land in different module domains
+// and Sodium's own mixins fail to resolve Workarounds$Reference. So with -PpackMods the artifacts are
+// installed into run/mods the way a launcher would. Without the property the folder is emptied so a plain
+// run is vanilla. prepareClientRun is wired too, so an IDE launch sees the same run/mods as the CLI.
+configurations {
+    packModRuntime {
+        transitive = false
     }
+}
+
+dependencies {
+    packModRuntime "maven.modrinth:sodium:${sodium_version}"
+    packModRuntime "maven.modrinth:iris:${iris_version}"
+    packModRuntime "maven.modrinth:create:${create_version}"
+    packModRuntime "maven.modrinth:kotlin-for-forge:${kotlin_for_forge_version}"
+    packModRuntime "maven.modrinth:create-enchantable-machinery:${enchantable_machinery_version}"
+}
+
+// A plain Sync task here would work for the -PpackMods case but not the plain-run case: Sync (like Copy)
+// treats an empty source as NO-SOURCE and skips its action entirely rather than running it to clear the
+// destination, so run/mods would keep whatever pack mods were installed by an earlier -PpackMods run.
+// FileSystemOperations.sync(), called unconditionally from a real @TaskAction, does not have that skip.
+abstract class InstallPackMods extends DefaultTask {
+    @InputFiles
+    abstract ConfigurableFileCollection getModFiles()
+
+    @OutputDirectory
+    abstract DirectoryProperty getModsDir()
+
+    @Inject
+    abstract FileSystemOperations getFileOperations()
+
+    @TaskAction
+    void install() {
+        fileOperations.sync {
+            from(modFiles)
+            into(modsDir)
+        }
+    }
+}
+
+var installPackMods = tasks.register('installPackMods', InstallPackMods) {
+    description = 'Installs the pack mods into run/mods when -PpackMods is set; empties run/mods otherwise.'
+    if (project.hasProperty('packMods')) {
+        modFiles.from(configurations.packModRuntime)
+    }
+    modsDir.set(layout.projectDirectory.dir('run/mods'))
+}
+
+tasks.named('runClient') {
+    dependsOn installPackMods
+}
+tasks.named('prepareClientRun') {
+    dependsOn installPackMods
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
