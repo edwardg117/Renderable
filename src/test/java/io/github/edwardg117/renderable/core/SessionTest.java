@@ -269,4 +269,27 @@ class SessionTest {
         assertEquals(0, s.framesView().get(0).bucket(Bucket.BLOCK_ENTITY));
         assertTrue(s.framesView().get(0).top().isEmpty());
     }
+
+    @Test
+    void finishProducesResultWithHitchesAndOverhead() {
+        SessionResult r = TestSessions.sample();
+        assertEquals(20, r.frameCount());
+        assertEquals(384 * MS, r.stats().totalNanos());
+        assertEquals(16 * MS, r.stats().p50Nanos());
+        assertEquals(32 * MS, r.hitchThresholdNanos());
+        assertEquals(1, r.hitches().size());
+        assertEquals(10, r.hitches().get(0).index());
+        assertEquals(80 * MS, r.hitches().get(0).totalNanos());
+        assertEquals(TestSessions.PRESS, r.hitches().get(0).top().get(0).key());
+        assertEquals(60 * MS, r.hitches().get(0).top().get(0).nanos());
+        assertEquals(120, r.timedCalls());
+        assertEquals(0.003, r.overheadEstimateMs(), 1e-9);
+        assertEquals(5, r.hitchFlaggedKeys().size());
+        assertTrue(r.hitchFlaggedKeys().contains(TestSessions.PRESS));
+        assertEquals(98 * MS, r.accumulators().get(TestSessions.PRESS).renderNanos);
+        assertEquals(4 * MS, r.accumulators().get(TestSessions.COW).tickNanos);
+        assertEquals(1, r.frames().get(15).gcCount());
+        assertEquals(5, r.frames().get(15).gcMillis());
+        assertEquals(TestSessions.WALL_START, r.wallStartMillis());
+    }
 }

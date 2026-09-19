@@ -88,6 +88,17 @@ public final class Session {
         return accumulators.computeIfAbsent(key, Accumulator::new);
     }
 
+    /** Freeze the session into a result. The frame currently open is dropped because it has no end. */
+    public SessionResult finish() {
+        List<FrameRecord> frameList = List.copyOf(frames);
+        FrameStats stats = FrameStats.of(frameList);
+        long threshold = HitchDetector.threshold(stats.p50Nanos(), config.hitchMedianMultiplier(), config.hitchMinExcessNanos());
+        List<FrameRecord> hitches = HitchDetector.detect(frameList, threshold);
+        double overheadMs = timedCalls * config.calibratedCallNanos() / 1_000_000.0;
+        return new SessionResult(config, wallStartMillis, frameList, accumulators(), stats, threshold, hitches,
+                timedCalls, overheadMs);
+    }
+
     /** Start timing a call attributed to {@code a} in {@code bucket}. Must be paired with {@link #end()}. */
     public void begin(Accumulator a, Bucket bucket) {
         long now = clock.getAsLong();
