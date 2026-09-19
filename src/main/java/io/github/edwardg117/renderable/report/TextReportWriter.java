@@ -6,6 +6,7 @@ import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
+import io.github.edwardg117.renderable.core.MeshEntry;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.Ranking;
@@ -21,6 +22,9 @@ import java.util.Map;
 public final class TextReportWriter {
     static final int TOP = 20;
     static final int HITCHES = 25;
+
+    /** Printed under the Sections table: mesh time is parallel worker time and overlaps the chunk upload bucket. */
+    static final String MESH_NOTE = "  (mesh time is Sodium worker-thread time, so ms/s can exceed 1000; rebuilds stolen by the render thread also count in chunk upload)";
 
     private TextReportWriter() {
     }
@@ -82,8 +86,8 @@ public final class TextReportWriter {
         appendRanked(sb, "Entities by type", Ranking.byType(r, ProfileKey.Category.ENTITY), frames, total);
         appendRanked(sb, "Entities (individuals)", Ranking.byKey(r, ProfileKey.Category.ENTITY), frames, total);
         appendParticles(sb, r, env, frames, total);
-        appendRanked(sb, "Blocks (mesh build)", Ranking.byKey(r, ProfileKey.Category.BLOCK), frames, total);
-        appendRanked(sb, "Sections (mesh rebuilds)", Ranking.byKey(r, ProfileKey.Category.SECTION), frames, total);
+        appendBlocks(sb, r, env);
+        appendSections(sb, r, env);
         appendFlywheel(sb, r, env, frames, total);
         return sb.toString();
     }
@@ -162,5 +166,45 @@ public final class TextReportWriter {
             t.row(e.getKey(), String.format(Locale.ROOT, "%.1f", e.getValue()));
         }
         sb.append(t.render("  ")).append('\n');
+    }
+
+    /** Spec §6.1 item 8: blocks by mesh time per second of session. */
+    static void appendBlocks(StringBuilder sb, SessionResult r, Environment env) {
+        sb.append("Blocks (mesh build, top ").append(TOP).append(" by mesh ms/s)\n");
+        List<MeshEntry> rows = Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME);
+        if (rows.isEmpty()) {
+            sb.append(meshNoData(env, "blocks were meshed")).append('\n');
+            return;
+        }
+        double seconds = r.stats().durationSeconds();
+        Table t = new Table(new String[]{"block", "mesh ms/s", "us/call", "calls"}, new boolean[]{false, true, true, true});
+        for (MeshEntry e : rows.subList(0, Math.min(TOP, rows.size()))) {
+            t.row(e.key().label(), Fmt.us(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls()));
+        }
+        sb.append(t.render("  ")).append('\n');
+    }
+
+    /** Spec §6.1 item 8: sections by rebuild count, followed by a note on what mesh time means. */
+    static void appendSections(StringBuilder sb, SessionResult r, Environment env) {
+        sb.append("Sections (mesh rebuilds, top ").append(TOP).append(" by rebuilds)\n");
+        List<MeshEntry> rows = Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS);
+        if (rows.isEmpty()) {
+            sb.append(meshNoData(env, "sections were rebuilt")).append('\n');
+            return;
+        }
+        double seconds = r.stats().durationSeconds();
+        Table t = new Table(new String[]{"section", "rebuilds", "rebuilds/s", "mesh ms", "avg ms/rebuild"},
+                new boolean[]{false, true, true, true, true});
+        for (MeshEntry e : rows.subList(0, Math.min(TOP, rows.size()))) {
+            t.row(e.key().label(), Fmt.count(e.calls()), Fmt.us(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
+                    Fmt.ms2(e.calls() == 0 ? 0 : e.nanos() / e.calls()));
+        }
+        sb.append(t.render("  ")).append(MESH_NOTE).append("\n\n");
+    }
+
+    private static String meshNoData(Environment env, String nothing) {
+        return env.hooksApplied().contains("SODIUM_MESH")
+                ? "  (no data: no " + nothing + ")\n"
+                : "  (no data: Sodium hooks were not active)\n";
     }
 }

@@ -67,7 +67,8 @@ class TextReportWriterTest {
         assertTrue(lines[4].startsWith("  create:mechanical_mixer"), lines[4]);
 
         assertTrue(s.contains("Particles (top 20)\n  (no data: hook not active in this build)\n"), s);
-        assertTrue(s.contains("Blocks (mesh build) (top 20)\n  (no data: hook not active in this build)\n"), s);
+        assertTrue(s.contains("Blocks (mesh build, top 20 by mesh ms/s)\n  (no data: Sodium hooks were not active)\n"), s);
+        assertTrue(s.contains("Sections (mesh rebuilds, top 20 by rebuilds)\n  (no data: Sodium hooks were not active)\n"), s);
         assertTrue(s.contains("Entities (individuals) (top 20)\n"), s);
     }
 
@@ -171,5 +172,41 @@ class TextReportWriterTest {
         String s = TextReportWriter.write(withFw, env, "0.1.0");
         assertTrue(s.contains("  Renderable overhead: about "), s);
         assertTrue(s.contains("  Attribution stack reset on 2 frames (a hook threw past its end call; buckets on those frames are incomplete)\n\n"), s);
+    }
+
+    @Test
+    void phase3MeshSections() {
+        LinkedHashMap<String, String> m = new LinkedHashMap<>();
+        m.put("sodium", "0.8.13");
+        Environment env3 = Environment.of(m, List.of("BLOCK_ENTITY_RENDER", "SODIUM_MESH", "SODIUM_UPLOAD", "VERTICES"));
+        String s = TextReportWriter.write(TestSessions.phase3(), env3, "0.3.0");
+
+        int at = s.indexOf("Blocks (mesh build, top 20 by mesh ms/s)\n");
+        assertTrue(at > 0, s);
+        String[] lines = s.substring(at).split("\n", 7);
+        assertEquals("  block            mesh ms/s  us/call  calls", lines[1]);
+        assertEquals(lines[1].length(), lines[3].length());
+        assertTrue(lines[3].startsWith("  minecraft:stone") && lines[3].endsWith("20.8     20.0    400"), lines[3]);
+        assertTrue(lines[4].startsWith("  create:shaft") && lines[4].endsWith("13.0    100.0     50"), lines[4]);
+        assertTrue(lines[5].startsWith("  minecraft:water") && lines[5].endsWith("2.6     50.0     20"), lines[5]);
+
+        at = s.indexOf("Sections (mesh rebuilds, top 20 by rebuilds)\n");
+        assertTrue(at > 0, s);
+        lines = s.substring(at).split("\n", 6);
+        assertEquals("  section        rebuilds  rebuilds/s  mesh ms  avg ms/rebuild", lines[1]);
+        assertTrue(lines[3].startsWith("  section 0 4 0") && lines[3].endsWith("3         7.8      9.0            3.00"), lines[3]);
+        assertTrue(lines[4].startsWith("  section 1 4 0") && lines[4].endsWith("1         2.6      2.0            2.00"), lines[4]);
+        assertTrue(s.contains("\n" + TextReportWriter.MESH_NOTE + "\n"), s);
+
+        int table = s.indexOf("Block entities by position");
+        int press = s.indexOf("create:mechanical_press @ 100 64 -20", table);   // the Hitches section lists the same label first
+        String pressRow = s.substring(press, s.indexOf('\n', press));
+        assertTrue(pressRow.contains("100.0"), "press renders 2000 vertices over 20 frames: " + pressRow);
+
+        LinkedHashMap<String, String> hookOnly = new LinkedHashMap<>();
+        String empty = TextReportWriter.write(TestSessions.phase2(), Environment.of(hookOnly, List.of("SODIUM_MESH")), "0.3.0");
+        assertTrue(empty.contains("Blocks (mesh build, top 20 by mesh ms/s)\n  (no data: no blocks were meshed)\n"), empty);
+        assertTrue(empty.contains("Sections (mesh rebuilds, top 20 by rebuilds)\n  (no data: no sections were rebuilt)\n"), empty);
+        assertFalse(empty.contains(TextReportWriter.MESH_NOTE), empty);
     }
 }

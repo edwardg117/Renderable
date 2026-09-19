@@ -8,9 +8,11 @@ import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
+import io.github.edwardg117.renderable.core.MeshEntry;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.Ranking;
+import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TopEntry;
 
@@ -20,7 +22,7 @@ import java.util.Map;
 
 /** Spec §6.2: complete, untruncated machine-readable report. */
 public final class JsonReportWriter {
-    public static final int SCHEMA = 2;
+    public static final int SCHEMA = 3;
 
     private JsonReportWriter() {
     }
@@ -113,8 +115,9 @@ public final class JsonReportWriter {
         root.add("blockEntities", category(r, ProfileKey.Category.BLOCK_ENTITY, "byType", "byPosition"));
         root.add("entities", category(r, ProfileKey.Category.ENTITY, "byType", "individuals"));
         root.add("particles", ranked(Ranking.byKey(r, ProfileKey.Category.PARTICLE), r.frameCount()));
-        root.add("blocks", ranked(Ranking.byKey(r, ProfileKey.Category.BLOCK), r.frameCount()));
-        root.add("sections", ranked(Ranking.byKey(r, ProfileKey.Category.SECTION), r.frameCount()));
+        double seconds = st.durationSeconds();
+        root.add("blocks", meshRows(Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME), seconds));
+        root.add("sections", meshRows(Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS), seconds));
         JsonObject flywheel = new JsonObject();
         long flywheelNanos = r.bucketTotalNanos(Bucket.FLYWHEEL);
         flywheel.addProperty("bucketUs", flywheelNanos / 1000);
@@ -155,6 +158,29 @@ public final class JsonReportWriter {
             o.addProperty("shadowUs", e.shadowNanos() / 1000);
             o.addProperty("peakFrameUs", e.maxFrameNanos() / 1000);
             o.addProperty("vertices", e.vertices());
+            arr.add(o);
+        }
+        return arr;
+    }
+
+    /** Spec §6.2 blocks and sections: mesh work is per session, not per frame, so rates are per second. */
+    private static JsonArray meshRows(List<MeshEntry> rows, double seconds) {
+        JsonArray arr = new JsonArray();
+        for (MeshEntry e : rows) {
+            JsonObject o = new JsonObject();
+            o.addProperty("key", e.key().serialize());
+            o.addProperty("label", e.key().label());
+            if (e.key() instanceof SectionKey s) {
+                o.addProperty("dimension", s.dimension());
+                o.addProperty("x", s.x());
+                o.addProperty("y", s.y());
+                o.addProperty("z", s.z());
+            }
+            o.addProperty("calls", e.calls());
+            o.addProperty("meshUs", e.nanos() / 1000);
+            o.addProperty("usPerCall", e.usPerCall());
+            o.addProperty("msPerSecond", e.msPerSecond(seconds));
+            o.addProperty("callsPerSecond", e.callsPerSecond(seconds));
             arr.add(o);
         }
         return arr;

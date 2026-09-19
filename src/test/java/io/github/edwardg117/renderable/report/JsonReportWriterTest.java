@@ -32,7 +32,7 @@ class JsonReportWriterTest {
     @Test
     void schemaModEnvironmentAndSession() {
         JsonObject o = parse();
-        assertEquals(2, o.get("schema").getAsInt());
+        assertEquals(3, o.get("schema").getAsInt());
         assertEquals("0.1.0", o.getAsJsonObject("mod").get("version").getAsString());
         assertEquals("1.21.1", o.getAsJsonObject("environment").get("minecraft").getAsString());
         assertEquals(2, o.getAsJsonObject("environment").getAsJsonArray("hooksApplied").size());
@@ -144,5 +144,36 @@ class JsonReportWriterTest {
         JsonObject o = JsonParser.parseString(JsonReportWriter.write(withFw, environment(), "0.2.0")).getAsJsonObject();
         List<String> keys = new ArrayList<>(o.getAsJsonObject("flywheel").getAsJsonObject("visualCounts").keySet());
         assertEquals(List.of("a", "c", "b"), keys);
+    }
+
+    @Test
+    void phase3MeshSections() {
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(TestSessions.phase3(), environment(), "0.3.0")).getAsJsonObject();
+
+        JsonArray blocks = o.getAsJsonArray("blocks");
+        assertEquals(3, blocks.size());
+        JsonObject stone = blocks.get(0).getAsJsonObject();
+        assertEquals("block:minecraft:stone", stone.get("key").getAsString());
+        assertEquals("minecraft:stone", stone.get("label").getAsString());
+        assertEquals(400, stone.get("calls").getAsLong());
+        assertEquals(8_000, stone.get("meshUs").getAsLong());
+        assertEquals(20.0, stone.get("usPerCall").getAsDouble(), 1e-9);
+        assertEquals(8 / 0.384, stone.get("msPerSecond").getAsDouble(), 1e-9);
+        assertFalse(stone.has("x"));
+
+        JsonArray sections = o.getAsJsonArray("sections");
+        assertEquals(2, sections.size());
+        JsonObject a = sections.get(0).getAsJsonObject();
+        assertEquals("section@minecraft:overworld:0,4,0", a.get("key").getAsString());
+        assertEquals("minecraft:overworld", a.get("dimension").getAsString());
+        assertEquals(0, a.get("x").getAsInt());
+        assertEquals(4, a.get("y").getAsInt());
+        assertEquals(0, a.get("z").getAsInt());
+        assertEquals(3, a.get("calls").getAsLong());
+        assertEquals(9_000, a.get("meshUs").getAsLong());
+        assertEquals(3 / 0.384, a.get("callsPerSecond").getAsDouble(), 1e-9);
+
+        JsonObject press = o.getAsJsonObject("blockEntities").getAsJsonArray("byPosition").get(0).getAsJsonObject();
+        assertEquals(2000, press.get("vertices").getAsLong());
     }
 }
