@@ -1,8 +1,6 @@
 package io.github.edwardg117.renderable.report;
 
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import com.google.gson.stream.JsonWriter;
 import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
@@ -16,176 +14,236 @@ import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TopEntry;
 
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-/** Spec §6.2: complete, untruncated machine-readable report. */
+/**
+ * Spec §6.2: complete, untruncated machine-readable report, streamed a row at a time so a long session is
+ * never held in memory as a tree or as a string (spec addendum §P4.B1). Every array is complete; nothing is
+ * capped.
+ */
 public final class JsonReportWriter {
     public static final int SCHEMA = 4;
 
     private JsonReportWriter() {
     }
 
-    public static String write(SessionResult r, Environment env, String modVersion) {
-        JsonObject root = new JsonObject();
-        root.addProperty("schema", SCHEMA);
+    /**
+     * Writes the report to {@code out}. The writer is flushed but not closed, so the caller owns the file.
+     * HTML-safe escaping is on because {@code Gson.toJson} escapes that way by default and an environment
+     * string such as a shader pack name can contain the characters it differs on.
+     */
+    public static void write(SessionResult r, Environment env, String modVersion, Writer out) throws IOException {
+        body(configure(out), r, env, modVersion);
+    }
 
-        JsonObject mod = new JsonObject();
-        mod.addProperty("version", modVersion);
-        root.add("mod", mod);
+    /**
+     * Sets up a {@link JsonWriter} with the settings that keep it byte-identical to the old
+     * {@code Gson.toJson} tree writer. Shared by both overloads below so neither can drift from the other.
+     */
+    private static JsonWriter configure(Writer out) {
+        JsonWriter w = new JsonWriter(out);
+        w.setIndent("  ");
+        w.setHtmlSafe(true);
+        // Matches Gson.toJson's default (serializeNulls is false unless GsonBuilder opts in): a null value
+        // is omitted rather than written as "key": null. Nothing here is null today, but a future collector
+        // field that can be null must keep the same shape, not just the same bytes.
+        w.setSerializeNulls(false);
+        return w;
+    }
 
-        JsonObject environment = new JsonObject();
-        env.entries().forEach(environment::addProperty);
-        JsonArray hooks = new JsonArray();
-        env.hooksApplied().forEach(hooks::add);
-        environment.add("hooksApplied", hooks);
-        root.add("environment", environment);
+    /** Everything that makes up the report. Does not configure or close {@code w}; see the two overloads above. */
+    private static void body(JsonWriter w, SessionResult r, Environment env, String modVersion) throws IOException {
+        w.beginObject();
+        w.name("schema").value(SCHEMA);
+
+        w.name("mod").beginObject();
+        w.name("version").value(modVersion);
+        w.endObject();
+
+        w.name("environment").beginObject();
+        for (Map.Entry<String, String> e : env.entries().entrySet()) w.name(e.getKey()).value(e.getValue());
+        w.name("hooksApplied").beginArray();
+        for (String h : env.hooksApplied()) w.value(h);
+        w.endArray();
+        w.endObject();
 
         FrameStats st = r.stats();
-        JsonObject session = new JsonObject();
-        session.addProperty("startedAt", Instant.ofEpochMilli(r.wallStartMillis()).toString());
-        session.addProperty("durationSeconds", st.durationSeconds());
-        session.addProperty("frames", r.frameCount());
-        session.addProperty("hitchThresholdMs", r.hitchThresholdNanos() / 1e6);
-        session.addProperty("overheadEstimateMs", r.overheadEstimateMs());
-        session.addProperty("timedCalls", r.timedCalls());
-        session.addProperty("vertexCalls", r.vertexCalls());
-        session.addProperty("unbalancedFrames", r.unbalancedFrames());
-        JsonObject config = new JsonObject();
-        config.addProperty("durationSeconds", r.config().durationSeconds());
-        config.addProperty("hitchMedianMultiplier", r.config().hitchMedianMultiplier());
-        config.addProperty("hitchMinExcessMs", r.config().hitchMinExcessNanos() / 1e6);
-        config.addProperty("topContributorsPerFrame", r.config().topContributorsPerFrame());
-        session.add("config", config);
-        root.add("session", session);
+        w.name("session").beginObject();
+        w.name("startedAt").value(Instant.ofEpochMilli(r.wallStartMillis()).toString());
+        w.name("durationSeconds").value(st.durationSeconds());
+        w.name("frames").value(r.frameCount());
+        w.name("hitchThresholdMs").value(r.hitchThresholdNanos() / 1e6);
+        w.name("overheadEstimateMs").value(r.overheadEstimateMs());
+        w.name("timedCalls").value(r.timedCalls());
+        w.name("vertexCalls").value(r.vertexCalls());
+        w.name("unbalancedFrames").value(r.unbalancedFrames());
+        w.name("config").beginObject();
+        w.name("durationSeconds").value(r.config().durationSeconds());
+        w.name("hitchMedianMultiplier").value(r.config().hitchMedianMultiplier());
+        w.name("hitchMinExcessMs").value(r.config().hitchMinExcessNanos() / 1e6);
+        w.name("topContributorsPerFrame").value(r.config().topContributorsPerFrame());
+        w.endObject();
+        w.endObject();
 
-        JsonObject stats = new JsonObject();
-        stats.addProperty("avgMs", st.avgNanos() / 1e6);
-        stats.addProperty("avgFps", st.avgFps());
-        stats.addProperty("p50Ms", st.p50Nanos() / 1e6);
-        stats.addProperty("p95Ms", st.p95Nanos() / 1e6);
-        stats.addProperty("p99Ms", st.p99Nanos() / 1e6);
-        stats.addProperty("maxMs", st.maxNanos() / 1e6);
-        stats.addProperty("avgTickMs", st.avgTickNanos() / 1e6);
-        stats.addProperty("avgRenderMs", st.avgRenderNanos() / 1e6);
-        stats.addProperty("avgSwapMs", st.avgSwapNanos() / 1e6);
-        stats.addProperty("avgOtherRenderMs", st.avgOtherRenderNanos() / 1e6);
-        stats.addProperty("avgOtherTickMs", st.avgOtherTickNanos() / 1e6);
-        stats.addProperty("gcCount", st.gcCount());
-        stats.addProperty("gcMs", st.gcMillis());
-        JsonObject avgBuckets = new JsonObject();
-        for (Bucket b : Bucket.VALUES) avgBuckets.addProperty(b.label(), st.avgBucket(b) / 1e6);
-        stats.add("avgBucketsMs", avgBuckets);
-        root.add("stats", stats);
+        w.name("stats").beginObject();
+        w.name("avgMs").value(st.avgNanos() / 1e6);
+        w.name("avgFps").value(st.avgFps());
+        w.name("p50Ms").value(st.p50Nanos() / 1e6);
+        w.name("p95Ms").value(st.p95Nanos() / 1e6);
+        w.name("p99Ms").value(st.p99Nanos() / 1e6);
+        w.name("maxMs").value(st.maxNanos() / 1e6);
+        w.name("avgTickMs").value(st.avgTickNanos() / 1e6);
+        w.name("avgRenderMs").value(st.avgRenderNanos() / 1e6);
+        w.name("avgSwapMs").value(st.avgSwapNanos() / 1e6);
+        w.name("avgOtherRenderMs").value(st.avgOtherRenderNanos() / 1e6);
+        w.name("avgOtherTickMs").value(st.avgOtherTickNanos() / 1e6);
+        w.name("gcCount").value(st.gcCount());
+        w.name("gcMs").value(st.gcMillis());
+        w.name("avgBucketsMs").beginObject();
+        for (Bucket b : Bucket.VALUES) w.name(b.label()).value(st.avgBucket(b) / 1e6);
+        w.endObject();
+        w.endObject();
 
-        JsonArray frames = new JsonArray();
+        w.name("frames").beginArray();
         for (FrameRecord f : r.frames()) {
-            JsonObject o = new JsonObject();
-            o.addProperty("i", f.index());
-            o.addProperty("startUs", f.startNanos() / 1000);
-            o.addProperty("totalUs", f.totalNanos() / 1000);
-            o.addProperty("tickUs", f.tickNanos() / 1000);
-            o.addProperty("renderUs", f.renderNanos() / 1000);
-            o.addProperty("swapUs", f.swapNanos() / 1000);
-            o.addProperty("otherRenderUs", f.otherRenderNanos() / 1000);
-            JsonObject buckets = new JsonObject();
+            w.beginObject();
+            w.name("i").value(f.index());
+            w.name("startUs").value(f.startNanos() / 1000);
+            w.name("totalUs").value(f.totalNanos() / 1000);
+            w.name("tickUs").value(f.tickNanos() / 1000);
+            w.name("renderUs").value(f.renderNanos() / 1000);
+            w.name("swapUs").value(f.swapNanos() / 1000);
+            w.name("otherRenderUs").value(f.otherRenderNanos() / 1000);
+            w.name("bucketsUs").beginObject();
             for (Bucket b : Bucket.VALUES) {
                 long v = f.bucket(b);
-                if (v > 0) buckets.addProperty(b.label(), v / 1000);
+                if (v > 0) w.name(b.label()).value(v / 1000);
             }
-            o.add("bucketsUs", buckets);
-            o.addProperty("gcCount", f.gcCount());
-            o.addProperty("gcMs", f.gcMillis());
-            JsonArray top = new JsonArray();
+            w.endObject();
+            w.name("gcCount").value(f.gcCount());
+            w.name("gcMs").value(f.gcMillis());
+            w.name("top").beginArray();
             for (TopEntry t : f.top()) {
-                JsonObject te = new JsonObject();
-                te.addProperty("key", t.key().serialize());
-                te.addProperty("us", t.nanos() / 1000);
-                te.addProperty("gc", t.gc());
-                top.add(te);
+                w.beginObject();
+                w.name("key").value(t.key().serialize());
+                w.name("us").value(t.nanos() / 1000);
+                w.name("gc").value(t.gc());
+                w.endObject();
             }
-            o.add("top", top);
-            frames.add(o);
+            w.endArray();
+            w.endObject();
         }
-        root.add("frames", frames);
+        w.endArray();
 
-        JsonArray hitches = new JsonArray();
-        for (FrameRecord h : r.hitches()) hitches.add(h.index());
-        root.add("hitches", hitches);
+        w.name("hitches").beginArray();
+        for (FrameRecord h : r.hitches()) w.value(h.index());
+        w.endArray();
 
-        root.add("blockEntities", category(r, ProfileKey.Category.BLOCK_ENTITY, "byType", "byPosition"));
-        root.add("entities", category(r, ProfileKey.Category.ENTITY, "byType", "individuals"));
-        root.add("particles", ranked(Ranking.byKey(r, ProfileKey.Category.PARTICLE), r.frameCount()));
+        w.name("blockEntities").beginObject();
+        w.name("byType");
+        ranked(w, Ranking.byType(r, ProfileKey.Category.BLOCK_ENTITY), r.frameCount());
+        w.name("byPosition");
+        ranked(w, Ranking.byKey(r, ProfileKey.Category.BLOCK_ENTITY), r.frameCount());
+        w.endObject();
+
+        w.name("entities").beginObject();
+        w.name("byType");
+        ranked(w, Ranking.byType(r, ProfileKey.Category.ENTITY), r.frameCount());
+        w.name("individuals");
+        ranked(w, Ranking.byKey(r, ProfileKey.Category.ENTITY), r.frameCount());
+        w.endObject();
+
+        w.name("particles");
+        ranked(w, Ranking.byKey(r, ProfileKey.Category.PARTICLE), r.frameCount());
+
         double seconds = st.durationSeconds();
-        root.add("blocks", meshRows(Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME), seconds));
-        root.add("sections", meshRows(Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS), seconds));
-        JsonObject flywheel = new JsonObject();
+        w.name("blocks");
+        meshRows(w, Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME), seconds);
+        w.name("sections");
+        meshRows(w, Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS), seconds);
+
         long flywheelNanos = r.bucketTotalNanos(Bucket.FLYWHEEL);
-        flywheel.addProperty("bucketUs", flywheelNanos / 1000);
-        flywheel.addProperty("sharePercent", st.totalNanos() == 0 ? 0.0 : 100.0 * flywheelNanos / st.totalNanos());
         FlywheelStats fw = r.flywheel();
-        flywheel.addProperty("samples", fw.samples());
-        flywheel.addProperty("avgBlockEntities", fw.avgBlockEntities());
-        flywheel.addProperty("avgEntities", fw.avgEntities());
-        flywheel.addProperty("avgEffects", fw.avgEffects());
-        JsonObject visualCounts = new JsonObject();
-        for (Map.Entry<String, Double> e : fw.byAverageDesc()) visualCounts.addProperty(e.getKey(), e.getValue());
-        flywheel.add("visualCounts", visualCounts);
-        root.add("flywheel", flywheel);
+        w.name("flywheel").beginObject();
+        w.name("bucketUs").value(flywheelNanos / 1000);
+        w.name("sharePercent").value(st.totalNanos() == 0 ? 0.0 : 100.0 * flywheelNanos / st.totalNanos());
+        w.name("samples").value(fw.samples());
+        w.name("avgBlockEntities").value(fw.avgBlockEntities());
+        w.name("avgEntities").value(fw.avgEntities());
+        w.name("avgEffects").value(fw.avgEffects());
+        w.name("visualCounts").beginObject();
+        for (Map.Entry<String, Double> e : fw.byAverageDesc()) w.name(e.getKey()).value(e.getValue());
+        w.endObject();
+        w.endObject();
 
-        return new GsonBuilder().setPrettyPrinting().create().toJson(root);
+        w.endObject();
+        w.flush();
     }
 
-    private static JsonObject category(SessionResult r, ProfileKey.Category c, String typeName, String keyName) {
-        JsonObject o = new JsonObject();
-        o.add(typeName, ranked(Ranking.byType(r, c), r.frameCount()));
-        o.add(keyName, ranked(Ranking.byKey(r, c), r.frameCount()));
-        return o;
-    }
-
-    private static JsonArray ranked(List<RankedEntry> entries, int frames) {
-        JsonArray arr = new JsonArray();
-        for (RankedEntry e : entries) {
-            JsonObject o = new JsonObject();
-            o.addProperty("key", e.key() == null ? e.typeId() : e.key().serialize());
-            o.addProperty("label", e.label());
-            o.addProperty("typeId", e.typeId());
-            o.addProperty("members", e.members());
-            o.addProperty("calls", e.calls());
-            o.addProperty("tickCalls", e.tickCalls());
-            o.addProperty("callsPerFrame", e.callsPerFrame(frames));
-            o.addProperty("renderUs", e.renderNanos() / 1000);
-            o.addProperty("tickUs", e.tickNanos() / 1000);
-            o.addProperty("shadowUs", e.shadowNanos() / 1000);
-            o.addProperty("peakFrameUs", e.maxFrameNanos() / 1000);
-            o.addProperty("gcFrames", e.gcFrames());
-            o.addProperty("vertices", e.vertices());
-            arr.add(o);
+    /**
+     * The whole report as a string, for tests and anything that needs it in memory. Closing the
+     * {@link JsonWriter} here (a {@link StringWriter}'s own {@code close()} is a documented no-op, so this
+     * never closes anything the caller owns) runs Gson's completeness check, which throws "Incomplete
+     * document" for an unbalanced {@code beginObject}/{@code endObject} pair - exactly the shape of bug that
+     * byte-identity with the old tree writer cannot catch once a field is added or moved.
+     */
+    public static String write(SessionResult r, Environment env, String modVersion) {
+        StringWriter out = new StringWriter(1 << 16);
+        try (JsonWriter w = configure(out)) {
+            body(w, r, env, modVersion);
+        } catch (IOException e) {
+            throw new IllegalStateException("a StringWriter cannot fail, so this is an unbalanced document", e);
         }
-        return arr;
+        return out.toString();
+    }
+
+    private static void ranked(JsonWriter w, List<RankedEntry> entries, int frames) throws IOException {
+        w.beginArray();
+        for (RankedEntry e : entries) {
+            w.beginObject();
+            w.name("key").value(e.key() == null ? e.typeId() : e.key().serialize());
+            w.name("label").value(e.label());
+            w.name("typeId").value(e.typeId());
+            w.name("members").value(e.members());
+            w.name("calls").value(e.calls());
+            w.name("tickCalls").value(e.tickCalls());
+            w.name("callsPerFrame").value(e.callsPerFrame(frames));
+            w.name("renderUs").value(e.renderNanos() / 1000);
+            w.name("tickUs").value(e.tickNanos() / 1000);
+            w.name("shadowUs").value(e.shadowNanos() / 1000);
+            w.name("peakFrameUs").value(e.maxFrameNanos() / 1000);
+            w.name("gcFrames").value(e.gcFrames());
+            w.name("vertices").value(e.vertices());
+            w.endObject();
+        }
+        w.endArray();
     }
 
     /** Spec §6.2 blocks and sections: mesh work is per session, not per frame, so rates are per second. */
-    private static JsonArray meshRows(List<MeshEntry> rows, double seconds) {
-        JsonArray arr = new JsonArray();
+    private static void meshRows(JsonWriter w, List<MeshEntry> rows, double seconds) throws IOException {
+        w.beginArray();
         for (MeshEntry e : rows) {
-            JsonObject o = new JsonObject();
-            o.addProperty("key", e.key().serialize());
-            o.addProperty("label", e.key().label());
+            w.beginObject();
+            w.name("key").value(e.key().serialize());
+            w.name("label").value(e.key().label());
             if (e.key() instanceof SectionKey s) {
-                o.addProperty("dimension", s.dimension());
-                o.addProperty("x", s.x());
-                o.addProperty("y", s.y());
-                o.addProperty("z", s.z());
+                w.name("dimension").value(s.dimension());
+                w.name("x").value(s.x());
+                w.name("y").value(s.y());
+                w.name("z").value(s.z());
             }
-            o.addProperty("calls", e.calls());
-            o.addProperty("meshUs", e.nanos() / 1000);
-            o.addProperty("usPerCall", e.usPerCall());
-            o.addProperty("msPerSecond", e.msPerSecond(seconds));
-            o.addProperty("callsPerSecond", e.callsPerSecond(seconds));
-            arr.add(o);
+            w.name("calls").value(e.calls());
+            w.name("meshUs").value(e.nanos() / 1000);
+            w.name("usPerCall").value(e.usPerCall());
+            w.name("msPerSecond").value(e.msPerSecond(seconds));
+            w.name("callsPerSecond").value(e.callsPerSecond(seconds));
+            w.endObject();
         }
-        return arr;
+        w.endArray();
     }
 }

@@ -47,7 +47,8 @@ public final class RenderableConfig {
         b.push("report");
         WRITE_TEXT = b.define("writeText", true);
         WRITE_JSON = b.define("writeJson", true);
-        REPORT_FOLDER = b.comment("Folder under the game directory that reports are written to.")
+        REPORT_FOLDER = b.comment("Folder under the game directory that reports are written to.",
+                        "Must be a relative path with no '..' segment; anything else falls back to 'renderable'.")
                 .define("reportFolder", "renderable");
         b.pop();
 

@@ -100,8 +100,15 @@ src/test/java/io/github/edwardg117/renderable/
 docs/acceptance/phase-4b.md                                   Create (Task 7)
 ```
 
-**Expected test totals**, assuming 4a is on `main` and neither 4c nor 4d has run: 86 at the start, 92 after
-Task 1, 93 after Task 2, 96 after Task 3, 96 after Task 4, 98 after Task 5, 98 at the end.
+**Expected test totals**, assuming 4a is on `main` and neither 4c nor 4d has run: **90** at the start, 96
+after Task 1, 97 after Task 2, 100 after Task 3, 100 after Task 4, 102 after Task 5, 102 at the end.
+
+This plan was drafted expecting 86, because 4a's own plan arithmetic reached 86. 4a actually landed at 90:
+its two-stage reviews added four tests its steps do not contain — a GC floor boundary that a `<=` typo would
+have slipped past, a calibration assertion that could not fail as written, a key-set test pinning the JSON
+shape, and a split of one overloaded test. Expect the same here: the totals below are the plan's arithmetic,
+and review rounds will likely push the real number above them. A shortfall against these figures is worth
+investigating; an excess is not.
 
 ---
 
@@ -313,6 +320,7 @@ public final class JsonReportWriter {
         JsonWriter w = new JsonWriter(out);
         w.setIndent("  ");
         w.setHtmlSafe(true);
+        w.setSerializeNulls(false);   // Gson.toJson's default; a bare JsonWriter would emit "k": null
 
         w.beginObject();
         w.name("schema").value(SCHEMA);
@@ -541,8 +549,12 @@ public final class ReportFiles {
 
     /** Nothing, or not everything, was written. The caller shows the message to the user. */
     public static final class WriteFailed extends RuntimeException {
-        WriteFailed(String message, Throwable cause) {
+        /** What did get written before the failure; never null, though its fields may be. */
+        public final Written partial;
+
+        WriteFailed(String message, Written partial, Throwable cause) {
             super(message, cause);
+            this.partial = partial;
         }
     }
 
@@ -556,18 +568,28 @@ public final class ReportFiles {
      */
     public static Path resolveFolder(Path gameDirectory, String configured) {
         Path fallback = gameDirectory.resolve(DEFAULT_FOLDER);
-        if (configured == null || configured.isBlank()) return fallback;
+        if (configured == null || configured.isBlank()) return reject(configured, fallback, "it is blank");
         Path relative;
         try {
             relative = Path.of(configured.trim());
         } catch (InvalidPathException e) {
-            return fallback;
+            return reject(configured, fallback, "it is not a valid path");
         }
-        if (relative.isAbsolute() || relative.getRoot() != null) return fallback;
+        if (relative.isAbsolute() || relative.getRoot() != null) {
+            return reject(configured, fallback, "it is absolute");
+        }
         for (Path part : relative) {
-            if (part.toString().equals("..")) return fallback;
+            if (part.toString().equals("..")) return reject(configured, fallback, "it contains a '..' segment");
         }
         return gameDirectory.resolve(relative).normalize();
+    }
+
+    /** Spec addendum §P4.B6 #3: a rejected folder must say so, or the setting is silently ignored. */
+    private static Path reject(String configured, Path fallback, String why) {
+        LoggerFactory.getLogger("Renderable").warn(
+                "Renderable: reportFolder \"{}\" was ignored because {}; writing to {} instead",
+                configured, why, fallback);
+        return fallback;
     }
 
     /**
@@ -594,7 +616,8 @@ public final class ReportFiles {
                 }
             }
         } catch (IOException e) {
-            throw new WriteFailed("could not write reports to " + folder + ": " + e.getMessage(), e);
+            throw new WriteFailed("could not write reports to " + folder + ": " + e.getMessage(),
+                    new Written(folder, textPath, jsonPath), e);
         }
         return new Written(folder, textPath, jsonPath);
     }
@@ -621,15 +644,65 @@ In `ProfilerController.finish()`, replace everything from `String text = ...` do
                     text,
                     out -> JsonReportWriter.write(result, env, RenderableMod.VERSION, out),
                     result.wallStartMillis());
+        } catch (ReportFiles.WriteFailed e) {
+            RenderableMod.LOGGER.warn("Renderable could not write reports", e);
+            written = e.partial;
+            writeFailure = e.getMessage();
         } catch (RuntimeException e) {
             RenderableMod.LOGGER.warn("Renderable could not write reports", e);
             writeFailure = e.getMessage();
         }
 ```
 
+**Both catches are needed, and the second is not optional.** The first exists so a failed JSON write does not
+hide the text file that did land — `finishedMessage` can still offer **Open folder**. The second is the
+original broad catch, and it is what stops a report-writing problem costing the user the session they just
+sampled: `ReportFiles.write` wraps only `IOException`, so a `JsonWriter` nesting bug, a null map key reaching
+`w.name(null)`, or a config read before load would otherwise escape `finish()` entirely — past
+`lastResult = result`, the overlay update and the chat message — and `finish()` is reached from the
+`Probe.Listener` callback on the render thread as well as from `/renderable stop`. Narrowing this to the
+`WriteFailed` catch alone was tried during phase 4b and caught in review; do not repeat it.
+
+Guard the two assignments that follow on there being something on disk, because `e.partial.folder()` is
+non-null even when nothing was created:
+
+```java
+        boolean anythingWritten = written != null && (written.text() != null || written.json() != null);
+        if (anythingWritten) lastFolder = written.folder();
+```
+
+and have `finishedMessage` show the folder link on `anythingWritten` while printing `writeFailure`
+independently, so a partial failure shows both the link and the reason.
+
 The local `String json = JsonReportWriter.write(...)` is deleted: the report now goes straight to the file.
 Delete the now-unused `import io.github.edwardg117.renderable.report.JsonReportWriter;`? **No** — it is still
 used by the lambda. Leave the imports alone.
+
+- [ ] **Step 5a: Put slf4j on the test classpath**
+
+`resolveFolder`'s warning is the first logging call in this codebase that a unit test ever reaches, and it
+fails the suite with `NoClassDefFoundError: org/slf4j/LoggerFactory`. slf4j is on the main compile classpath
+through the moddev plugin but was never on the plain JUnit test runtime classpath; `FlywheelCompat` has used
+the same idiom since phase 2 without anyone noticing, because no test exercised it.
+
+Add the version beside the other pins in `gradle.properties`:
+
+```properties
+# Matches what NeoForge puts on the runtime classpath; check with
+# ./gradlew dependencies --configuration runtimeClasspath | grep slf4j
+slf4j_version=2.0.9
+```
+
+and in `build.gradle`'s `dependencies` block:
+
+```groovy
+    testImplementation "org.slf4j:slf4j-api:${slf4j_version}"
+```
+
+The version belongs in `gradle.properties` rather than inline because the strict constraint that pins it
+lives in NeoForge's metadata, not this build — so a `neo_version` bump can move it, and keeping the two
+literals adjacent means that lands in the same review. The blast radius is test-only: main always gets
+whatever NeoForge provides.
 
 - [ ] **Step 6: Document the validation in the config**
 
@@ -652,17 +725,70 @@ Expected: `BUILD SUCCESSFUL`, **92 tests** (ReportFilesTest 4, JsonReportWriterT
 If `theWriterOverloadProducesExactlyTheStringOverloadsBytes` fails on the leading characters, check that
 `setIndent("  ")` is called before the first `beginObject()`.
 
-- [ ] **Step 8: Compile and launch once, to prove the report still writes in a real client**
+- [ ] **Step 8: Close the end-to-end gap with a test, not a client launch**
 
-```bash
-./gradlew runClient -PquickPlay="New World" --no-daemon
+The unit tests so far prove two halves separately: `JsonReportWriter`'s `Writer` overload is byte-identical
+to its `String` overload (into a `StringWriter`), and `ReportFiles.write` puts a `JsonBody`'s output on
+disk (with a literal body). Nothing yet drives the **real** writer through `ReportFiles` into a **real
+file** — which is the path `ProfilerController` now takes, and the one where a streaming writer that is
+never flushed or closed would truncate.
+
+That gap does not need a game. Append to `ReportFilesTest`:
+
+```java
+    @Test
+    void theRealJsonWriterStreamsThroughToAFileThatParses(@TempDir Path game) throws IOException {
+        SessionResult r = TestSessions.phase3();
+        Environment env = Environment.of(new LinkedHashMap<>(Map.of("minecraft", "1.21.1")), List.of());
+
+        ReportFiles.Written w = ReportFiles.write(game, "renderable", false, true, "",
+                out -> JsonReportWriter.write(r, env, "0.4.0", out), 1_726_700_000_000L);
+
+        String onDisk = Files.readString(w.json(), StandardCharsets.UTF_8);
+        assertEquals(JsonReportWriter.write(r, env, "0.4.0"), onDisk,
+                "the only test that drives the real writer through ReportFiles into a real file: "
+                        + "the streamed bytes must equal the in-memory ones");
+        assertEquals(4, JsonParser.parseString(onDisk).getAsJsonObject().get("schema").getAsInt());
+    }
 ```
 
-In the world: `/renderable start 5`, wait, then confirm the chat message still offers **Open folder** and
-that `run/renderable/` contains a `.txt` and a `.json` whose first line is `{`. Then set
-`reportFolder = "../escaped"` in `run/config/renderable-client.toml`, restart the client, run another
-session, and confirm the files land in `run/renderable/` and the log carries no exception. Stop the client
-with the filter in Task 2, Step 9.
+**What this test does and does not guard.** It was drafted with a message claiming a writer left unflushed
+would truncate here. It would not, and that was checked empirically rather than assumed: deleting
+`JsonReportWriter`'s `w.flush()` leaves the whole suite green, because `ReportFiles` opens the file in a
+try-with-resources and `BufferedWriter.close()` flushes unconditionally. So `close()` is what gets the bytes
+to disk, and the writer's own `flush()` is belt-and-braces for a future caller that hands in a writer it
+does not close — which is exactly what its javadoc promises ("flushed but not closed"). Keep the flush;
+do not let this test's existence be read as covering it. What the test genuinely adds is end-to-end byte
+parity between the file path and the in-memory path, which neither existing test covers.
+
+It needs `io.github.edwardg117.renderable.core.{Environment, SessionResult, TestSessions}`,
+`com.google.gson.JsonParser`, `java.nio.charset.StandardCharsets` and `java.util.{LinkedHashMap, List, Map}`.
+
+**The in-game check moves to Task 7**, the human step. Driving it needs someone to type `/renderable start`
+in a running client, which no automated step in this plan can do — and claiming a verification nobody
+performed is worse than deferring it. Task 7 already opens the results screen in the real pack; confirming
+the chat message still offers **Open folder**, and that `reportFolder = "../escaped"` lands the files in the
+instance's own `renderable/` folder, costs nothing extra there.
+
+**What the reviews changed, beyond the steps above.** Three rounds reshaped this task; the code blocks
+above are the intent, and the git history is what landed. The differences worth knowing, because later
+tasks build on them:
+
+- **The writer is split into `configure(Writer)` and a private `body(JsonWriter, ...)`.** The `String`
+  overload runs `body` inside `try (JsonWriter w = configure(out))`, so `close()` runs Gson's completeness
+  check and an unbalanced document throws `IOException("Incomplete document")` instead of producing output
+  that still parses as *something*. The `Writer` overload cannot close — that would close the caller's file
+  and break the "flushed but not closed" contract — so the two share `body`, which is the part a future
+  author edits. Verified by deleting one `endObject()`: several tests then fail with `Incomplete document`.
+  This is what protects Task 3, which inserts `session.selfMs` into the middle of that object.
+- **`ReportFiles.write` catches `IOException | RuntimeException`**, not `IOException` alone. A `JsonWriter`
+  nesting bug throws `IllegalStateException` and `w.name(null)` throws `NullPointerException`; wrapping only
+  I/O would let those escape unwrapped and cost the user the `[Open folder]` link for a text report already
+  on disk — the very case `partial` exists for, uncovered for every cause except I/O.
+- **A failed JSON write deletes its own truncated file**, so `Written.json == null` means what callers assume.
+- **The two format booleans became `record Formats(boolean text, boolean json)`.** Two adjacent booleans at a
+  seven-argument call site are a transposition waiting to happen, and there was exactly one production caller
+  at the time to change.
 
 - [ ] **Step 9: Stage and report**
 

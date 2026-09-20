@@ -244,4 +244,14 @@ class JsonReportWriterTest {
         assertEquals(2400, o.getAsJsonObject("session").get("vertexCalls").getAsLong());
         assertEquals(4, o.get("schema").getAsInt());
     }
+
+    @Test
+    void theWriterOverloadProducesExactlyTheStringOverloadsBytes() throws Exception {
+        SessionResult r3 = TestSessions.phase3();
+        java.io.StringWriter out = new java.io.StringWriter();
+        JsonReportWriter.write(r3, environment(), "0.4.0", out);
+        assertEquals(JsonReportWriter.write(r3, environment(), "0.4.0"), out.toString());
+        assertEquals(4, JsonParser.parseString(out.toString()).getAsJsonObject().get("schema").getAsInt());
+        assertTrue(out.toString().startsWith("{\n  \"schema\": 4,"), out.toString().substring(0, 40));
+    }
 }

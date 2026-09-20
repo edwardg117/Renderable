@@ -102,4 +102,20 @@ class KeysTest {
             }
         }
     }
+
+    @Test
+    void reportWritersHaveNoMinecraftImports() throws IOException {
+        // Spec §8: EnvironmentCollector is the only Minecraft-aware class in report.
+        Path report = Path.of("src/main/java/io/github/edwardg117/renderable/report");
+        List<String> forbidden = List.of("import net.minecraft", "import net.neoforged", "import com.mojang", "import org.lwjgl");
+        try (Stream<Path> files = Files.walk(report)) {
+            for (Path p : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                if (p.getFileName().toString().equals("EnvironmentCollector.java")) continue;
+                String src = Files.readString(p);
+                for (String f : forbidden) {
+                    assertFalse(src.contains(f), p + " contains " + f);
+                }
+            }
+        }
+    }
 }

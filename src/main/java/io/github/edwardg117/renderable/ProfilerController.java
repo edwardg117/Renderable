@@ -142,12 +142,26 @@ public final class ProfilerController implements Probe.Listener {
         SessionResult result = s.finish();
         Environment env = EnvironmentCollector.collect(Probe.hooksApplied());
         String text = TextReportWriter.write(result, env, RenderableMod.VERSION);
-        String json = JsonReportWriter.write(result, env, RenderableMod.VERSION);
         ReportFiles.Written written = null;
         String writeFailure = null;
         try {
-            written = ReportFiles.write(text, json, result.wallStartMillis());
+            written = ReportFiles.write(
+                    Minecraft.getInstance().gameDirectory.toPath(),
+                    RenderableConfig.REPORT_FOLDER.get(),
+                    new ReportFiles.Formats(RenderableConfig.WRITE_TEXT.get(), RenderableConfig.WRITE_JSON.get()),
+                    text,
+                    out -> JsonReportWriter.write(result, env, RenderableMod.VERSION, out),
+                    result.wallStartMillis());
+        } catch (ReportFiles.WriteFailed e) {
+            RenderableMod.LOGGER.warn("Renderable could not write reports", e);
+            writeFailure = e.getMessage();
+            // Whatever landed before the failure - e.g. the text report next to a JSON write that failed -
+            // still gets a working [Open folder] link below.
+            written = e.partial;
         } catch (RuntimeException e) {
+            // Anything other than a wrapped IOException (a JsonWriter nesting bug, a null map key, a config
+            // read before load, ...) must not escape finish(): the session was sampled successfully and the
+            // user must still get the results screen and [Copy report], just without report files.
             RenderableMod.LOGGER.warn("Renderable could not write reports", e);
             writeFailure = e.getMessage();
         }
@@ -155,7 +169,11 @@ public final class ProfilerController implements Probe.Listener {
         lastResult = result;
         lastEnvironment = env;
         lastReportText = text;
-        if (written != null) lastFolder = written.folder();
+        // Only trust the folder if something actually reached disk - e.partial.folder() above may name a
+        // directory that was never created.
+        if (written != null && (written.text() != null || written.json() != null)) {
+            lastFolder = written.folder();
+        }
         WorldOverlay.setResult(result);
 
         chat(finishedMessage(result, written, writeFailure));
@@ -171,12 +189,18 @@ public final class ProfilerController implements Probe.Listener {
                 r.frameCount(), r.stats().durationSeconds(), r.stats().avgNanos() / 1e6, r.hitches().size()));
         msg.append(commandLink("[Open results]", "/renderable results")).append(" ");
         msg.append(commandLink("[Copy report]", "/renderable copy"));
-        if (w != null) {
+        // A partial write (e.g. the text report landed but the JSON write failed) still offers the folder
+        // link; only a Written with nothing in it at all falls through to the failure text alone.
+        boolean anythingLanded = w != null && (w.text() != null || w.json() != null);
+        if (anythingLanded) {
             msg.append(" ").append(Component.literal("[Open folder]").withStyle(st -> st
                     .withColor(ChatFormatting.AQUA).withUnderlined(true)
                     .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, w.folder().toAbsolutePath().toString()))));
-        } else {
-            msg.append(Component.literal(" Report files could not be written: " + writeFailure));
+        }
+        if (writeFailure != null) {
+            msg.append(Component.literal(anythingLanded
+                    ? " Some report files could not be written: " + writeFailure
+                    : " Report files could not be written: " + writeFailure));
         }
         return msg;
     }

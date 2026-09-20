@@ -99,6 +99,12 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'com.google.code.gson:gson:2.10.1'
+    // Version (slf4j_version in gradle.properties) pinned to match the one NeoForge/Minecraft resolve on
+    // the main runtime classpath (see `./gradlew dependencies --configuration runtimeClasspath`). report
+    // and core use the plain slf4j API (e.g. ReportFiles' folder-fallback warning), which the test task's
+    // own runtime classpath does not otherwise carry - only main's does, via the moddev plugin. No binding
+    // is added: an unrouted "no SLF4J providers" notice on stderr is harmless for a unit test run.
+    testImplementation "org.slf4j:slf4j-api:${slf4j_version}"
 
     packModJars "maven.modrinth:sodium:${sodium_version}"
     packModJars "maven.modrinth:iris:${iris_version}"
