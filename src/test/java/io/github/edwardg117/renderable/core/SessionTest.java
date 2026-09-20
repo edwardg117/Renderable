@@ -370,6 +370,7 @@ class SessionTest {
         at(10); s.onRenderPre(0, 0);
         assertEquals(4, a.vertices);
         assertEquals(2, b.vertices);
+        assertEquals(8, s.vertexCalls(), "counted whether or not the call landed on a key");
         assertTrue(s.finish().mesh().isEmpty(), "mesh is empty for a session with no mesh work");
     }
 
@@ -388,6 +389,7 @@ class SessionTest {
         at(4); s.end();
         at(10); s.onRenderPre(0, 0);
         assertEquals(25, a.vertices);
+        assertEquals(4, s.vertexCalls(), "a batched call counts once, keyed or not");
     }
 
     @Test
@@ -483,5 +485,26 @@ class SessionTest {
         assertEquals(TestSessions.COW, gcFrame.get(1).key());
         assertFalse(gcFrame.get(1).gc(), "0.3 ms is well under this frame's 6 ms suspect threshold");
         assertFalse(r.frames().get(1).top().get(0).gc(), "the second frame had no pause");
+    }
+
+    @Test
+    void overheadCountsVertexCallsAsWellAsTimedCalls() {
+        long[] clock = {0};
+        // 100 ns per begin/end pair, 7 ns per vertex call.
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 100, 7), () -> clock[0], 0);
+        Accumulator a = s.accumulator(TestSessions.PRESS);
+        clock[0] = 0; s.onRenderPre(0, 0);
+        clock[0] = MS; s.begin(a, Bucket.BLOCK_ENTITY);
+        s.vertex();
+        s.vertex();
+        s.vertices(500);                      // one call, five hundred vertices
+        clock[0] = 2 * MS; s.end();
+        clock[0] = 16 * MS; s.onRenderPre(0, 0);
+
+        SessionResult r = s.finish();
+        assertEquals(1, r.timedCalls());
+        assertEquals(3, r.vertexCalls(), "a batched call counts once; the cost is per call");
+        assertEquals(502, r.accumulators().get(TestSessions.PRESS).vertices);
+        assertEquals((1 * 100 + 3 * 7) / 1_000_000.0, r.overheadEstimateMs(), 1e-12);
     }
 }

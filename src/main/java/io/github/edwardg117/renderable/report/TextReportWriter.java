@@ -108,7 +108,7 @@ public final class TextReportWriter {
                     Fmt.pct(e.sharePercent(total)),
                     Fmt.ms2(e.maxFrameNanos()),
                     Fmt.pct(e.shadowPercent()),
-                    Fmt.us(e.verticesPerFrame(frames)),
+                    Fmt.num(e.verticesPerFrame(frames)),
                     Fmt.count(e.calls()));
         }
         sb.append(t.render("  ")).append('\n');
@@ -132,8 +132,8 @@ public final class TextReportWriter {
                     Fmt.us(e.renderUsPerFrame(frames)),
                     Fmt.us(e.tickUsPerFrame(frames)),
                     Fmt.pct(e.sharePercent(total)),
-                    Fmt.us(e.callsPerFrame(frames)),
-                    Fmt.us(e.verticesPerFrame(frames)));
+                    Fmt.num(e.callsPerFrame(frames)),
+                    Fmt.num(e.verticesPerFrame(frames)));
         }
         sb.append(t.render("  ")).append('\n');
     }
@@ -179,7 +179,7 @@ public final class TextReportWriter {
         double seconds = r.stats().durationSeconds();
         Table t = new Table(new String[]{"block", "mesh ms/s", "us/call", "calls"}, new boolean[]{false, true, true, true});
         for (MeshEntry e : rows.subList(0, Math.min(TOP, rows.size()))) {
-            t.row(e.key().label(), Fmt.us(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls()));
+            t.row(e.key().label(), Fmt.num(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls()));
         }
         sb.append(t.render("  ")).append('\n');
     }
@@ -196,7 +196,7 @@ public final class TextReportWriter {
         Table t = new Table(new String[]{"section", "rebuilds", "rebuilds/s", "mesh ms", "avg ms/rebuild"},
                 new boolean[]{false, true, true, true, true});
         for (MeshEntry e : rows.subList(0, Math.min(TOP, rows.size()))) {
-            t.row(e.key().label(), Fmt.count(e.calls()), Fmt.us(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
+            t.row(e.key().label(), Fmt.count(e.calls()), Fmt.num(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
                     Fmt.ms2(e.calls() == 0 ? 0 : e.nanos() / e.calls()));
         }
         sb.append(t.render("  ")).append(MESH_NOTE).append("\n\n");

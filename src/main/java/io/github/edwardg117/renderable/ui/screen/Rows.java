@@ -152,8 +152,8 @@ public final class Rows {
                     Fmt.us(e.renderUsPerFrame(frames)),
                     Fmt.us(e.tickUsPerFrame(frames)),
                     Fmt.pct(e.sharePercent(total)),
-                    Fmt.us(e.callsPerFrame(frames)),
-                    Fmt.us(e.verticesPerFrame(frames))},
+                    Fmt.num(e.callsPerFrame(frames)),
+                    Fmt.num(e.verticesPerFrame(frames))},
                     e.key(), e.typeId(), false, false, 0, null, -1));
         }
         if (rows.isEmpty()) rows.add(Row.plain("(no particles rendered)"));
@@ -176,12 +176,12 @@ public final class Rows {
             return rows;
         }
         rows.add(new Row(new String[]{"Visuals, average over " + fw.samples() + " samples",
-                Fmt.us(fw.total()), ""},
+                Fmt.num(fw.total()), ""},
                 null, null, true, false, 0, null, -1));
         for (Map.Entry<String, Double> e : fw.byAverageDesc()) {
             String k = e.getKey();
             String label = k.substring(k.lastIndexOf('.') + 1);
-            rows.add(new Row(new String[]{label, Fmt.us(e.getValue()), ""},
+            rows.add(new Row(new String[]{label, Fmt.num(e.getValue()), ""},
                     null, null, false, false, 1, null, -1));
         }
         return rows;
@@ -192,7 +192,7 @@ public final class Rows {
         double seconds = r.stats().durationSeconds();
         List<Row> rows = new ArrayList<>();
         for (MeshEntry e : Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME)) {
-            rows.add(new Row(new String[]{e.key().label(), Fmt.us(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls())},
+            rows.add(new Row(new String[]{e.key().label(), Fmt.num(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls())},
                     e.key(), e.key().typeId(), false, false, 0, null, -1));
         }
         if (rows.isEmpty()) rows.add(Row.plain("(no data: Sodium mesh hooks did not run)"));
@@ -205,7 +205,7 @@ public final class Rows {
         List<Row> rows = new ArrayList<>();
         for (MeshEntry e : Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS)) {
             SectionKey k = (SectionKey) e.key();
-            rows.add(new Row(new String[]{k.label(), Fmt.count(e.calls()), Fmt.us(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
+            rows.add(new Row(new String[]{k.label(), Fmt.count(e.calls()), Fmt.num(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
                     Fmt.ms2(e.calls() == 0 ? 0 : e.nanos() / e.calls())},
                     k, k.typeId(), false, false, 0, new BlockPos(k.centerX(), k.centerY(), k.centerZ()), -1));
         }
@@ -221,7 +221,7 @@ public final class Rows {
                 Fmt.pct(e.sharePercent(total)),
                 Fmt.ms2(e.maxFrameNanos()),
                 Fmt.pct(e.shadowPercent()),
-                Fmt.us(e.verticesPerFrame(frames)),
+                Fmt.num(e.verticesPerFrame(frames)),
                 Fmt.count(e.calls())};
     }
 

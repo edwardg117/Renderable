@@ -51,6 +51,7 @@ public final class Session {
     private final Bucket[] stackBucket = new Bucket[MAX_DEPTH];
     private int depth;
     private long timedCalls;
+    private long vertexCalls;
 
     /** Set by the Iris integration (phase 2) while the shadow pass is rendering. */
     public boolean shadowPass;
@@ -95,6 +96,11 @@ public final class Session {
     /** Number of completed begin/end pairs, for the overhead estimate. */
     public long timedCalls() {
         return timedCalls;
+    }
+
+    /** Number of vertex-counting calls, for the overhead estimate (spec addendum §P4.A5). */
+    public long vertexCalls() {
+        return vertexCalls;
     }
 
     /** Number of frame boundaries at which the attribution stack was found unbalanced and reset. */
@@ -157,9 +163,11 @@ public final class Session {
     /**
      * Counts one vertex on the innermost open call if it has a key (spec §4.3). Render thread only. A keyless
      * inner timing (bucket-only work) hides the outer key, and vertices emitted deeper than {@link #MAX_DEPTH}
-     * are dropped rather than credited to an ancestor, matching {@link #end()}.
+     * are dropped rather than credited to an ancestor, matching {@link #end()}. The call is counted for the
+     * overhead estimate whether or not it lands on a key, because it cost the same either way.
      */
     public void vertex() {
+        vertexCalls++;
         if (depth == 0 || depth > MAX_DEPTH) return;
         Accumulator a = stack[depth - 1];
         if (a != null) a.vertices++;
@@ -167,6 +175,7 @@ public final class Session {
 
     /** Counts {@code n} vertices on the innermost open call if it has a key; same rules as {@link #vertex()}. */
     public void vertices(int n) {
+        vertexCalls++;
         if (depth == 0 || depth > MAX_DEPTH) return;
         Accumulator a = stack[depth - 1];
         if (a != null) a.vertices += n;
@@ -178,9 +187,10 @@ public final class Session {
         FrameStats stats = FrameStats.of(frameList);
         long threshold = HitchDetector.threshold(stats.p50Nanos(), config.hitchMedianMultiplier(), config.hitchMinExcessNanos());
         List<FrameRecord> hitches = HitchDetector.detect(frameList, threshold);
-        double overheadMs = timedCalls * config.calibratedCallNanos() / 1_000_000.0;
+        double overheadMs = (timedCalls * config.calibratedCallNanos()
+                + vertexCalls * config.calibratedVertexNanos()) / 1_000_000.0;
         return new SessionResult(config, wallStartMillis, frameList, accumulators(), stats, threshold, hitches,
-                timedCalls, overheadMs, unbalancedFrames, flywheelStats(), mesh.snapshot());
+                timedCalls, vertexCalls, overheadMs, unbalancedFrames, flywheelStats(), mesh.snapshot());
     }
 
     /**

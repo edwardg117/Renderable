@@ -144,7 +144,7 @@ class TextReportWriterTest {
     /** Rebuilds a SessionResult with a different unbalancedFrames and flywheel, everything else from base. */
     static SessionResult withFlywheel(SessionResult base, FlywheelStats fw, int unbalanced) {
         return new SessionResult(base.config(), base.wallStartMillis(), base.frames(), base.accumulators(),
-                base.stats(), base.hitchThresholdNanos(), base.hitches(), base.timedCalls(),
+                base.stats(), base.hitchThresholdNanos(), base.hitches(), base.timedCalls(), base.vertexCalls(),
                 base.overheadEstimateMs(), unbalanced, fw, base.mesh());
     }
 

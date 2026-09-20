@@ -843,6 +843,16 @@ implements each:
 ## P4.3 What phase 4 does not do
 
 - **No GC subtraction.** See P4.A1.
+- **No calibration of the `hooks` side of a hook.** `Calibration` lives in `core` and cannot import
+  `Probe`, so both calibrated constants measure from inside `Session` and exclude the guard each hook pays
+  first: `Probe.vertex()`'s static read, thread comparison and `seenVertices` check, and
+  `Probe.beginBlockEntity`'s `SEEN[]` write and `markShadow` call. At tens of millions of vertex calls a
+  session, one unmeasured nanosecond per call is tens of milliseconds of real overhead the report does not
+  claim. Closing this properly needs a calibration entry point in `hooks` that drives a whole `Probe` call,
+  which is a phase 5 change; phase 4 instead states the boundary in both `Calibration` javadocs, so the
+  figure is not read as exact. The error is one-sided in the safe direction for the part that *is*
+  measured — the calibration loop always runs the most expensive branch, so guard-returning calls are
+  over-charged rather than under-charged.
 - **No per-visual Flywheel timing.** §4.4 is unchanged; nothing new was learned that would change it.
 - **No GPU timer queries.** §2 is unchanged; vertex counts remain the proxy.
 - **No hook for Distant Horizons, Sodium Extra, Sodium Dynamic Lights or the other pack renderers.** The

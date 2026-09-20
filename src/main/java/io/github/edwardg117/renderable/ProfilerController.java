@@ -37,6 +37,7 @@ public final class ProfilerController implements Probe.Listener {
 
     private Session session;
     private long calibratedCallNanos = -1;
+    private long calibratedVertexNanos = -1;
     private int pendingStallMs;
     private long lastVisualSampleSecond = -1;
 
@@ -87,13 +88,14 @@ public final class ProfilerController implements Probe.Listener {
         }
         if (calibratedCallNanos < 0) {
             calibratedCallNanos = Calibration.measureCallNanos(System::nanoTime);
+            calibratedVertexNanos = Calibration.measureVertexNanos(System::nanoTime);
         }
         SessionConfig config = SessionConfig.ofSeconds(seconds,
                 RenderableConfig.HITCH_MEDIAN_MULTIPLIER.get(),
                 RenderableConfig.HITCH_MIN_EXCESS_MS.get(),
                 RenderableConfig.TOP_CONTRIBUTORS_PER_FRAME.get(),
                 calibratedCallNanos,
-                0);
+                calibratedVertexNanos);
         lastVisualSampleSecond = -1;
         session = new Session(config, System::nanoTime, System.currentTimeMillis());
         WorldOverlay.clear();

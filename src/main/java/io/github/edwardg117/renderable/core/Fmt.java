@@ -24,9 +24,22 @@ public final class Fmt {
         return String.format(Locale.ROOT, "%.2f", nanos / 1e6);
     }
 
-    /** Microseconds with one decimal. */
+    /** Microseconds with one decimal. For counts and rates, use {@link #num} instead. */
     public static String us(double micros) {
         return String.format(Locale.ROOT, "%.1f", micros);
+    }
+
+    /** A plain number with one decimal: counts, rates and anything else that is not microseconds. */
+    public static String num(double value) {
+        return String.format(Locale.ROOT, "%.1f", value);
+    }
+
+    /**
+     * A per-key peak in milliseconds, or {@code "-"} when every frame the key appeared in was GC-suspect
+     * and there is therefore no clean peak to report (spec addendum §P4.A1).
+     */
+    public static String peakMs(long maxFrameNanos, long gcFrames) {
+        return maxFrameNanos == 0 && gcFrames > 0 ? "-" : ms2(maxFrameNanos);
     }
 
     /** Nanoseconds as seconds with one decimal. */

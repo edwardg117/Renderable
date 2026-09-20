@@ -935,7 +935,9 @@ In `ui/screen/Rows.java`:
 ./gradlew test --no-daemon
 ```
 
-Expected: two failures remain, both in `TextReportWriterTest`, because the overhead line's text has not changed yet — `framesSection` and `phase2Sections` (or whichever test asserts `Renderable overhead: about 0.01 ms over 280 timed calls`). Everything else is green at **82 tests**. Those two are fixed in Task 4; if any *other* test fails, stop and report.
+Expected: `BUILD SUCCESSFUL`, **82 tests**, all green.
+
+The report tests keep passing even though the overhead figure now includes vertex calls, and that is not luck: `TestSessions.sample()` and `phase2()` never call `s.vertex()` — only the `phase3` branch does — so their `vertexCalls` is zero and contributes nothing. The overhead line's *format* is untouched here; Task 4 changes its wording, and updates those two assertions with it.
 
 - [ ] **Step 11: Stage and report**
 
