@@ -123,6 +123,18 @@ each frame.
 Keys touched in the current frame go on a touched-list so the per-frame reset and the top-N
 scan cost O(touched), not O(all keys).
 
+A parallel `TypeStats` per (category, type id) keeps the same per-frame scratch value, so a type row's peak
+is the type's worst frame rather than its worst member. Accumulators hold a reference to their `TypeStats`,
+so the hot path never looks one up, but the reference is only ever read: a type's frame total is summed
+from its members' `frameNanos` in the frame-boundary loop that already walks the touched list, not inside
+`end()`. That placement is load-bearing, not tidiness — work done inside `end()` lands inside the timing
+window of whichever call encloses it, so an item renderer summing into its block entity's type would
+inflate the block entity's own measurement; the frame boundary has nothing open, so it inflates nothing.
+A frame's contribution is only allowed to set a peak when it is not
+GC-suspect: a value at least as large as that frame's reported GC pause (which the JVM gives in whole
+milliseconds, so the comparison allows one millisecond of slack, and pauses under two milliseconds are
+ignored) may be the collector rather than the code, and is counted in `gcFrames` instead.
+
 Render-thread accumulators are plain `HashMap`s guarded by the render thread only. Mesh
 accumulators (`BlockKey`, `SectionKey`) are written from Sodium worker threads and use
 `ConcurrentHashMap` with `LongAdder`s; they are not per-frame and do not feed `top`.
@@ -135,9 +147,13 @@ accumulators (`BlockKey`, `SectionKey`) are written from Sodium worker threads a
   and reused; the touched-list is a pre-sized array list of references.
 - Per-particle timing costs two clock reads per particle. With 10,000 particles that is roughly
   0.5 ms per frame while sampling. The report states the session's own estimated overhead:
-  the number of timed calls multiplied by a per-call cost that is calibrated at session start
-  by timing a loop of 10,000 empty begin/end pairs. The reader can discount it.
-- `BufferBuilder.beginVertex` (and Sodium's `push`) get one branch on the idle flag plus one increment while sampling.
+  `timedCalls * calibratedCallNanos + vertexCalls * calibratedVertexNanos`. Each constant is
+  calibrated at session start — `calibratedCallNanos` by timing a loop of 10,000 empty begin/end
+  pairs, `calibratedVertexNanos` by timing a loop of 10,000 vertex-counting calls the same way —
+  so both what a timed call costs and what a vertex-counting call costs are covered. The reader
+  can discount it.
+- `BufferBuilder.beginVertex` (and Sodium's `push`, and Accelerated Rendering's builder) get one branch on
+  the idle flag plus one increment while sampling.
 
 ## 4. Hooks
 
@@ -193,6 +209,7 @@ double it".
 | `RenderSectionManager#uploadChunks()` and `#updateChunks(boolean)` | `@WrapMethod` | `CHUNK_UPLOAD` |
 | `BufferBuilder#beginVertex()` (private; both `addVertex` paths call it once per vertex) | `@ModifyReturnValue` | increments `vertices` on the innermost current key |
 | `BufferBuilder#push(MemoryStack, long, int, VertexFormat)` added by Sodium's `BufferBuilderMixin` (gated on Sodium, priority 1100) | `@ModifyVariable` on the count argument | adds the pushed vertex count; Sodium routes entity, block entity, particle and item vertices here without calling `beginVertex` |
+| `AcceleratedBufferBuilder#addVertex` (both overloads), `#addClientMesh`, `#addServerMesh` added by Accelerated Rendering (gated on `acceleratedrendering`, targeted by string) | `@ModifyReturnValue`, `@ModifyVariable`, `@Inject` head/return | adds the vertices of renderers whose geometry the mod expands on the GPU, which never reach `beginVertex` |
 
 Mesh work runs on worker threads and does not directly cost frame time; it is reported as
 milliseconds per second and per call, and the section view shows rebuild rate. Chunk upload is
@@ -258,13 +275,15 @@ Tabs and columns:
 | Tab | Rows | Columns |
 | --- | --- | --- |
 | Frames | summary block plus a frame-time histogram | sampled seconds, frames, avg, p50, p95, p99, max, threshold, average bucket split |
-| Hitches | one per hitch | frame index, time into session, total ms, bucket split bar, GC delta, top contributors |
-| Block Entities | type rows, expandable to positions | render µs/frame, tick µs/frame, share %, peak frame ms, shadow %, vertices/frame, calls |
+| Hitches | one per hitch | frame index, time into session, total ms, bucket split bar, GC delta, top contributors (a GC-suspect contributor's **split** cell reads `[gc]` in place of the bar, since the name cell is the one the list truncates) |
+| Block Entities | type rows, expandable to positions | render µs/frame, tick µs/frame, share %, peak frame ms, gc f, shadow %, vertices/frame, calls |
 | Entities | type rows, expandable to individuals | same |
-| Particles | class rows | render µs/frame, tick µs/frame, share %, avg live count, vertices/frame |
+| Particles | class rows | render µs/frame, tick µs/frame, share %, avg live count, vertices/frame, gc f |
 | Blocks | block rows (Sodium only) | mesh ms/s, µs/call, calls |
 | Sections | section rows (Sodium only) | rebuilds, rebuilds/s, mesh ms total, avg ms/rebuild |
 | Flywheel | one totals row plus visual class rows | bucket µs/frame, share %, visual count |
+
+`peak ms` reads `-` when every frame was GC-suspect.
 
 Every list sorts by any numeric column (implemented as a cycling Sort button on the Block
 Entities, Entities and Particles tabs; the Frames, Hitches, Flywheel, Blocks and Sections tabs
@@ -301,17 +320,21 @@ Sections, in order:
 2. **Environment**: Minecraft, NeoForge, Java version, max heap, mod count; GPU renderer and
    version strings from OpenGL; render distance, simulation distance, biome blend, graphics
    mode, vsync, FPS limit, particles setting, entity distance, fullscreen resolution and GUI
-   scale; Sodium, Iris (and active shader pack), Flywheel (and backend), Distant Horizons
-   present or not; dimension, player position, loaded section count; which Renderable hooks
-   applied.
+   scale; Sodium, Iris (and active shader pack), Flywheel (and backend), Accelerated Rendering,
+   Distant Horizons present or not; dimension, player position, loaded section count; which
+   Renderable hooks applied.
 3. **Frames**: frames, avg ms and FPS, p50, p95, p99, max; hitch threshold and count and total
-   hitch time as a share of wall time; average bucket split per frame including GC and swap;
-   Renderable's own estimated overhead.
+   hitch time as a share of wall time; average bucket split per frame including GC and swap; a
+   note beside the GC line, printed whenever the session saw a collection, explaining that `gc f`
+   counts frames a pause could account for, that those are left out of `peak ms`, and that `-`
+   means none was clean; Renderable's own estimated overhead.
 4. **Hitches**: up to 25 worst, each on two lines: frame and time, total, bucket split; then top
-   contributors with their milliseconds in that frame.
-5. **Block entities by type** (top 20) and **by position** (top 20).
-6. **Entities by type** (top 20) and **individuals** (top 20).
-7. **Particles** (top 20).
+   contributors with their milliseconds in that frame, with a contributor at least as large as
+   that frame's GC pause marked `[gc]`. A note under the section heading explains the marker,
+   printed only when the session has at least one hitch.
+5. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames.
+6. **Entities by type** (top 20) and **individuals** (top 20), and the count of GC-suspect frames.
+7. **Particles** (top 20), and the count of GC-suspect frames.
 8. **Blocks** (top 20 by mesh ms/s) and **Sections** (top 20 by rebuilds), or one line saying
    Sodium hooks were not active.
 9. **Flywheel**: bucket share and visual counts.
@@ -323,13 +346,14 @@ code fence.
 
 ```
 {
-  "schema": 3,
-  "mod": { "version": "0.3.0" },
+  "schema": 4,
+  "mod": { "version": "0.4.0" },
   "environment": { ... same fields as the text header, typed ... },
   "session": { "startedAt": iso8601, "durationSeconds": 30.0, "frames": 2412,
-               "hitchThresholdMs": 33.2, "overheadEstimateMs": 0.4 },
-  "frames": [ { "i": 0, "totalUs": ..., "tickUs": ..., "renderUs": ..., "buckets": { ... },
-                "gcCount": 0, "gcMs": 0, "top": [ { "key": "...", "us": ... } ] }, ... ],
+               "hitchThresholdMs": 33.2, "overheadEstimateMs": 0.4, "timedCalls": 6947008,
+               "vertexCalls": 1204331 },
+  "frames": [ { "i": 0, "totalUs": ..., "tickUs": ..., "renderUs": ..., "bucketsUs": { ... },
+                "gcCount": 0, "gcMs": 0, "top": [ { "key": "...", "us": ..., "gc": false } ] }, ... ],
   "hitches": [ frame indices ],
   "blockEntities": { "byType": [ ... ], "byPosition": [ ... ] },
   "entities": { "byType": [ ... ], "individuals": [ ... ] },
@@ -345,6 +369,11 @@ code fence.
 
 JSON is complete, not truncated to top-N. Keys serialise as strings of the form
 `type@dim:x,y,z`, `type#entityId`, `particle:ClassName`, `block:id`, `section@dim:x,y,z`.
+
+Every row of `blockEntities`, `entities` and `particles` carries `gcFrames`, the count of frames the key
+appeared in that were GC-suspect; its `peakFrameUs` is the largest **clean** frame, `0` when `gcFrames`
+covers all of them. Every entry of `frames[].top` carries `gc`, set when that entry's nanoseconds are
+GC-suspect for the frame it belongs to.
 
 ## 7. Configuration
 
@@ -405,8 +434,12 @@ have no Minecraft imports; `EnvironmentCollector` is the only Minecraft-aware cl
    renderers rank first.
 4. Flying into unloaded terrain produces hitches attributed mostly to chunk upload, with the
    Sections tab showing the newly built sections (phase 3).
-5. Idle cost: with no session running, the F3 frame time is unchanged within noise when the mod
-   is added and removed.
+5. Idle cost: measured with Java Flight Recorder in a static superflat scene, four runs of 120 s (jar
+   absent and present, each with and without `-XX:-DoEscapeAnalysis`). With escape analysis on, allocation
+   and mean CPU load with the jar must be within 2% of without it, and fewer than 0.1% of execution samples
+   may contain a `io.github.edwardg117.renderable` frame. With escape analysis off, the jar's run must
+   allocate more than 2% above the jar-free run, which is the control proving the measurement is sensitive
+   enough to support the first claim. See `docs/acceptance/phase-4-idle.md`.
 
 ## 10. Repository, build, release
 
@@ -433,3 +466,8 @@ Each phase is its own implementation plan and its own release tag.
 | 1 | repo and CI, `core`, frame model with tick/render/swap/GC, block entity and entity render hooks, hitch log, keybind and command, HUD, results screen with Frames, Hitches, Block Entities and Entities tabs, overlay, text and JSON export, debug stall | in-game checks 1, 2, 5 |
 | 2 | particle render and tick, block entity and entity client tick, Flywheel bucket and counts, light bucket, Iris shadow split, Particles and Flywheel tabs | in-game check 3 |
 | 3 | Sodium mesh per block and per section, chunk upload bucket, vertex counts, Blocks and Sections tabs | in-game check 4 |
+| 4a | GC-suspect values excluded from per-key and per-type peaks and flagged in every output, type peaks taken from the type's worst frame, Accelerated Rendering vertices counted, the overhead estimate extended to vertex calls and its calibration corrected, JSON schema 4 | in-game checks 1 to 4, and check 5 measured for the first time |
+
+Phase 4 is four independently executable plans rather than one. Group A ships alone as `v0.4.0`; groups B
+(robustness and cost), C (screen and overlay) and D (hygiene and CI) follow in any order, each with its own
+commits, and are described in `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`.

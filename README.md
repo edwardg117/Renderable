@@ -48,10 +48,14 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
 - **verts/f** is the number of vertices a renderer emitted per frame, the proxy for GPU load. It counts
   emitted vertices: glint and outline passes emit the same geometry again, and Iris shaders roughly
   double it through the shadow pass. With Sodium installed the count relies on Sodium's own vertex
-  path being hooked; if that hook did not apply the column reads near zero. Mods that expand
-  vertices on the GPU, such as Accelerated Rendering, bypass both paths for the renderers they
-  take over (most mob models), which then read zero while Create machines, which write their
-  vertices directly, still count.
+  path being hooked; if that hook did not apply the column reads near zero. Accelerated Rendering, which
+  expands model vertices on the GPU, is hooked separately, so the renderers it takes over are counted too;
+  another mod that replaces the vertex path the same way would not be, and its renderers would read zero.
+- **peak ms** is the worst single frame, and a type row's peak is the whole type's worst frame, not its
+  worst member. A stop-the-world GC pause inflates whatever happened to be running, and nothing shorter
+  than the pause can have contained it — so a value at least as large as its frame's pause is not allowed
+  to set a peak. **gc f** counts the frames dropped that way, and `-` in **peak ms** means every frame was.
+  In the hitch list, `[gc]` marks a contributor that is at least as large as that frame's pause.
 
 ## Limits
 
@@ -60,15 +64,20 @@ cannot be timed one by one; the Flywheel tab shows the instancing bucket and vis
 class instead. Mesh timing needs Sodium; without it the Blocks and Sections tabs say so, and
 Sodium's translucency re-sorts are not timed. Each hook is a single branch when the mod is not
 sampling (Sodium's mesh hooks pass an argument array per block model on the worker threads, which
-the JIT removes in practice); while sampling, the report states its own overhead, which does not
-include vertex counting, and the once-a-second Flywheel visual sample lands in that frame's other
-render time. Timing is CPU-side only; vertex counts stand in for GPU cost.
+the JIT removes in practice); while sampling, the report states its own overhead, which covers both
+timed calls and vertex counting, and the once-a-second Flywheel visual sample lands in that frame's
+other render time. Timing is CPU-side only; vertex counts stand in for GPU cost.
 
 ## Report files
 
 The JSON report carries a `schema` number.
 
-Schema 3 (this version) changes the shape of `blocks` and `sections`: each row is now
+Schema 4 (this version) adds `gcFrames` to every ranked row, `gc` to every entry of `frames[].top`, and
+`session.vertexCalls`. `peakFrameUs` keeps its name but is now the largest **clean** frame: a value of `0`
+with `gcFrames > 0` means every frame the key appeared in was GC-suspect, which is what the text report
+prints as `-`.
+
+Schema 3 changed the shape of `blocks` and `sections`: each row is now
 `{key, label, calls, meshUs, usPerCall, msPerSecond, callsPerSecond}`, and section rows also carry
 `dimension`, `x`, `y` and `z` in section coordinates. Schema 2 readers that expected ranked-entry
 rows there must be updated. Every section rebuilt during the session is written, so a long flight

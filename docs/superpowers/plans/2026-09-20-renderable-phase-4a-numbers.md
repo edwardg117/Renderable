@@ -1755,10 +1755,15 @@ Add after that bullet:
 
 ```markdown
 - **peak ms** is the worst single frame, and a type row's peak is the whole type's worst frame, not its
-  worst member. A frame whose GC pause is as large as the value itself is not allowed to set a peak,
-  because a stop-the-world pause inflates whatever happened to be running: **gc f** counts the frames
-  that were thrown out that way, and `-` in **peak ms** means every frame was. In the hitch list, `[gc]`
-  marks a contributor that is at least as large as that frame's pause.
+  worst member. A stop-the-world GC pause inflates whatever happened to be running, and nothing shorter
+  than the pause can have contained it — so a value at least as large as its frame's pause is not allowed
+  to set a peak. **gc f** counts the frames dropped that way, and `-` in **peak ms** means every frame was.
+  In the hitch list, `[gc]` marks a contributor that is at least as large as that frame's pause.
+
+  Get this direction right: the value must be at least as large as the pause, not the other way round. The
+  first draft of this bullet had it inverted, which would have told a reader that a 2 ms renderer on a frame
+  with a 40 ms pause is discarded, when in fact it is clean and sets its peak. That distinction is the whole
+  reason the rule is physical rather than "drop every GC frame", which §P4.A1 rejects by name.
 ```
 
 In the "Limits" paragraph, replace `while sampling, the report states its own overhead, which does not include vertex counting,` with `while sampling, the report states its own overhead, which covers both timed calls and vertex counting,`.
@@ -1808,7 +1813,15 @@ ignored) may be the collector rather than the code, and is counted in `gcFrames`
    list, and note after the table: "`peak ms` reads `-` when every frame was GC-suspect."
 
 5. **§6.1**, in item 5 and 6, add "and the count of GC-suspect frames"; in item 4, add "contributors that
-   are at least as large as the frame's pause are marked `[gc]`."
+   are at least as large as the frame's pause are marked `[gc]`." In item 3, add the Frames section's
+   explanatory line, which the code prints whenever `gcCount > 0`: the `[gc]` legend is tied to the hitch
+   list and so is absent from a report with small pauses and no hitch, while `gc f` and `-` can still
+   appear, so the note beside the `GC:` line is what explains them. In item 2, add `acceleratedrendering`
+   to the environment field list beside `sodium`, `iris` and `flywheel` — that line is what distinguishes a
+   silently-unapplied Accelerated Rendering hook from a pack that never had the mod.
+
+   These two were added during phase 4a's reviews and are not in the original draft of this step; check the
+   code rather than this list if they disagree.
 
 6. **§6.2**, change `"schema": 3` to `"schema": 4` in the example, add `"gcFrames"` to the ranked row
    description and `"gc"` to the `top` entry, and add `"vertexCalls"` to the `session` object.
@@ -1824,11 +1837,25 @@ ignored) may be the collector rather than the code, and is counted in `gcFrames`
    enough to support the first claim. See `docs/acceptance/phase-4-idle.md`.
 ```
 
-8. **§11**, add a row to the phases table:
+8. **§11**, add a row to the phases table — scoped to **group A only**, because that is what `v0.4.0`
+   contains. An earlier draft of this step bundled all four phase 4 groups into one row, which would have
+   credited this release with streamed JSON, the object-cached accumulator, the screen polish and the CI
+   work, none of which is in the tree when 4a ships:
 
 ```markdown
-| 4 | GC-suspect flagging and type peaks, Accelerated Rendering vertices, the vertex-aware overhead estimate, streamed JSON, the object-cached accumulator, screen and overlay polish, hygiene and CI | in-game checks 1 to 5, check 5 for the first time |
+| 4a | GC-suspect values excluded from per-key and per-type peaks and flagged in every output, type peaks taken from the type's worst frame, Accelerated Rendering vertices counted, the overhead estimate extended to vertex calls and its calibration corrected, JSON schema 4 | in-game checks 1 to 4, and check 5 measured for the first time |
 ```
+
+   Then, immediately after the table:
+
+```markdown
+Phase 4 is four independently executable plans rather than one. Group A ships alone as `v0.4.0`; groups B
+(robustness and cost), C (screen and overlay) and D (hygiene and CI) follow in any order, each with its own
+commits, and are described in `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`.
+```
+
+   The check list reads "1 to 4, and check 5" rather than "1 to 5" on purpose: check 5 is the one that has
+   never been run, and this is the release that finally measures it.
 
 - [ ] **Step 4: Build and prove every mixin still applies**
 
@@ -1845,6 +1872,13 @@ JAVA_TOOL_OPTIONS="-Dmixin.debug.export=true" ./gradlew runClient -PquickPlay="N
 Expected in the log: `Renderable 0.4.0 loaded`, no mixin errors, and no mention of any `sodium.*`,
 `flywheel.*` or `acceleratedrendering.*` mixin. Stop the client with Task 6's Step 9 filter, delete
 `run/.mixin.out`.
+
+**Ran 2026-09-20 and passed:** world loaded, `Renderable 0.4.0 loaded` once, zero matches for
+`Mixin apply failed` or `InjectionError`, zero mentions of any gated mixin — so the plugin gate keeps all
+three third-party sub-packages out of a client that has none of those mods — and
+`com.mojang.blaze3d.vertex.BufferBuilder` exported with its `renderable$` vertex handler intact, confirming
+the required vanilla mixin still applies. Together with the Accelerated Rendering export recorded in Task 6,
+every mixin this phase touches is proven either applying or correctly gated out.
 
 - [ ] **Step 5: Stage and report**
 
