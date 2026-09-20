@@ -1910,8 +1910,13 @@ and run a 30 s session at the base (the same place as run 1 of the phase 2/3 log
 a second 30 s session flying into unloaded terrain.
 
 1. **GC flagging (§P4.A1).** In the base report's `Hitches` section, every contributor whose milliseconds
-   are at or above that frame's `gc` figure carries `[gc]`, and none below it does. Paste the three worst
-   hitches.
+   are **within a millisecond of, or above,** that frame's `gc` figure carries `[gc]`, and anything clearly
+   below it does not. Paste the three worst hitches.
+
+   The one-millisecond slack is deliberate, not a bug: the JVM reports pause times in whole milliseconds, so
+   a 34.4 ms pause is reported as 34 and a genuinely 34.4 ms call would otherwise read clean. A 33.2 ms
+   contributor on a frame showing `gc 34` is therefore marked, correctly. An earlier draft of this check said
+   "at or above the `gc` figure, and none below it", which a correct build fails.
 2. **Peaks (§P4.A1).** In `Block entities by type` and `Particles`, at least one row has a non-zero `gc f`.
    Paste those rows. Confirm no `peak ms` in the report is now equal to that frame's `gc` figure.
 3. **Type peaks (§P4.A2).** In `Block entities by type`, the `create:factory_panel` or

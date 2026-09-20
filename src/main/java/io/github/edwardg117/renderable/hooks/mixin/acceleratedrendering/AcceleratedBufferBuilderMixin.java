@@ -30,15 +30,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *
  * <p>The two {@code addVertex} hooks avoid {@code @Inject} because its callback object would land once per
  * vertex; {@code addServerMesh}'s pair can afford one because it runs once per mesh instead.
- * {@link Probe#acceleratedVertices(int)}'s {@code n <= 0} guard (absent from {@link Probe#vertices(int)},
- * which never sees a negative delta) is what makes that pair's delta safe: if {@code addServerMesh} were
- * re-entrant, an outer call's delta would be computed from an inner call's baseline and come out zero or
- * negative, so the guard means re-entrancy can only under-count, never inflate. The other way a delta could
- * inflate — the baseline going stale because {@link Probe#ACTIVE} flips true between this mixin's
- * {@code HEAD} and {@code RETURN} and a whole cumulative count gets reported as one mesh — cannot happen,
- * because {@code attach}/{@code detach} run on the render thread at a frame boundary, never inside a draw
- * call; the {@code renderable$meshBefore < 0} sentinel below closes that path outright regardless, so
- * {@code RETURN} can only ever fire against a baseline its own {@code HEAD} established.
+ *
+ * <p>The mesh pair holds one baseline in a field, so it assumes {@code addServerMesh} does not re-enter
+ * itself. It does not: the method writes buffers and returns, and calls nothing that renders. Were that ever
+ * to change, an inner call would overwrite the baseline and the outer {@code RETURN} would count the inner
+ * mesh's vertices a second time — an over-count, which {@link Probe#acceleratedVertices(int)}'s
+ * {@code n <= 0} guard does **not** catch, since the delta stays positive. That guard is there for a
+ * different case: a delta of zero when Accelerated Rendering defers the upload. If this mod ever gains a
+ * nested mesh path, this pair needs a depth counter, not a bigger comment.
+ *
+ * <p>The other way a delta could inflate — the baseline going stale because {@link Probe#ACTIVE} flips true
+ * between {@code HEAD} and {@code RETURN}, so a whole cumulative count is reported as one mesh — is closed
+ * outright by the {@code renderable$meshBefore < 0} sentinel below: {@code RETURN} can only fire against a
+ * baseline its own {@code HEAD} established.
  */
 @Mixin(targets = "com.github.argon4w.acceleratedrendering.core.buffers.accelerated.builders.AcceleratedBufferBuilder",
         remap = false)

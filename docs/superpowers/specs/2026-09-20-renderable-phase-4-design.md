@@ -69,6 +69,22 @@ It is also incomplete in a known way: a pause that starts before a call opens in
 than `p`, so the inner call reads clean while the outer call that spanned the whole pause is flagged.
 Renderable flags what it can prove.
 
+**The argument is about one call, and the type rows apply it to a sum.** `TypeStats.frameNanos` is the total
+of a type's members' inclusive frame times, and P4.A2 tests it with the same comparison. That is no longer
+physical: twenty enchantable millstones at 1.5 ms each sum to 30 ms against a 30 ms pause, but the pause can
+have been inside at most one of those calls, so at most about 1.5 ms of that sum is collector and the frame
+is provably clean — yet its peak is discarded. The documented nested-inclusive double-count above pushes such
+sums further over the threshold, and the types most affected are exactly the many-cheap-members types P4.A2
+exists to serve.
+
+The error is one-sided: the rule discards peaks it need not, and never invents one. A reader can therefore
+see a `by type` row with a non-zero `gc f` above `by position` rows that all read zero, which is not a
+contradiction — it means the type's *total* crossed the threshold while no individual member did. Phase 4a
+accepts that rather than tracking, per type per frame, which member was innermost when the pause struck,
+which would put per-type depth bookkeeping on the hot path for a column that is already conservative. If it
+proves noisy on real data, the sharper rule is to test a type's **largest member** against the pause rather
+than the type's sum.
+
 `GC_MIN_NANOS = 2_000_000L` and `GC_SLACK_NANOS = 1_000_000L` live in `core/Session.java` and are quoted by
 the tests, which pin both boundaries.
 
@@ -304,7 +320,14 @@ writing only while sampling — leaves a stale baseline that the return handler'
 and the only case that could then inflate a count requires `ACTIVE` to flip between head and return of one
 call, which cannot happen because `attach`/`detach` run at a frame boundary. Both forms are therefore safe;
 the sentinel is chosen because its correctness is legible without that argument, and the cost is one `int`
-store to an object the caller is already writing through. Per mesh upload, not per vertex.
+store to an object the caller is already writing through.
+
+Stated in full, because the paragraph above understated it at first: the `addServerMesh` pair is `@Inject`,
+so Mixin also constructs two `CallbackInfo` objects per call, idle or not. That is the same shape as the
+`@WrapMethod` and `@WrapOperation` argument arrays §3.5 already accepts, and it is why the two `addVertex`
+hooks — which fire per **vertex** rather than per mesh — deliberately use `@ModifyReturnValue` and
+`@ModifyVariable` instead, where a primitive passes through with no callback object at all. The whole
+exception is per mesh upload, never per vertex.
 
 **Risk accepted.** AR 1.0.8 is an alpha. The mixin is gated, `require = 0`, and string-targeted, so a
 rename degrades the `verts/f` column for accelerated renderers to the zero it already shows, logs a warning,
