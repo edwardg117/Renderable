@@ -41,7 +41,10 @@ class SplitsTest {
 
     @Test
     void callsPerFrameIsTheAverageLiveCount() {
-        RankedEntry e = new RankedEntry("x", null, "x", ProfileKey.Category.PARTICLE, 1, 60, 40, 0, 0, 0, 0, 0);
+        Accumulator a = new Accumulator(new ParticleKey("x"));
+        a.calls = 60;
+        a.tickCalls = 40;
+        RankedEntry e = RankedEntry.of(a);
         assertEquals(3.0, e.callsPerFrame(20), 1e-9);
         assertEquals(0.0, e.callsPerFrame(0), 1e-9);
     }

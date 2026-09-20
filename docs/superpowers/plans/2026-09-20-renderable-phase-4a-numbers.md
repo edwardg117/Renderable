@@ -526,8 +526,27 @@ fix(core): GC-suspect frames no longer set per-key peaks; per-type frame aggrega
 
 **Files:**
 - Modify: `src/main/java/io/github/edwardg117/renderable/core/RankedEntry.java`
-- Modify: `src/main/java/io/github/edwardg117/renderable/core/Ranking.java`
 - Test: `src/test/java/io/github/edwardg117/renderable/core/RankingTest.java` (modify one test, append one)
+- Test: `src/test/java/io/github/edwardg117/renderable/core/SplitsTest.java` (one added argument)
+
+`Ranking` needs no change: it only calls `RankedEntry.of`/`group` and reads accessors.
+
+`RankedEntry` is a record, and `SplitsTest:44` constructs one **positionally**, so adding a component
+breaks its compilation. Do not just append a zero: a thirteen-argument literal of mostly zeros survives an
+*appended* component but silently exercises the wrong fields if one is ever *inserted*. `SplitsTest` is in
+`io.github.edwardg117.renderable.core`, so it can sidestep the constructor entirely and become immune:
+
+```java
+        Accumulator a = new Accumulator(new EntityKey("x", 1, ""));
+        a.calls = 60;
+        a.tickCalls = 40;
+        RankedEntry e = RankedEntry.of(a);
+```
+
+That leaves `RankedEntry`'s own two factories as the only positional constructions in the tree, which is
+what keeps the next component cheap. Before adding a component to any record in this phase, run
+`grep -rn 'new <RecordName>(' src` — a positional construction in a test is easy to miss from a file map
+and looks like your own code's compile error when it breaks.
 
 Spec addendum §P4.A2. `RankedEntry.group` currently takes `max(member.maxFrameNanos)`. Every member of a group shares one `TypeStats` (Task 1), so the type's own peak and `gcFrames` are read from `members.get(0).type()`.
 

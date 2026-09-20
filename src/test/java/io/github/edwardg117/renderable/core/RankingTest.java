@@ -20,8 +20,36 @@ class RankingTest {
         assertEquals(2, press.members());
         assertEquals(128 * MS, press.renderNanos());
         assertEquals(40, press.calls());
-        assertEquals(60 * MS, press.maxFrameNanos(), "group peak is the largest member peak");
+        assertEquals(61 * MS + 500_000, press.maxFrameNanos(),
+                "group peak is the type's worst frame: 60 ms press + 1.5 ms press2 in frame 10");
+        assertEquals(0, press.gcFrames(),
+                "frame 15's 5 ms pause makes anything from 4 ms suspect; the press type cost 3.5 ms there");
         assertEquals("create:mechanical_mixer", types.get(1).label());
+    }
+
+    @Test
+    void typePeakBeatsTheWorstMemberWhenMembersShareAFrame() {
+        long[] clock = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> clock[0], 0);
+        Accumulator a = s.accumulator(PRESS);
+        Accumulator b = s.accumulator(PRESS2);
+        clock[0] = 0;        s.onRenderPre(0, 0);
+        clock[0] = 1 * MS;   s.begin(a, Bucket.BLOCK_ENTITY); clock[0] = 3 * MS;  s.end();   // 2 ms
+        clock[0] = 3 * MS;   s.begin(b, Bucket.BLOCK_ENTITY); clock[0] = 6 * MS;  s.end();   // 3 ms
+        clock[0] = 16 * MS;  s.onRenderPre(0, 0);
+        clock[0] = 17 * MS;  s.begin(a, Bucket.BLOCK_ENTITY); clock[0] = 21 * MS; s.end();   // 4 ms alone
+        clock[0] = 32 * MS;  s.onRenderPre(0, 0);
+
+        SessionResult r = s.finish();
+        RankedEntry type = Ranking.byType(r, ProfileKey.Category.BLOCK_ENTITY).get(0);
+        assertEquals(2, type.members());
+        // Discriminates three candidates: 4 ms under the old max-of-member-peaks (max(a=4, b=3)); 7 ms
+        // under a sum-of-member-peaks implementation (a's own worst frame 4 ms + b's own worst frame 3 ms,
+        // which never occurred together); 5 ms for the type's actual worst frame (a=2 ms + b=3 ms, both in
+        // frame 0).
+        assertEquals(5 * MS, type.maxFrameNanos(), "frame 0 cost the type 5 ms; no member ever cost more than 4");
+        assertEquals(4 * MS, Ranking.membersOf(r, ProfileKey.Category.BLOCK_ENTITY, "create:mechanical_press")
+                .get(0).maxFrameNanos(), "individual rows still report their own worst frame");
     }
 
     @Test

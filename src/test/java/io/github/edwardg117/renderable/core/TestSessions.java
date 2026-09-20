@@ -5,7 +5,10 @@ package io.github.edwardg117.renderable.core;
  *
  * 20 frames. Every frame is 16 ms except frame 10, which is 80 ms because the press spends 60 ms in it.
  * Per frame: 0.1 ms other render, press 2 ms (60 ms in frame 10), press2 1.5 ms, mixer 1 ms, cow 0.5 ms,
- * player 0.3 ms, then 2 ms other render; tick is 1 ms of which cow ticks 0.2 ms. One 5 ms GC lands in frame 15.
+ * player 0.3 ms, then 2 ms other render; tick is 1 ms of which cow ticks 0.2 ms. One 5 ms GC lands in frame 15,
+ * deliberately larger than every key's and every type's frame total there, so the fixture stays clean: the
+ * press type's total in that frame is 2 (press) + 1.5 (press2) = 3.5 ms against the pause's 4 ms threshold,
+ * a 0.5 ms margin that Task 2's type-peak tests rely on.
  *
  * Totals: press 98 ms render, press2 30, mixer 20, cow 10 render + 4 tick, player 6. Session 384 ms.
  * Median frame 16 ms, hitch threshold 32 ms, one hitch (frame 10). 120 timed calls at 25 ns = 0.003 ms overhead.
