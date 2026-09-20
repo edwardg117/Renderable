@@ -126,8 +126,23 @@ much" is qualified.
          2.10 ms  create:basin @ 2571 105 1145
   ```
 
-  A note is printed once under the `Hitches` heading: `  [gc] marks a contributor that is at least as large
-  as that frame's GC pause, so most of it may be the pause rather than the code.`
+  A note is printed once under the `Hitches` heading, and only when there is at least one hitch:
+  `  [gc] marks a contributor that is at least as large as that frame's GC pause, so most of it may be the
+  pause rather than the code.` The closing clause is the actionable half — it is what stops a reader
+  opening a profiler on a renderer that was merely unlucky.
+
+  Because that note is tied to the hitch list, it can be absent from a report that still shows `gc f` and
+  `-`: a session with small pauses and no frame over the hitch threshold prints `Hitches: none`. So the
+  **Frames** section carries its own line, beside the `GC:` line where the reader already meets garbage
+  collection, printed whenever `gcCount > 0`:
+
+  ```
+    GC: 15 collections, 369 ms paused
+    (gc f counts frames a pause could account for; those are left out of peak ms, and "-" means none was clean)
+  ```
+
+  One insertion covers every table below it, and it says the thing neither the header nor the marker can:
+  that a peak printed beside a non-zero `gc f` is the **clean** maximum, not a contaminated one.
 - *JSON.* `schema` becomes **4**. Diff against schema 3:
   - every object in `blockEntities.byType`, `blockEntities.byPosition`, `entities.byType`,
     `entities.individuals` and `particles` gains `"gcFrames": <long>`;
@@ -858,4 +873,11 @@ implements each:
 - **No hook for Distant Horizons, Sodium Extra, Sodium Dynamic Lights or the other pack renderers.** The
   phase 2/3 log's largest unattributed bucket is still `other render` at 5 to 6 ms per frame; attributing
   it further is a phase 5 question, not a phase 4 one.
+- **No narrowing of the ranked tables.** `gc f` takes the ranked tables to nine columns and a 108-character
+  header, and the particles table to 124 with a real class name such as
+  `net.minecraft.client.particle.DripParticle$CoolingDripHangParticle` — past the point where a GitHub code
+  block scrolls sideways. The unbounded dimension is the label, not the column count, so dropping a column
+  would not fix it. If the width is ever reclaimed, `shadow` is the candidate: it prints `0.0%` on every row
+  of every session without Iris shadows, and `Splits.average` already establishes the "omit what is empty"
+  precedent in this codebase. Phase 5.
 - **No Modrinth or CurseForge release.** §10 is unchanged.

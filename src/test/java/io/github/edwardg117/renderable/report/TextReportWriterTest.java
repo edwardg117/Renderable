@@ -1,7 +1,11 @@
 package io.github.edwardg117.renderable.report;
 
+import io.github.edwardg117.renderable.core.Accumulator;
+import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
+import io.github.edwardg117.renderable.core.Session;
+import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TestSessions;
 import org.junit.jupiter.api.Test;
@@ -15,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class TextReportWriterTest {
     final SessionResult r = TestSessions.sample();
     final Environment env = environment();
+    static final long MS = 1_000_000L;
 
     static Environment environment() {
         LinkedHashMap<String, String> m = new LinkedHashMap<>();
@@ -37,7 +42,7 @@ class TextReportWriterTest {
         assertTrue(s.contains("  Hitches: 1 frames over 32.0 ms threshold, totalling 0.1 s (20.8% of wall time)\n"), s);
         assertTrue(s.contains("  Time split (avg ms/frame): tick 1.00 [entity tick 0.20] | block entity 7.40 | entity 0.80 | other render 2.10 | swap/wait 7.90\n"), s);
         assertTrue(s.contains("  GC: 1 collections, 5 ms paused\n"), s);
-        assertTrue(s.contains("  Renderable overhead: about 0.00 ms over 120 timed calls\n"), s);
+        assertTrue(s.contains("  Renderable overhead: about 0.00 ms over 120 timed calls and 0 vertex calls\n"), s);
     }
 
     @Test
@@ -98,14 +103,14 @@ class TextReportWriterTest {
     void phase2Sections() {
         String s = TextReportWriter.write(TestSessions.phase2(), phase2Environment(), "0.2.0");
         assertTrue(s.contains("  Time split (avg ms/frame): tick 1.00 [particle tick 0.10, be tick 0.40, entity tick 0.20] | block entity 7.40 | entity 0.80 | particle render 0.30 | flywheel 1.20 | light 0.30 | other render 2.10 | swap/wait 6.10\n"), s);
-        assertTrue(s.contains("  Renderable overhead: about 0.01 ms over 280 timed calls\n"), s);
+        assertTrue(s.contains("  Renderable overhead: about 0.01 ms over 280 timed calls and 0 vertex calls\n"), s);
         assertFalse(s.contains("Attribution stack reset"), s);
 
         int at = s.indexOf("Particles (top 20)\n");
         assertTrue(at > 0, s);
         String[] lines = s.substring(at).split("\n", 5);
         assertTrue(lines[1].startsWith("  class"), lines[1]);
-        assertTrue(lines[1].endsWith("avg live  verts/f"), lines[1]);
+        assertTrue(lines[1].endsWith("avg live  verts/f  gc f"), lines[1]);
         assertEquals(lines[1].length(), lines[3].length());
         assertTrue(lines[3].startsWith("  FlameParticle"), lines[3]);
         assertTrue(lines[3].contains("300.0") && lines[3].contains("100.0") && lines[3].contains("2.1%") && lines[3].contains("3.0"), lines[3]);
@@ -208,5 +213,77 @@ class TextReportWriterTest {
         assertTrue(empty.contains("Blocks (mesh build, top 20 by mesh ms/s)\n  (no data: no blocks were meshed)\n"), empty);
         assertTrue(empty.contains("Sections (mesh rebuilds, top 20 by rebuilds)\n  (no data: no sections were rebuilt)\n"), empty);
         assertFalse(empty.contains(TextReportWriter.MESH_NOTE), empty);
+    }
+
+    /**
+     * A two-frame session where the second frame's cost is entirely a 40 ms GC pause. The cow renders 1 ms
+     * in that same frame -- nowhere near the pause -- so a hitch line with a real, un-suspect contributor
+     * sits right beside the suspect one, and marking that came from the frame rather than the entry would
+     * wrongly tag the cow too.
+     */
+    static SessionResult gcSession() {
+        long[] clock = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> clock[0], TestSessions.WALL_START);
+        Accumulator press = s.accumulator(TestSessions.PRESS);
+        Accumulator cow = s.accumulator(TestSessions.COW);
+        clock[0] = 0;          s.onRenderPre(0, 0);
+        clock[0] = 1 * MS;     s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 3 * MS;  s.end();
+        clock[0] = 3 * MS;     s.begin(cow, Bucket.ENTITY);         clock[0] = 4 * MS;  s.end();
+        s.onRenderPost();
+        clock[0] = 16 * MS;    s.onRenderPre(0, 0);
+        clock[0] = 17 * MS;    s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 57 * MS; s.end();
+        clock[0] = 57 * MS;    s.begin(cow, Bucket.ENTITY);         clock[0] = 58 * MS; s.end();
+        s.onRenderPost();
+        clock[0] = 100 * MS;   s.onRenderPre(1, 40);
+        return s.finish();
+    }
+
+    @Test
+    void gcSuspectPeaksAndContributorsAreMarked() {
+        String s = TextReportWriter.write(gcSession(), env, "0.4.0");
+
+        assertTrue(s.contains(TextReportWriter.GC_NOTE + "\n"), s);
+        assertTrue(s.contains(TextReportWriter.GC_COLUMN_NOTE + "\n"), s);
+        assertTrue(s.contains("\n      40.00 ms  create:mechanical_press @ 100 64 -20  [gc]\n"), s);
+        assertTrue(s.contains("\n      1.00 ms  minecraft:cow #7\n"),
+                "the cow's own 1 ms render should still print as a contributor: " + s);
+        assertFalse(s.contains("minecraft:cow #7  [gc]"),
+                "the marker comes from the entry, not the frame: the cow's 1 ms is nowhere near the 40 ms pause: " + s);
+
+        int at = s.indexOf("Block entities by position (top 20)\n");
+        assertTrue(at > 0, s);
+        String[] lines = s.substring(at).split("\n", 5);
+        assertTrue(lines[1].contains("peak ms") && lines[1].contains("gc f"), lines[1]);
+        assertEquals(lines[1].length(), lines[3].length(), "the gc column keeps the table aligned");
+        assertTrue(lines[3].startsWith("  create:mechanical_press"), lines[3]);
+        assertTrue(lines[3].contains("2.00"), "the clean 2 ms frame is the peak, not the 40 ms GC frame: " + lines[3]);
+
+        // The gc column is right-aligned, so its value's last character sits under the header's last one.
+        int gcColumnEnd = lines[1].indexOf("gc f") + "gc f".length() - 1;
+        assertTrue(gcColumnEnd > 3, lines[1]);
+        assertEquals('1', lines[3].charAt(gcColumnEnd), "one GC-suspect frame, right-aligned: " + lines[3]);
+
+        // The cow was never GC-suspect, in contrast to the press above: a "gc f 0" row beside a "gc f 1" one.
+        int entAt = s.indexOf("Entities (individuals) (top 20)\n");
+        assertTrue(entAt > 0, s);
+        String[] entLines = s.substring(entAt).split("\n", 5);
+        assertTrue(entLines[3].startsWith("  minecraft:cow #7"), entLines[3]);
+        int entGcColumnEnd = entLines[1].indexOf("gc f") + "gc f".length() - 1;
+        assertEquals('0', entLines[3].charAt(entGcColumnEnd), "the cow was never GC-suspect: " + entLines[3]);
+    }
+
+    @Test
+    void aPeakThatWasOnlyEverGcSuspectPrintsADash() {
+        long[] clock = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> clock[0], TestSessions.WALL_START);
+        Accumulator press = s.accumulator(TestSessions.PRESS);
+        clock[0] = 0;        s.onRenderPre(0, 0);
+        clock[0] = 1 * MS;   s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 41 * MS; s.end();
+        clock[0] = 100 * MS; s.onRenderPre(1, 40);
+
+        String out = TextReportWriter.write(s.finish(), env, "0.4.0");
+        int at = out.indexOf("Block entities by position (top 20)\n");
+        String row = out.substring(at).split("\n", 5)[3];
+        assertTrue(row.contains(" - "), "the only frame was GC-suspect, so there is no clean peak: " + row);
     }
 }

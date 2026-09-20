@@ -26,6 +26,12 @@ public final class TextReportWriter {
     /** Printed under the Sections table: mesh time is parallel worker time and overlaps the chunk upload bucket. */
     static final String MESH_NOTE = "  (mesh time is Sodium worker-thread time, so ms/s can exceed 1000; rebuilds stolen by the render thread also count in chunk upload)";
 
+    /** Printed under the Hitches heading so the [gc] marks on contributor lines explain themselves. */
+    static final String GC_NOTE = "  [gc] marks a contributor at least as large as that frame's GC pause, so most of it may be the pause rather than the code.";
+
+    /** Printed under the GC line so every table's gc f column and its "-" peaks explain themselves. */
+    static final String GC_COLUMN_NOTE = "  (gc f counts frames a pause could account for; those are left out of peak ms, and \"-\" means none was clean)";
+
     private TextReportWriter() {
     }
 
@@ -56,8 +62,12 @@ public final class TextReportWriter {
                 Fmt.pct(r.hitchSharePercent())));
         sb.append("  Time split (avg ms/frame): ").append(Splits.average(st)).append('\n');
         sb.append(String.format(Locale.ROOT, "  GC: %d collections, %d ms paused\n", st.gcCount(), st.gcMillis()));
-        sb.append(String.format(Locale.ROOT, "  Renderable overhead: about %.2f ms over %d timed calls\n",
-                r.overheadEstimateMs(), r.timedCalls()));
+        if (st.gcCount() > 0) {
+            sb.append(GC_COLUMN_NOTE).append('\n');
+        }
+        sb.append(String.format(Locale.ROOT,
+                "  Renderable overhead: about %.2f ms over %s timed calls and %s vertex calls\n",
+                r.overheadEstimateMs(), Fmt.count(r.timedCalls()), Fmt.count(r.vertexCalls())));
         if (r.unbalancedFrames() > 0) {
             sb.append(String.format(Locale.ROOT,
                     "  Attribution stack reset on %d frames (a hook threw past its end call; buckets on those frames are incomplete)\n",
@@ -68,6 +78,8 @@ public final class TextReportWriter {
         sb.append("Hitches (worst ").append(HITCHES).append(")\n");
         if (r.hitches().isEmpty()) {
             sb.append("  none\n");
+        } else {
+            sb.append(GC_NOTE).append('\n');
         }
         int shown = 0;
         for (FrameRecord h : r.hitches()) {
@@ -76,7 +88,8 @@ public final class TextReportWriter {
             sb.append(String.format(Locale.ROOT, "  #%d  frame %d @ %ss  %s ms  |  %s  |  gc %d ms\n",
                     shown, h.index(), Fmt.secs(h.startNanos()), Fmt.ms(h.totalNanos()), Splits.frame(h), h.gcMillis()));
             for (TopEntry t : h.top()) {
-                sb.append("      ").append(Fmt.ms2(t.nanos())).append(" ms  ").append(t.key().label()).append('\n');
+                sb.append("      ").append(Fmt.ms2(t.nanos())).append(" ms  ").append(t.key().label())
+                        .append(t.gc() ? "  [gc]" : "").append('\n');
             }
         }
         sb.append('\n');
@@ -99,14 +112,15 @@ public final class TextReportWriter {
             return;
         }
         Table t = new Table(
-                new String[]{"name", "render us/f", "tick us/f", "share", "peak ms", "shadow", "verts/f", "calls"},
-                new boolean[]{false, true, true, true, true, true, true, true});
+                new String[]{"name", "render us/f", "tick us/f", "share", "peak ms", "gc f", "shadow", "verts/f", "calls"},
+                new boolean[]{false, true, true, true, true, true, true, true, true});
         for (RankedEntry e : entries.subList(0, Math.min(TOP, entries.size()))) {
             t.row(e.label(),
                     Fmt.us(e.renderUsPerFrame(frames)),
                     Fmt.us(e.tickUsPerFrame(frames)),
                     Fmt.pct(e.sharePercent(total)),
-                    Fmt.ms2(e.maxFrameNanos()),
+                    Fmt.peakMs(e.maxFrameNanos(), e.gcFrames()),
+                    Fmt.count(e.gcFrames()),
                     Fmt.pct(e.shadowPercent()),
                     Fmt.num(e.verticesPerFrame(frames)),
                     Fmt.count(e.calls()));
@@ -125,15 +139,16 @@ public final class TextReportWriter {
             return;
         }
         Table t = new Table(
-                new String[]{"class", "render us/f", "tick us/f", "share", "avg live", "verts/f"},
-                new boolean[]{false, true, true, true, true, true});
+                new String[]{"class", "render us/f", "tick us/f", "share", "avg live", "verts/f", "gc f"},
+                new boolean[]{false, true, true, true, true, true, true});
         for (RankedEntry e : entries.subList(0, Math.min(TOP, entries.size()))) {
             t.row(e.label(),
                     Fmt.us(e.renderUsPerFrame(frames)),
                     Fmt.us(e.tickUsPerFrame(frames)),
                     Fmt.pct(e.sharePercent(total)),
                     Fmt.num(e.callsPerFrame(frames)),
-                    Fmt.num(e.verticesPerFrame(frames)));
+                    Fmt.num(e.verticesPerFrame(frames)),
+                    Fmt.count(e.gcFrames()));
         }
         sb.append(t.render("  ")).append('\n');
     }

@@ -988,6 +988,19 @@ with:
         assertTrue(s.contains("  Renderable overhead: about 0.01 ms over 280 timed calls and 0 vertex calls\n"), s);
 ```
 
+In the same test, one further assertion pins the particles header's last column and so breaks when Step 3
+adds `gc f` to it. Replace:
+
+```java
+        assertTrue(lines[1].endsWith("avg live  verts/f"), lines[1]);
+```
+
+with:
+
+```java
+        assertTrue(lines[1].endsWith("avg live  verts/f  gc f"), lines[1]);
+```
+
 Append inside `TextReportWriterTest`:
 
 ```java
