@@ -81,6 +81,7 @@ public final class JsonReportWriter {
         w.name("overheadEstimateMs").value(r.overheadEstimateMs());
         w.name("timedCalls").value(r.timedCalls());
         w.name("vertexCalls").value(r.vertexCalls());
+        w.name("selfMs").value(r.selfNanos() / 1e6);
         w.name("unbalancedFrames").value(r.unbalancedFrames());
         w.name("config").beginObject();
         w.name("durationSeconds").value(r.config().durationSeconds());

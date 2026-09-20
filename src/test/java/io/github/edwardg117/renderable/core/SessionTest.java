@@ -532,4 +532,33 @@ class SessionTest {
         assertFalse(second.owns(a), "a different session does not own it");
         assertFalse(first.owns(new Accumulator(TestSessions.PRESS)), "a standalone accumulator is owned by no session");
     }
+
+    @Test
+    void selfTimeIsMeasuredNotEstimated() {
+        Session s = session(10_000);
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.beginSelf();
+        at(3);  s.endSelf();                 // 2 ms of HUD work
+        at(4);  s.beginSelf();
+        at(4);  s.endSelf();                 // an instant sample costs nothing
+        at(5);  s.endSelf();                 // unpaired end is ignored
+        at(16); s.onRenderPre(0, 0);
+
+        SessionResult r = s.finish();
+        assertEquals(2 * MS, r.selfNanos());
+        assertEquals(0, r.timedCalls(), "self time is not a keyed call and must not inflate the estimate");
+    }
+
+    @Test
+    void nestedBeginEndSelfMeasuresTheFullOuterInterval() {
+        Session s = session(10_000);
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.beginSelf();
+        at(2);  s.beginSelf();               // inner begin: does not start a second interval
+        at(3);  s.endSelf();                 // inner end: does not close the interval yet
+        at(5);  s.endSelf();                 // outer end: closes it
+        at(16); s.onRenderPre(0, 0);
+
+        assertEquals(4 * MS, s.finish().selfNanos(), "a balanced nesting must not truncate the outer interval");
+    }
 }

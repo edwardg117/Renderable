@@ -56,6 +56,9 @@ public final class Rows {
         rows.add(Row.plain("GC", st.gcCount() + " collections, " + st.gcMillis() + " ms paused"));
         rows.add(Row.plain("Renderable overhead", String.format(Locale.ROOT, "%.2f ms over %s timed calls and %s vertex calls",
                 r.overheadEstimateMs(), Fmt.count(r.timedCalls()), Fmt.count(r.vertexCalls()))));
+        if (r.selfNanos() > 0) {
+            rows.add(Row.plain("Renderable self time", Fmt.ms2(r.selfNanos()) + " ms (HUD and Flywheel sampling)"));
+        }
         if (r.unbalancedFrames() > 0) {
             rows.add(Row.plain("Attribution stack reset", r.unbalancedFrames() + " frames (a hook threw past its end call)"));
         }

@@ -566,9 +566,18 @@ once per rendered frame. None of that cost, nor the once-a-second Flywheel visua
    and recomputes at most four times a second (and always on the first frame of a session). `countRolling`
    itself is unchanged, so its unit tests stand.
 2. *Measure, do not estimate.* `Session` gains `selfNanos`, a plain counter, and `beginSelf()`/`endSelf()`
-   that time work the mod does inside a frame for itself: the HUD render, the Flywheel visual sample and the
-   overlay draw. Those are not attributed to any key or bucket — they sit in `other render` where they
-   really are — but the report can now say how much of `other render` is Renderable.
+   that time work the mod does inside a frame for itself: the HUD render and the Flywheel visual sample.
+   Those are not attributed to any key or bucket — they sit in `other render` where they really are — but
+   the report can now say how much of `other render` is Renderable.
+
+   **The overlay is deliberately not measured**, though an earlier draft of this section listed it.
+   `ProfilerController.start` calls `WorldOverlay.clear()`, so while a session is sampling the overlay has
+   no labels to draw: `onRenderLevelStage` early-returns and `render` skips `drawLabels`, leaving two field
+   reads and a return per frame. Wrapping that in a `beginSelf`/`endSelf` pair would add a clock read to
+   every measured frame in order to measure approximately zero — the opposite of this item's point. The
+   only overlay work that can overlap a session is a ten-second highlight of twelve projected edges left
+   over from a previous one, which the README records rather than measures. Naming the overlay in the
+   report line while not measuring it would be a false claim, so the line names what it measures.
 
 **Alternatives rejected.**
 
@@ -579,7 +588,7 @@ once per rendered frame. None of that cost, nor the once-a-second Flywheel visua
 **User-visible change.**
 
 - *Text report.* The overhead line gains a second sentence:
-  `  Renderable's own in-frame work (HUD, overlay, Flywheel sampling): 12.40 ms measured, inside other render.`
+  `  Renderable's own in-frame work (HUD and Flywheel sampling): 12.40 ms measured, inside other render.`
 - *JSON.* `session.selfMs` is added. This is an additive field on an existing object; `schema` stays at the
   value group A set (4), because readers of schema 4 that ignore unknown fields are unaffected and no
   existing field changes meaning. The README's schema section records it.

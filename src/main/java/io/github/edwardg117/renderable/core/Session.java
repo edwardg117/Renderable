@@ -57,6 +57,9 @@ public final class Session {
     private int depth;
     private long timedCalls;
     private long vertexCalls;
+    private long selfNanos;
+    private long selfStartNanos = -1;
+    private int selfDepth;
 
     /** Set by the Iris integration (phase 2) while the shadow pass is rendering. */
     public boolean shadowPass;
@@ -116,6 +119,34 @@ public final class Session {
     /** Number of vertex-counting calls, for the overhead estimate (spec addendum §P4.A5). */
     public long vertexCalls() {
         return vertexCalls;
+    }
+
+    /**
+     * Starts timing work the mod does for itself inside a frame: the sampling HUD and the Flywheel visual
+     * sample (spec addendum §P4.B3). It is not attributed to any key or bucket, because it really is part of
+     * other render time; the report states it so a reader can subtract it. Pair with {@link #endSelf()}.
+     *
+     * <p>Nests: an inner begin/end pair inside an outer one does not truncate the outer interval, matching
+     * {@link #begin} and {@link #end}. Everything timed here must be named in the self-time line printed by
+     * {@code TextReportWriter} and {@code Rows} ("HUD and Flywheel sampling" as of this writing); wrapping a
+     * third region without updating both labels (and the README) makes that text silently false.
+     */
+    public void beginSelf() {
+        if (selfDepth++ == 0) selfStartNanos = clock.getAsLong();
+    }
+
+    /** Ends a self-timing. An end with nothing open is ignored. */
+    public void endSelf() {
+        if (selfDepth == 0) return;
+        if (--selfDepth == 0) {
+            selfNanos += clock.getAsLong() - selfStartNanos;
+            selfStartNanos = -1;
+        }
+    }
+
+    /** Nanoseconds the mod spent on its own in-frame work. */
+    public long selfNanos() {
+        return selfNanos;
     }
 
     /** Number of frame boundaries at which the attribution stack was found unbalanced and reset. */
@@ -205,7 +236,7 @@ public final class Session {
         double overheadMs = (timedCalls * config.calibratedCallNanos()
                 + vertexCalls * config.calibratedVertexNanos()) / 1_000_000.0;
         return new SessionResult(config, wallStartMillis, frameList, accumulators(), stats, threshold, hitches,
-                timedCalls, vertexCalls, overheadMs, unbalancedFrames, flywheelStats(), mesh.snapshot());
+                timedCalls, vertexCalls, selfNanos, overheadMs, unbalancedFrames, flywheelStats(), mesh.snapshot());
     }
 
     /**

@@ -252,7 +252,12 @@ public final class ProfilerController implements Probe.Listener {
         long second = s.elapsedNanos() / 1_000_000_000L;
         if (second != lastVisualSampleSecond) {
             lastVisualSampleSecond = second;
-            sampleFlywheel(s);
+            s.beginSelf();
+            try {
+                sampleFlywheel(s);
+            } finally {
+                s.endSelf();
+            }
         }
 
         int ms = pendingStallMs;

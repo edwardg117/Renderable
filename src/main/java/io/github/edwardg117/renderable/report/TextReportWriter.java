@@ -68,6 +68,11 @@ public final class TextReportWriter {
         sb.append(String.format(Locale.ROOT,
                 "  Renderable overhead: about %.2f ms over %s timed calls and %s vertex calls\n",
                 r.overheadEstimateMs(), Fmt.count(r.timedCalls()), Fmt.count(r.vertexCalls())));
+        if (r.selfNanos() > 0) {
+            sb.append(String.format(Locale.ROOT,
+                    "  Renderable's own in-frame work (HUD and Flywheel sampling): %s ms measured, inside other render.\n",
+                    Fmt.ms2(r.selfNanos())));
+        }
         if (r.unbalancedFrames() > 0) {
             sb.append(String.format(Locale.ROOT,
                     "  Attribution stack reset on %d frames (a hook threw past its end call; buckets on those frames are incomplete)\n",

@@ -145,7 +145,7 @@ class TextReportWriterTest {
     static SessionResult withFlywheel(SessionResult base, FlywheelStats fw, int unbalanced) {
         return new SessionResult(base.config(), base.wallStartMillis(), base.frames(), base.accumulators(),
                 base.stats(), base.hitchThresholdNanos(), base.hitches(), base.timedCalls(), base.vertexCalls(),
-                base.overheadEstimateMs(), unbalanced, fw, base.mesh());
+                base.selfNanos(), base.overheadEstimateMs(), unbalanced, fw, base.mesh());
     }
 
     @Test
@@ -250,5 +250,20 @@ class TextReportWriterTest {
         int at = out.indexOf("Block entities by position (top 20)\n");
         String row = out.substring(at).split("\n", 5)[3];
         assertTrue(row.contains(" - "), "the only frame was GC-suspect, so there is no clean peak: " + row);
+    }
+
+    @Test
+    void selfTimeLineIsPrintedWhenThereIsAny() {
+        SessionResult none = TestSessions.sample();
+        assertFalse(TextReportWriter.write(none, env, "0.4.0").contains("Renderable's own in-frame work"),
+                "a session with no self time says nothing");
+
+        SessionResult some = new SessionResult(none.config(), none.wallStartMillis(), none.frames(),
+                none.accumulators(), none.stats(), none.hitchThresholdNanos(), none.hitches(),
+                none.timedCalls(), none.vertexCalls(), 12_400_000L, none.overheadEstimateMs(),
+                none.unbalancedFrames(), none.flywheel(), none.mesh());
+        assertTrue(TextReportWriter.write(some, env, "0.4.0").contains(
+                "  Renderable's own in-frame work (HUD and Flywheel sampling): 12.40 ms measured, inside other render.\n"),
+                TextReportWriter.write(some, env, "0.4.0"));
     }
 }

@@ -20,6 +20,11 @@ class JsonReportWriterTest {
     private static final List<String> RANKED_KEYS = List.of("key", "label", "typeId", "members", "calls",
             "tickCalls", "callsPerFrame", "renderUs", "tickUs", "shadowUs", "peakFrameUs", "gcFrames", "vertices");
 
+    /** Pins the session object's field order, the same way RANKED_KEYS pins a ranked row's (spec §6.2). */
+    private static final List<String> SESSION_KEYS = List.of("startedAt", "durationSeconds", "frames",
+            "hitchThresholdMs", "overheadEstimateMs", "timedCalls", "vertexCalls", "selfMs", "unbalancedFrames",
+            "config");
+
     final SessionResult r = TestSessions.sample();
 
     static Environment environment() {
@@ -243,6 +248,19 @@ class JsonReportWriterTest {
         // frames. The batched vertices(int) path is covered by SessionTest, not here.
         assertEquals(2400, o.getAsJsonObject("session").get("vertexCalls").getAsLong());
         assertEquals(4, o.get("schema").getAsInt());
+    }
+
+    @Test
+    void selfMsIsReported() {
+        JsonObject o = parse();
+        assertEquals(0.0, o.getAsJsonObject("session").get("selfMs").getAsDouble(), 1e-9);
+    }
+
+    @Test
+    void sessionObjectHasTheSchema4ShapeInOrder() {
+        JsonObject session = parse().getAsJsonObject("session");
+        assertEquals(SESSION_KEYS, List.copyOf(session.keySet()),
+                "session object shape changed - bump SCHEMA if that was intended");
     }
 
     @Test

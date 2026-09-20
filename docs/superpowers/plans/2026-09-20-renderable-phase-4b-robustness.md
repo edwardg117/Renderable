@@ -1907,7 +1907,12 @@ while sampling, the report states its own overhead, which covers both timed call
 separately the measured cost of its own HUD and sampling,
 ```
 
-In "Report files", add above the schema 4 paragraph:
+First, the schema 4 paragraph itself is now two fields behind: phase 4a wrote it before `session.selfMs`
+existed, and 4b Task 3 added that field. Bring it up to date in place — `selfMs` is additive on an existing
+object, so `schema` stays at 4, and the paragraph should say so rather than leaving a reader to wonder why
+a new field did not bump it.
+
+Then, in "Report files", add above the schema 4 paragraph:
 
 ```markdown
 The JSON is streamed to the file a row at a time and is never held in memory as a tree or as a string, so a
