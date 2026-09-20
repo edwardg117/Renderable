@@ -85,6 +85,12 @@ public final class Probe {
         ACTIVE = true;
     }
 
+    /**
+     * The write order matters: ACTIVE goes false first so no new hook call starts, then the session is
+     * nulled (a call already past its ACTIVE check sees null and returns), then the caches are cleared;
+     * a worker still holding a mesh accumulator may put it back, which the owner check in
+     * meshBlock/meshFluid tolerates.
+     */
     public static void detach() {
         ACTIVE = false;
         session = null;

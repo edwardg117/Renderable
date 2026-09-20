@@ -113,7 +113,8 @@ accumulators.
 | `ParticleKey` | particle class name | render and tick (phase 2) |
 | `BlockKey` | block id | Sodium mesh build (phase 3) |
 | `SectionKey` | dimension, section position | Sodium mesh build (phase 3) |
-| `VisualClassKey` | Flywheel visual class name | counts only (phase 2) |
+
+Flywheel visual counts are averaged per class in `FlywheelStats`, not keyed accumulators.
 
 Each key's accumulator holds: `calls`, `totalNanos`, `shadowNanos` (Iris shadow pass share),
 `tickNanos`, `maxFrameNanos`, `vertices`, and a scratch `frameNanos` (render plus tick
@@ -168,14 +169,13 @@ vanilla and Sodium.
 
 | Target | Kind | Records |
 | --- | --- | --- |
-| call to `Particle#render(VertexConsumer, Camera, float)` inside `ParticleEngine#render(LightTexture, Camera, float)` | `@WrapOperation` | `ParticleKey` render time, `PARTICLE_RENDER`; live particle count per class |
+| call to `Particle#render(VertexConsumer, Camera, float)` inside `ParticleEngine#render(LightTexture, Camera, float, Frustum, Predicate<ParticleRenderType>)` | `@WrapOperation` | `ParticleKey` render time, `PARTICLE_RENDER`; live particle count per class |
 | call to `Particle#tick()` inside `ParticleEngine#tickParticle(Particle)` | `@WrapOperation` | `ParticleKey` tick time, `PARTICLE_TICK` |
 | `LevelChunk$BoundTickingBlockEntity#tick()` when `level.isClientSide` | `@WrapMethod` | `BlockEntityKey` tick time, `BE_TICK` |
 | `Level#guardEntityTick(Consumer, Entity)` when client level | `@WrapMethod` | `EntityKey` tick time, `ENTITY_TICK` |
 | `LevelLightEngine#runLightUpdates()` on the client | `@WrapMethod` | `LIGHT` |
 | Flywheel `VisualizationManager$RenderDispatcher` implementation: `onStartLevelRender`, `afterEntities`, `beforeCrumbling` | `@WrapMethod` on the impl class | `FLYWHEEL` |
-| Flywheel `VisualizationManagerImpl.get(level)` then `blockEntities()`, `entities()`, `effects()` `visualCount()` | polled once per second while sampling | Flywheel visual totals |
-| Flywheel `VisualManagerImpl` storage | accessor mixin, best effort | `VisualClassKey` counts |
+| Flywheel `VisualizationManagerImpl` storage, read directly by `FlywheelCompat` with a failure latch | once per second while sampling, no mixin | Flywheel visual totals and visual counts by class, averaged over samples |
 | Iris `ShadowRenderingState.areShadowsCurrentlyBeingRendered()` | static call through an `IrisCompat` class loaded only when Iris is present | routes the current call's nanoseconds into `shadowNanos` as well |
 
 Iris's shadow pass renders block entities and entities a second time per frame. Both passes
@@ -266,7 +266,9 @@ Tabs and columns:
 | Sections | section rows (Sodium only) | rebuilds, rebuilds/s, mesh ms total, avg ms/rebuild |
 | Flywheel | one totals row plus visual class rows | bucket µs/frame, share %, visual count |
 
-Every list sorts by any numeric column. Position and individual rows have **Highlight** (draw
+Every list sorts by any numeric column (implemented as a cycling Sort button on the Block
+Entities, Entities and Particles tabs; the Frames, Hitches, Flywheel, Blocks and Sections tabs
+have a fixed order). Position and individual rows have **Highlight** (draw
 an outline box at the position for 10 s) and **Teleport** (sends `/tp @s x y z` as chat; if the
 player lacks permission the server's error is what they see). A **Copy report** button copies
 the text report; **Open folder** opens the report directory.
@@ -321,8 +323,8 @@ code fence.
 
 ```
 {
-  "schema": 1,
-  "mod": { "version": "0.1.0" },
+  "schema": 3,
+  "mod": { "version": "0.3.0" },
   "environment": { ... same fields as the text header, typed ... },
   "session": { "startedAt": iso8601, "durationSeconds": 30.0, "frames": 2412,
                "hitchThresholdMs": 33.2, "overheadEstimateMs": 0.4 },
@@ -332,9 +334,12 @@ code fence.
   "blockEntities": { "byType": [ ... ], "byPosition": [ ... ] },
   "entities": { "byType": [ ... ], "individuals": [ ... ] },
   "particles": [ ... ],
-  "blocks": [ ... ],
-  "sections": [ ... ],
-  "flywheel": { "bucketUs": ..., "visualCounts": { "class": n } }
+  "blocks": [ { "key": "block:id", "calls": n, "meshUs": ..., "usPerCall": ...,
+                "msPerSecond": ..., "callsPerSecond": ... } ],
+  "sections": [ { "key": "section@dim:x,y,z", "dimension": ..., "x": ..., "y": ..., "z": ...,
+                  "calls": ..., "meshUs": ..., ... } ],
+  "flywheel": { "bucketUs": ..., "sharePercent": ..., "samples": ..., "avgBlockEntities": ...,
+                "avgEntities": ..., "avgEffects": ..., "visualCounts": { "class": avg } }
 }
 ```
 

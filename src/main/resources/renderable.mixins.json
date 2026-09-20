@@ -11,12 +11,7 @@
     "BoundTickingBlockEntityMixin",
     "LevelMixin",
     "LevelLightEngineMixin",
-    "BufferBuilderMixin",
-    "flywheel.FlywheelRenderDispatcherMixin",
-    "sodium.ChunkBuilderTaskAccessor",
-    "sodium.ChunkBuilderMeshingTaskMixin",
-    "sodium.RenderSectionManagerMixin",
-    "sodium.SodiumBufferBuilderMixin"
+    "BufferBuilderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

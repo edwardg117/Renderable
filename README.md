@@ -6,8 +6,8 @@ time**, and what caused each hitch.
 
 ## Using it
 
-1. Press **F7** (or run `/renderable start [seconds]`). A line at the top of the screen counts down
-   the session; default 30 s.
+1. Press **F7** (or run `/renderable start [seconds]`). A line at the top of the screen counts the
+   session's elapsed seconds; default 30 s.
 2. When it ends, a results screen opens and a chat message offers **Open results**, **Copy
    report** and **Open folder**. Two files land in `<game dir>/renderable/`: a text report you can
    paste into an issue, and a JSON file with everything.
@@ -21,10 +21,10 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
 ## Reading a report
 
 - **Frames** gives the frame-time distribution. Trust p95 and p99 over the average.
-- **Time split** shows where the average frame went: client tick (with its block entity, entity and
-  particle tick shares in brackets), block entities, entities, particles, Flywheel, light updates,
-  other render work, and swap/wait (vsync, the GPU, the driver). A big swap/wait with a low GPU
-  load is not a rendering problem in the world.
+- **Time split** shows where the average frame went: client tick (with its block entity, entity
+  and particle tick shares in brackets), block entities, entities, particles, Flywheel, light
+  updates, chunk upload, other render work, and swap/wait (vsync, the GPU, the driver). A big
+  swap/wait with a low GPU load is not a rendering problem in the world.
 - **Hitches** lists the frames that spiked, each with its split and the things that were most
   expensive in exactly that frame. GC pauses are shown per frame.
 - **Block entities** and **entities** are ranked by microseconds per frame; expand a type to see
@@ -37,12 +37,14 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   once a second. Machines drawn by Flywheel do not appear in the block entity tables.
 - **Hooks applied** lists the hooks that have fired at least once since the game started, not
   only during this session.
-- **Blocks** ranks block types by the mesh-build time Sodium's workers spent on them, per second of
-  session; **Sections** lists the chunk sections that were rebuilt, with rebuild counts. Mesh time is
-  worker-thread time summed across Sodium's workers, so it can exceed 1000 ms per second and is not a
-  share of frame time. Rebuild storms show up as **chunk upload** time in the hitch splits, and rebuilds
-  that Sodium runs on the render thread count in both places. Cancelled rebuilds are not counted, and a
-  section's time can exceed the sum of its blocks when other mods add geometry to the section.
+- **Blocks** ranks block types by the mesh-build time Sodium's workers spent on them, per
+  second of session; **Sections** lists the chunk sections that were rebuilt, with rebuild
+  counts. Mesh time is worker-thread time summed across Sodium's workers, so it can exceed 1000
+  ms per second and is not a share of frame time. Rebuild storms show up as **chunk upload**
+  time in the hitch splits, and rebuilds that Sodium runs on the render thread count in both
+  places. Cancelled rebuilds are not counted, and a section's time can exceed the sum of its
+  blocks when other mods add geometry to the section, and the blocks can exceed the section
+  when a rebuild is cancelled part way through.
 - **verts/f** is the number of vertices a renderer emitted per frame, the proxy for GPU load. It counts
   emitted vertices: glint and outline passes emit the same geometry again, and Iris shaders roughly
   double it through the shadow pass. With Sodium installed the count relies on Sodium's own vertex

@@ -1,0 +1,17 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "io.github.edwardg117.renderable.hooks.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "io.github.edwardg117.renderable.hooks.RenderableMixinPlugin",
+  "client": [
+    "flywheel.FlywheelRenderDispatcherMixin",
+    "sodium.ChunkBuilderTaskAccessor",
+    "sodium.ChunkBuilderMeshingTaskMixin",
+    "sodium.RenderSectionManagerMixin",
+    "sodium.SodiumBufferBuilderMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

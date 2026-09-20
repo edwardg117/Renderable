@@ -115,6 +115,7 @@ public final class WorldOverlay {
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         clear();
+        highlight = null;
     }
 
     public static boolean isEnabled() {

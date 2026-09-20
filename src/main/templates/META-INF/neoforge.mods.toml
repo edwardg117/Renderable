@@ -6,6 +6,9 @@ issueTrackerURL="https://github.com/edwardg117/Renderable/issues"
 [[mixins]]
 config="renderable.mixins.json"
 
+[[mixins]]
+config="renderable.thirdparty.mixins.json"
+
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"

@@ -125,6 +125,7 @@ public final class ProfilerController implements Probe.Listener {
     private void discard(String reason) {
         Probe.detach();
         session = null;
+        pendingStallMs = 0;
         chat("Renderable: session discarded (" + reason + ").");
     }
 
@@ -139,30 +140,41 @@ public final class ProfilerController implements Probe.Listener {
         Environment env = EnvironmentCollector.collect(Probe.hooksApplied());
         String text = TextReportWriter.write(result, env, RenderableMod.VERSION);
         String json = JsonReportWriter.write(result, env, RenderableMod.VERSION);
-        ReportFiles.Written written = ReportFiles.write(text, json, result.wallStartMillis());
+        ReportFiles.Written written = null;
+        String writeFailure = null;
+        try {
+            written = ReportFiles.write(text, json, result.wallStartMillis());
+        } catch (RuntimeException e) {
+            RenderableMod.LOGGER.warn("Renderable could not write reports", e);
+            writeFailure = e.getMessage();
+        }
 
         lastResult = result;
         lastEnvironment = env;
         lastReportText = text;
-        lastFolder = written.folder();
+        if (written != null) lastFolder = written.folder();
         WorldOverlay.setResult(result);
 
-        chat(finishedMessage(result, written));
+        chat(finishedMessage(result, written, writeFailure));
 
         if (RenderableConfig.OPEN_RESULTS_ON_FINISH.get()) {
             openResults();
         }
     }
 
-    private static MutableComponent finishedMessage(SessionResult r, ReportFiles.Written w) {
+    private static MutableComponent finishedMessage(SessionResult r, ReportFiles.Written w, String writeFailure) {
         MutableComponent msg = Component.literal(String.format(Locale.ROOT,
                 "Renderable: %d frames in %.1f s, avg %.1f ms, %d hitches. ",
                 r.frameCount(), r.stats().durationSeconds(), r.stats().avgNanos() / 1e6, r.hitches().size()));
         msg.append(commandLink("[Open results]", "/renderable results")).append(" ");
-        msg.append(commandLink("[Copy report]", "/renderable copy")).append(" ");
-        msg.append(Component.literal("[Open folder]").withStyle(st -> st
-                .withColor(ChatFormatting.AQUA).withUnderlined(true)
-                .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, w.folder().toAbsolutePath().toString()))));
+        msg.append(commandLink("[Copy report]", "/renderable copy"));
+        if (w != null) {
+            msg.append(" ").append(Component.literal("[Open folder]").withStyle(st -> st
+                    .withColor(ChatFormatting.AQUA).withUnderlined(true)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, w.folder().toAbsolutePath().toString()))));
+        } else {
+            msg.append(Component.literal(" Report files could not be written: " + writeFailure));
+        }
         return msg;
     }
 
