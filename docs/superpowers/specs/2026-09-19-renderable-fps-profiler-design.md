@@ -449,7 +449,13 @@ have no Minecraft imports; `EnvironmentCollector` is the only Minecraft-aware cl
    and mean CPU load with the jar must be within 2% of without it, and fewer than 0.1% of execution samples
    may contain a `io.github.edwardg117.renderable` frame. With escape analysis off, the jar's run must
    allocate more than 2% above the jar-free run, which is the control proving the measurement is sensitive
-   enough to support the first claim. See `docs/acceptance/phase-4-idle.md`.
+   enough to support the first claim.
+
+   **Still not run, as of `v0.4.0`.** This check has been outstanding since phase 1, which recorded it as
+   NOT VERIFIED because frame time at the pack's base fluctuates more than the effect being looked for.
+   Phase 4a replaced the criterion with the protocol above but did not execute it, so the README's
+   "costs nothing when it is not sampling" remains a design claim rather than a measured one. When it is
+   run, the results belong in `docs/acceptance/phase-4-idle.md`.
 
 ## 10. Repository, build, release
 
@@ -476,7 +482,7 @@ Each phase is its own implementation plan and its own release tag.
 | 1 | repo and CI, `core`, frame model with tick/render/swap/GC, block entity and entity render hooks, hitch log, keybind and command, HUD, results screen with Frames, Hitches, Block Entities and Entities tabs, overlay, text and JSON export, debug stall | in-game checks 1, 2, 5 |
 | 2 | particle render and tick, block entity and entity client tick, Flywheel bucket and counts, light bucket, Iris shadow split, Particles and Flywheel tabs | in-game check 3 |
 | 3 | Sodium mesh per block and per section, chunk upload bucket, vertex counts, Blocks and Sections tabs | in-game check 4 |
-| 4a | GC-suspect values excluded from per-key and per-type peaks and flagged in every output, type peaks taken from the type's worst frame, Accelerated Rendering vertices counted, the overhead estimate extended to vertex calls and its calibration corrected, JSON schema 4 | in-game checks 1 to 4, and check 5 measured for the first time |
+| 4a | GC-suspect values excluded from per-key and per-type peaks and flagged in every output, type peaks taken from the type's worst frame, Accelerated Rendering vertices counted, the overhead estimate extended to vertex calls and its calibration corrected, JSON schema 4 | in-game checks 1 to 4; check 5 (idle cost) still not run |
 
 Phase 4 is four independently executable plans rather than one. Group A ships alone as `v0.4.0`; groups B
 (robustness and cost), C (screen and overlay) and D (hygiene and CI) follow in any order, each with its own

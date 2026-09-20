@@ -170,11 +170,25 @@ calls`, the Particles tab showing seven ending `verts/f | gc f`, the `Renderable
 both counts, and whether right-aligned numbers collide in a non-maximised window — that last one is
 known-deferred to plan 4c (§P4.C6 #4) and should be logged rather than treated as new.
 
+The column arithmetic behind those tabs *was* verified statically — headers, weights, alignment flags
+and supplied cells counted independently by two reviewers, 9/9/9/9 for the ranked tabs and 7/7/7/7
+for particles, with the text report's headers compared term for term against the screen's. So what is
+unverified is whether it **reads** well at a real GUI scale, not whether the columns line up. Plan 4c
+rewrites all of these tabs and will put a human in front of them again.
+
 ## Check 8: idle cost (base spec §9 check 5)
 
-**Result: NOT RUN.** See `docs/acceptance/phase-4-idle.md` when the four Java Flight Recorder runs
-have been done. This is the check that has been outstanding since phase 1, and `v0.4.0` should not be
-tagged until it has a verdict, because the spec's §11 row and §9 both now claim it was measured.
+**Result: NOT RUN, and deliberately deferred past `v0.4.0`** (user decision, 2026-09-20).
+
+Phase 4a replaced the criterion — §9 check 5 now specifies a Java Flight Recorder protocol in a static
+superflat scene with an escape-analysis control, rather than phase 1's inconclusive "F3 frame time is
+unchanged within noise" — but did not execute it. The spec's §9 and its §11 row were corrected to say so
+rather than left claiming a measurement nobody ran.
+
+What this costs: the README's "costs nothing when it is not sampling" is still a design claim, as phase 1's
+log said it would remain until measured. Nothing else in phase 4a depends on it, and the protocol is written
+down and ready, so running it later is a self-contained job rather than a re-derivation. Results go in
+`docs/acceptance/phase-4-idle.md`.
 
 ## Observations for later phases
 
