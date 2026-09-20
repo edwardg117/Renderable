@@ -37,6 +37,12 @@ public enum Tab {
      * Kept as a nested class so enum constants can reference the constants without a forward-reference error.
      */
     public record Columns(String[] headers, int[] weights, boolean[] rightAlign) {
+        public Columns {
+            if (headers.length != weights.length || headers.length != rightAlign.length) {
+                throw new IllegalArgumentException("headers, weights and rightAlign must be the same length");
+            }
+        }
+
         static final Columns METRIC_VALUE = new Columns(
                 new String[]{"metric", "value"},
                 new int[]{2, 3},
@@ -46,13 +52,13 @@ public enum Tab {
                 new int[]{2, 1, 7},
                 new boolean[]{false, true, false});
         static final Columns RANKED = new Columns(
-                new String[]{"name", "render us/f", "tick us/f", "share", "peak ms", "shadow", "verts/f", "calls"},
-                new int[]{5, 1, 1, 1, 1, 1, 1, 1},
-                new boolean[]{false, true, true, true, true, true, true, true});
+                new String[]{"name", "render us/f", "tick us/f", "share", "peak ms", "gc f", "shadow", "verts/f", "calls"},
+                new int[]{5, 1, 1, 1, 1, 1, 1, 1, 1},
+                new boolean[]{false, true, true, true, true, true, true, true, true});
         static final Columns PARTICLE = new Columns(
-                new String[]{"class", "render us/f", "tick us/f", "share", "avg live", "verts/f"},
-                new int[]{5, 1, 1, 1, 1, 1},
-                new boolean[]{false, true, true, true, true, true});
+                new String[]{"class", "render us/f", "tick us/f", "share", "avg live", "verts/f", "gc f"},
+                new int[]{5, 1, 1, 1, 1, 1, 1},
+                new boolean[]{false, true, true, true, true, true, true});
         static final Columns FLYWHEEL = new Columns(
                 new String[]{"visual class", "avg count", "share"},
                 new int[]{6, 1, 1},

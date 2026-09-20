@@ -98,7 +98,16 @@ docs/acceptance/phase-4-idle.md                               Create (Task 9)
 
 `core` stays free of Minecraft imports (`KeysTest.coreHasNoMinecraftImports`). `TypeStats` uses no imports at all.
 
-**Expected test totals**, assuming no other phase 4 plan has run: 75 at the start, 78 after Task 1, 79 after Task 2, 82 after Task 3, 84 after Task 4, 86 after Task 5, and 86 at the end.
+**Test totals.** The plan was drafted expecting 75 → 78 → 79 → 82 → 84 → 86, and the per-step figures below
+have been updated to what the executed branch actually reached: **75 → 78 → 79 → 83 → 85 → 90**, holding at
+90 through Tasks 6 and 7, which add none.
+
+The divergence is not drift. Each task's two-stage review found tests worth adding that the plan's own steps
+do not contain — a boundary case that would have let a `<=` typo through, a calibration assertion that could
+not fail, a key-set test pinning the JSON shape against a later rewrite. Those went in during the fix round
+rather than being back-ported into the steps here, because this plan is now a record of what was intended
+and the git history is the record of what landed. Anyone re-running these steps from scratch will reach the
+plan's original arithmetic and should not treat the shortfall as a failure.
 
 ---
 
@@ -935,7 +944,7 @@ In `ui/screen/Rows.java`:
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **82 tests**, all green.
+Expected: `BUILD SUCCESSFUL`, **83 tests**, all green. (The plan was drafted expecting 82; a review in this task split one `FmtTest` test in two.)
 
 The report tests keep passing even though the overhead figure now includes vertex calls, and that is not luck: `TestSessions.sample()` and `phase2()` never call `s.vertex()` — only the `phase3` branch does — so their `vertexCalls` is zero and contributes nothing. The overhead line's *format* is untouched here; Task 4 changes its wording, and updates those two assertions with it.
 
@@ -1158,7 +1167,7 @@ Replace `appendParticles`'s table construction and row loop:
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **84 tests**. If `rankedTablesAlignAndEmptyCategoriesSaySo` fails on a line-length comparison, the `Table` widths are being computed from a row with the wrong number of cells — check that every `t.row(...)` in `appendRanked` passes nine values and `appendParticles` seven.
+Expected: `BUILD SUCCESSFUL`, **85 tests**. If `rankedTablesAlignAndEmptyCategoriesSaySo` fails on a line-length comparison, the `Table` widths are being computed from a row with the wrong number of cells — check that every `t.row(...)` in `appendRanked` passes nine values and `appendParticles` seven.
 
 - [ ] **Step 5: Stage and report**
 
@@ -1281,7 +1290,7 @@ In `ranked`, add after `o.addProperty("peakFrameUs", e.maxFrameNanos() / 1000);`
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **86 tests**.
+Expected: `BUILD SUCCESSFUL`, **87 tests**.
 
 - [ ] **Step 5: Stage and report**
 
@@ -1681,21 +1690,27 @@ Replace the overhead row in `frames`:
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 86 tests.
+Expected: `BUILD SUCCESSFUL`, 90 tests — this task adds none.
 
-- [ ] **Step 4: Launch and look at the screen**
+- [ ] **Step 4: Compile, and check the column arithmetic on paper**
 
 ```bash
-./gradlew runClient -PquickPlay="New World" --no-daemon
+./gradlew build --no-daemon
 ```
 
-In the world, set `debugCommands = true` in `run/config/renderable-client.toml` if it is not already, then run `/renderable start 5`, wait for the results screen, and check by eye:
+There is no automated check here: `Rows` imports `net.minecraft.core.BlockPos` and cannot be unit-tested,
+and whether a column *reads* well is a judgement only a human looking at the screen can make. So do not
+claim a visual check you cannot perform — instead verify by reading that, for each tab you touched, the
+number of cells a row supplies equals the number of headers `Tab.Columns` declares, and that the
+`rightAlign` array is the same length. A mismatch silently drops or misplaces a column at runtime, and
+`RowList` will not complain.
 
-- the Block Entities and Entities tabs show nine columns ending `... peak ms | gc f | shadow | verts/f | calls`, with `gc f` reading `0`;
-- the Particles tab shows seven columns ending `verts/f | gc f`;
-- the Frames tab's `Renderable overhead` row reads `... over N timed calls and M vertex calls`.
+The visual check moves to Task 9, where the user has the results screen open in the real pack anyway:
 
-Stop the client with the Step 9 filter from Task 6.
+- Block Entities and Entities show nine columns ending `... peak ms | gc f | shadow | verts/f | calls`;
+- Particles shows seven ending `verts/f | gc f`;
+- the Frames tab's `Renderable overhead` row names both counts, and a `Renderable self time` row is absent
+  until plan 4b adds it.
 
 - [ ] **Step 5: Stage and report**
 
@@ -1821,7 +1836,7 @@ ignored) may be the collector rather than the code, and is counted in `gcFrames`
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 86 tests, `build/libs/renderable-0.4.0.jar`.
+Expected: `BUILD SUCCESSFUL`, 90 tests, `build/libs/renderable-0.4.0.jar`.
 
 ```bash
 JAVA_TOOL_OPTIONS="-Dmixin.debug.export=true" ./gradlew runClient -PquickPlay="New World" --no-daemon

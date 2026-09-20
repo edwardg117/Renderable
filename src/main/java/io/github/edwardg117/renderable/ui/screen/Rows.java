@@ -54,8 +54,8 @@ public final class Rows {
         rows.add(Row.plain("Hitch threshold", Fmt.ms(r.hitchThresholdNanos()) + " ms"));
         rows.add(Row.plain("Hitches", r.hitches().size() + " (" + Fmt.pct(r.hitchSharePercent()) + " of time)"));
         rows.add(Row.plain("GC", st.gcCount() + " collections, " + st.gcMillis() + " ms paused"));
-        rows.add(Row.plain("Renderable overhead", String.format(Locale.ROOT, "%.2f ms over %s timed calls",
-                r.overheadEstimateMs(), Fmt.count(r.timedCalls()))));
+        rows.add(Row.plain("Renderable overhead", String.format(Locale.ROOT, "%.2f ms over %s timed calls and %s vertex calls",
+                r.overheadEstimateMs(), Fmt.count(r.timedCalls()), Fmt.count(r.vertexCalls()))));
         if (r.unbalancedFrames() > 0) {
             rows.add(Row.plain("Attribution stack reset", r.unbalancedFrames() + " frames (a hook threw past its end call)"));
         }
@@ -112,7 +112,7 @@ public final class Rows {
             rows.add(new Row(new String[]{frame, Fmt.ms(h.totalNanos()), Splits.frame(h) + " | gc " + h.gcMillis() + " ms"},
                     null, null, true, false, 0, null, -1));
             for (TopEntry t : h.top()) {
-                rows.add(new Row(new String[]{t.key().label(), Fmt.ms2(t.nanos()), ""},
+                rows.add(new Row(new String[]{t.key().label(), Fmt.ms2(t.nanos()), t.gc() ? "[gc]" : ""},
                         t.key(), t.key().typeId(), false, false, 1, posOf(t.key()), entityIdOf(t.key())));
             }
         }
@@ -153,7 +153,8 @@ public final class Rows {
                     Fmt.us(e.tickUsPerFrame(frames)),
                     Fmt.pct(e.sharePercent(total)),
                     Fmt.num(e.callsPerFrame(frames)),
-                    Fmt.num(e.verticesPerFrame(frames))},
+                    Fmt.num(e.verticesPerFrame(frames)),
+                    Fmt.count(e.gcFrames())},
                     e.key(), e.typeId(), false, false, 0, null, -1));
         }
         if (rows.isEmpty()) rows.add(Row.plain("(no particles rendered)"));
@@ -219,7 +220,8 @@ public final class Rows {
                 Fmt.us(e.renderUsPerFrame(frames)),
                 Fmt.us(e.tickUsPerFrame(frames)),
                 Fmt.pct(e.sharePercent(total)),
-                Fmt.ms2(e.maxFrameNanos()),
+                Fmt.peakMs(e.maxFrameNanos(), e.gcFrames()),
+                Fmt.count(e.gcFrames()),
                 Fmt.pct(e.shadowPercent()),
                 Fmt.num(e.verticesPerFrame(frames)),
                 Fmt.count(e.calls())};

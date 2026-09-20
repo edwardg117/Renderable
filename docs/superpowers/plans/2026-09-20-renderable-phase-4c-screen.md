@@ -263,6 +263,48 @@ feat(core): sort ranked and mesh rows by any column, in either direction
 
 ---
 
+### Task 1a: Reshape `Columns`, and stop writing the ranked cells twice
+
+**Files:**
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Tab.java`
+- Create: `src/main/java/io/github/edwardg117/renderable/core/Columns.java`
+- Modify: `src/main/java/io/github/edwardg117/renderable/report/TextReportWriter.java`
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Rows.java`
+
+Added after phase 4a, from the code-quality review of its Task 7. **Do this before Task 2**, because Task 2
+adds a fourth parallel array to `Tab.Columns` and Task 4 rewrites the same cell-building lines — doing it
+after means doing it twice.
+
+Two problems, one move:
+
+1. `Tab.Columns` is three hand-aligned parallel arrays across seven constants. Phase 4a had to extend three
+   of them in lockstep twice, and a mismatch is silent: `RowList.render` iterates
+   `i < row.cells().length && i < colX.length`, so a short row truncates rather than throwing. Task 2 makes
+   it four arrays. Replace them with a `record Column(String name, int weight, boolean rightAlign,
+   ColumnSort sort)` and make `Columns` a list of those, so miscounting becomes impossible rather than
+   merely checked. `layout(int)` reads more simply from a list, and the compact-constructor invariant phase
+   4a added stops being necessary.
+2. The ranked and particle **column names and cell expressions are written twice**, term for term, in
+   `TextReportWriter` and in `Rows`. Nothing enforces that they agree; today they do only because a reviewer
+   read both files side by side. Move the shared part — the column names and a
+   `String[] cells(RankedEntry, int frames, long total)` — into `core`. That is not a new dependency
+   direction: `ui` and `report` both already depend on `core`, and `core` already carries presentation code
+   by precedent, since `Fmt` is entirely formatting and `Splits.frame`/`average` produce report strings.
+
+What stays where it is: pixel weights, alignment, `TextReportWriter`'s `TOP` truncation and its mesh note,
+and this plan's per-column sorting. Those genuinely differ between the two surfaces.
+
+Once the cell builders live in `core` they are testable, which is the point: `TabTest` in Task 2 can then
+assert that each tab's column count equals the length of the array its builder returns for a real
+`RankedEntry`, turning the thing phase 4a had to verify by reading into a test.
+
+Also add, while these files are open: the results screen's Frames tab has no equivalent of the report's
+note explaining what `gc f` means, which phase 4a added to the text report only. Put the same sentence
+beside the Frames tab's `GC` row, so the two surfaces are as consistent in their explanations as they now
+are in their numbers.
+
+---
+
 ### Task 2: Columns declare what they sort by
 
 **Files:**
