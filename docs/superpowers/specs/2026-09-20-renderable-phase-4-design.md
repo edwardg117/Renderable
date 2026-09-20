@@ -923,6 +923,21 @@ implements each:
   over-charged rather than under-charged.
 - **No per-visual Flywheel timing.** §4.4 is unchanged; nothing new was learned that would change it.
 - **No GPU timer queries.** §2 is unchanged; vertex counts remain the proxy.
+- **No hook for a riding entity's tick.** `ClientLevel.tickEntities` routes only non-passengers through
+  `Level#guardEntityTick`, so while a player rides anything their tick is folded into the vehicle's
+  inclusive time and vanishes from the entity table. Confirmed on real data: a flight session rendered the
+  player 4,983 times and ticked them **zero** times, while the aircraft reported 309.7 µs per tick — a
+  number that contains the player's tick without saying so. This matters more than it looks, because the
+  player is the most expensive entity to tick in this pack by a wide margin (498 µs against 28.9 µs for the
+  next worst, 48% of all client entity-tick time), so the entity table is at its least trustworthy exactly
+  when someone is moving around on a vehicle. Closing it means a second hook on `Entity.rideTick()` and a
+  decision about whether to subtract the passenger from the vehicle's time or report both. Phase 5, recorded
+  in base spec §4.2.
+- **No decomposition of a single entity's tick.** The same measurement raises the obvious next question —
+  *what* costs 498 µs inside one player tick — and Renderable cannot answer it. `guardEntityTick` wraps the
+  whole call, so the figure is inclusive of everything the pack's mods attach to a player tick, and there is
+  no call site to wrap inside another mod's event listener. A sampling profiler such as spark is the right
+  tool for that question, and the README should not imply otherwise.
 - **No hook for Distant Horizons, Sodium Extra, Sodium Dynamic Lights or the other pack renderers.** The
   phase 2/3 log's largest unattributed bucket is still `other render` at 5 to 6 ms per frame; attributing
   it further is a phase 5 question, not a phase 4 one.

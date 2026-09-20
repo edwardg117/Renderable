@@ -194,6 +194,16 @@ vanilla and Sodium.
 | Flywheel `VisualizationManagerImpl` storage, read directly by `FlywheelCompat` with a failure latch | once per second while sampling, no mixin | Flywheel visual totals and visual counts by class, averaged over samples |
 | Iris `ShadowRenderingState.areShadowsCurrentlyBeingRendered()` | static call through an `IrisCompat` class loaded only when Iris is present | routes the current call's nanoseconds into `shadowNanos` as well |
 
+**Known gap: a riding entity's tick is attributed to its vehicle.** `ClientLevel.tickEntities` routes only
+*non-passengers* through `guardEntityTick`; a passenger is ticked by its vehicle through
+`Entity.rideTick()`, which this hook never sees. So while a player is riding, their own tick disappears from
+the entity table and its cost is folded into the vehicle's inclusive tick time. Measured on 2026-09-20: in a
+flight session the player was rendered 4,983 times but ticked **zero** times, while
+`immersive_aircraft:gyrodyne` reported 600 ticks at 309.7 µs each — a figure that silently contains the
+player's tick. The cost is misattributed, not lost, and nothing in the report says so. Closing it needs a
+second hook on `Entity.rideTick()`, which is phase 5 scope; see the phase 4 addendum's "What phase 4 does
+not do".
+
 Iris's shadow pass renders block entities and entities a second time per frame. Both passes
 are real frame cost, so they are summed into `totalNanos`, and the shadow share is shown as
 its own column so a reader can tell "expensive renderer" from "expensive because shadows

@@ -187,5 +187,26 @@ tagged until it has a verdict, because the spec's §11 row and §9 both now clai
   38.3 ms of it with no GC. Unchanged from phase 3, and still a phase 5 question.
 - **The base still rebuilds sections while standing still**: `chunk upload 0.06` ms/frame and a
   non-empty Sections table on a stationary 30 s session.
-- `minecraft:player` shows 125.5 µs/f of **tick** time with zero render calls, which is worth a look
-  on its own terms — it is the third-largest entity tick cost in the session.
+- **The player is by far the most expensive entity to tick in this pack, and it is not a phase 4a
+  artefact.** The table reports 125.5 µs per *frame*, which is 600 ticks at **498.1 µs each** — 17
+  times the next worst entity (`minecraft:minecart`, 28.9 µs) and 70 times a zombie. One entity is
+  48.5% of all client entity-tick time; entity tick is 615 ms of a 2,992 ms tick budget, so the
+  player alone is roughly 10% of the client's tick time and 1% of wall time. It is long-standing,
+  not new: the three base sessions of 2026-09-20 measured 601.5, 449.6 and 498.1 µs per tick, and
+  turning shaders on *lowered* it, which is the right direction for tick work and rules out render
+  time leaking in.
+
+  Renderable cannot say what inside that tick costs the time: `guardEntityTick` wraps the whole call,
+  so the figure is inclusive of everything 386 mods attach to a player tick, and there is no call
+  site to wrap inside another mod's listener. A sampling profiler such as spark, pointed at the
+  `Player.tick` subtree, is the tool for that question.
+
+- **A riding entity's tick is attributed to its vehicle** — found while investigating the above, and
+  now recorded in base spec §4.2 and in the phase 4 addendum's deferred list. In the 08-56 flight
+  session the player was rendered 4,983 times and ticked **zero** times, because
+  `ClientLevel.tickEntities` routes only non-passengers through `guardEntityTick`; a passenger is
+  ticked by its vehicle via `Entity.rideTick()`, which the hook never sees. The cost is not lost —
+  `immersive_aircraft:gyrodyne` reported 600 ticks at 309.7 µs each, a figure that silently contains
+  the player's tick — but it is misattributed, and nothing in the report says so. Given the point
+  above, the entity table is least trustworthy exactly when someone is moving around on a vehicle.
+  Closing it needs a hook on `Entity.rideTick()`, which is phase 5 scope.
