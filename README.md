@@ -48,7 +48,10 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
 - **verts/f** is the number of vertices a renderer emitted per frame, the proxy for GPU load. It counts
   emitted vertices: glint and outline passes emit the same geometry again, and Iris shaders roughly
   double it through the shadow pass. With Sodium installed the count relies on Sodium's own vertex
-  path being hooked; if that hook did not apply the column reads near zero.
+  path being hooked; if that hook did not apply the column reads near zero. Mods that expand
+  vertices on the GPU, such as Accelerated Rendering, bypass both paths for the renderers they
+  take over (most mob models), which then read zero while Create machines, which write their
+  vertices directly, still count.
 
 ## Limits
 

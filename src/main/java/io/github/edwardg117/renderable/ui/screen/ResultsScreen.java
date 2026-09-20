@@ -4,6 +4,7 @@ import io.github.edwardg117.renderable.ProfilerController;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.Ranking;
+import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.ui.WorldOverlay;
 import net.minecraft.client.gui.GuiGraphics;
@@ -137,9 +138,14 @@ public final class ResultsScreen extends Screen {
         sortButton.visible = tab.sortable();
     }
 
+    /** Highlights the selected row's block, or the full section for a Sections-tab row. */
     private void highlightSelected() {
         if (selected == null || selected.pos() == null) return;
-        WorldOverlay.highlight(selected.pos());
+        if (selected.key() instanceof SectionKey k) {
+            WorldOverlay.highlight(new BlockPos(k.x() * 16, k.y() * 16, k.z() * 16), 16);
+        } else {
+            WorldOverlay.highlight(selected.pos());
+        }
         onClose();
     }
 

@@ -65,6 +65,7 @@ public final class WorldOverlay {
     private static String lastDimension = "";
 
     private static BlockPos highlight;
+    private static int highlightSize = 1;
     private static long highlightUntilMillis;
 
     private WorldOverlay() {
@@ -132,7 +133,13 @@ public final class WorldOverlay {
 
     /** Draw a red rectangle around the block on screen for ten seconds. */
     public static void highlight(BlockPos pos) {
-        highlight = pos.immutable();
+        highlight(pos, 1);
+    }
+
+    /** Draw a red rectangle around the {@code size}-block cube whose minimum corner is {@code min}, for ten seconds. */
+    public static void highlight(BlockPos min, int size) {
+        highlight = min.immutable();
+        highlightSize = Math.max(1, size);
         highlightUntilMillis = System.currentTimeMillis() + HIGHLIGHT_MILLIS;
     }
 
@@ -224,9 +231,9 @@ public final class WorldOverlay {
         float maxX = -Float.MAX_VALUE;
         float maxY = -Float.MAX_VALUE;
         for (int i = 0; i < 8; i++) {
-            double x = p.getX() + ((i & 1) == 0 ? -0.01 : 1.01);
-            double y = p.getY() + ((i & 2) == 0 ? -0.01 : 1.01);
-            double z = p.getZ() + ((i & 4) == 0 ? -0.01 : 1.01);
+            double x = p.getX() + ((i & 1) == 0 ? -0.01 : highlightSize + 0.01);
+            double y = p.getY() + ((i & 2) == 0 ? -0.01 : highlightSize + 0.01);
+            double z = p.getZ() + ((i & 4) == 0 ? -0.01 : highlightSize + 0.01);
             SCRATCH.set((float) (x - cam.x), (float) (y - cam.y), (float) (z - cam.z), 1.0f).mul(VIEW_PROJECTION);
             float w = SCRATCH.w();
             if (w <= 0.001f) return; // a corner is behind the camera; nothing sensible to draw this frame
