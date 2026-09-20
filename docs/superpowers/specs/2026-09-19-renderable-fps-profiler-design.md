@@ -136,7 +136,7 @@ accumulators (`BlockKey`, `SectionKey`) are written from Sodium worker threads a
   0.5 ms per frame while sampling. The report states the session's own estimated overhead:
   the number of timed calls multiplied by a per-call cost that is calibrated at session start
   by timing a loop of 10,000 empty begin/end pairs. The reader can discount it.
-- `BufferBuilder.addVertex` gets one branch on the idle flag plus one increment while sampling.
+- `BufferBuilder.beginVertex` (and Sodium's `push`) get one branch on the idle flag plus one increment while sampling.
 
 ## 4. Hooks
 
@@ -187,11 +187,12 @@ double it".
 
 | Target | Kind | Records |
 | --- | --- | --- |
-| `ChunkBuilderMeshingTask#execute(ChunkBuildContext, CancellationToken)` | `@WrapMethod` | `SectionKey` rebuild count and time (position from the task's `render` field) |
+| `ChunkBuilderMeshingTask#execute(ChunkBuildContext, CancellationToken)` | `@WrapMethod` | `SectionKey` rebuild count and time (position from the superclass's `render` field, read through an accessor mixin on `ChunkBuilderTask`) |
 | call to `BlockRenderer#renderModel(BakedModel, BlockState, BlockPos, BlockPos)` inside that `execute` | `@WrapOperation` | `BlockKey` time and count |
 | call to `FluidRenderer#render(LevelSlice, BlockState, FluidState, BlockPos, BlockPos, TranslucentGeometryCollector, ChunkBuildBuffers)` inside that `execute` | `@WrapOperation` | `BlockKey` (fluid's block) time and count |
 | `RenderSectionManager#uploadChunks()` and `#updateChunks(boolean)` | `@WrapMethod` | `CHUNK_UPLOAD` |
-| `BufferBuilder#addVertex(float, float, float)` | `@Inject` at head | increments `vertices` on the innermost current key |
+| `BufferBuilder#beginVertex()` (private; both `addVertex` paths call it once per vertex) | `@ModifyReturnValue` | increments `vertices` on the innermost current key |
+| `BufferBuilder#push(MemoryStack, long, int, VertexFormat)` added by Sodium's `BufferBuilderMixin` (gated on Sodium, priority 1100) | `@ModifyVariable` on the count argument | adds the pushed vertex count; Sodium routes entity, block entity, particle and item vertices here without calling `beginVertex` |
 
 Mesh work runs on worker threads and does not directly cost frame time; it is reported as
 milliseconds per second and per call, and the section view shows rebuild rate. Chunk upload is
