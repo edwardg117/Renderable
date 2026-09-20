@@ -575,8 +575,9 @@ once per rendered frame. None of that cost, nor the once-a-second Flywheel visua
    no labels to draw: `onRenderLevelStage` early-returns and `render` skips `drawLabels`, leaving two field
    reads and a return per frame. Wrapping that in a `beginSelf`/`endSelf` pair would add a clock read to
    every measured frame in order to measure approximately zero — the opposite of this item's point. The
-   only overlay work that can overlap a session is a ten-second highlight of twelve projected edges left
-   over from a previous one, which the README records rather than measures. Naming the overlay in the
+   only overlay work that can overlap a session is a ten-second highlight left over from a previous one —
+   today two nested screen-space outlines around the block's projected corners, not the wireframe §P4.C5
+   proposes — which the README records rather than measures. Naming the overlay in the
    report line while not measuring it would be a false claim, so the line names what it measures.
 
 **Alternatives rejected.**
@@ -681,8 +682,8 @@ code review confirms every row.
 | 1 | `core/Environment.of` copies `hooksApplied` but hands the caller's `entries` map straight through, so the caller can mutate a "record" | Copy it **preserving order**: `Collections.unmodifiableMap(new LinkedHashMap<>(entries))`. `Map.copyOf` must not be used — it loses insertion order, and the text report prints the environment in insertion order |
 | 2 | `ProfilerController.lastResult` survives logout while `WorldOverlay`'s labels do not, so Highlight and Teleport act on a world that is gone | Keep the result (the report is still worth copying) and add `resultWorldGone`, set on `ClientPlayerNetworkEvent.LoggingOut`; `ResultsScreen` disables Highlight and Teleport when it is set |
 | 3 | `reportFolder` is resolved straight from config with no validation, so `../../` escapes the game directory | Validate in `ReportFiles`: reject absolute paths, any `..` segment, and empty values, falling back to `renderable` with one logged warning. Testable once the class is Minecraft-free (P4.D2, implemented with this item) |
-| 4 | `WorldOverlay.setResult` ends with `enabled = OVERLAY_ENABLED.get()`, so finishing a session re-enables labels the user turned off with `/renderable overlay off` | Initialise `enabled` from config once, at mod construction; `setResult` no longer touches it |
-| 5 | `Environment` has no name for the `"absent"` sentinel, which is spelled as a literal in `EnvironmentCollector`, `TextReportWriter` and (after P4.C1) `Rows` | `public static final String ABSENT = "absent"` on `Environment`, plus `boolean has(String key)` returning `entries` having a value that is neither null nor `ABSENT` |
+| 4 | `WorldOverlay.setResult` ends with `enabled = OVERLAY_ENABLED.get()`, so finishing a session re-enables labels the user turned off with `/renderable overlay off` | Initialise `enabled` from config once, on first use; `setResult` no longer touches it. Not at mod construction: `ModConfigSpec.ConfigValue.get()` throws `IllegalStateException` before the config has loaded, and mod construction is exactly when that is possible |
+| 5 | `Environment` has no name for the `"absent"` sentinel, which is spelled as a literal in `EnvironmentCollector`, `TextReportWriter` and (after P4.C1) `Rows` | `public static final String ABSENT = "absent"` on `Environment`, plus `boolean has(String key)` returning `entries` having a value that is neither null nor `ABSENT`, and `String value(String key)` returning the entry or `ABSENT` |
 | 6 | `ReportFiles` imports `Minecraft`, contradicting §8 | Take the game directory as a `Path` parameter from `ProfilerController` (P4.D2) |
 
 **User-visible change.** Only #2 and #4 are observable: Highlight and Teleport grey out after logout, and

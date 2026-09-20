@@ -154,6 +154,8 @@ accumulators (`BlockKey`, `SectionKey`) are written from Sodium worker threads a
   can discount it.
 - `BufferBuilder.beginVertex` (and Sodium's `push`, and Accelerated Rendering's builder) get one branch on
   the idle flag plus one increment while sampling.
+- The mod's own in-frame work — the sampling HUD and the once-a-second Flywheel visual sample — is timed
+  rather than estimated and reported separately; it is part of other render time, not of any bucket.
 
 ## 4. Hooks
 
@@ -161,6 +163,12 @@ All mixins call into one static `Probe` class in `hooks`. `Probe` owns `ACTIVE`,
 attribution stack (a small array, depth counter), and forwards to the live session in `core`.
 Every timed hook is wrapped in try/finally so a renderer throwing never leaves a key on the
 stack.
+
+Block entity and entity accumulators are cached on the object itself through a `@Unique` field reached by a
+duck-typed interface, not in a map, so a running session never keeps a rendered object alive and cannot
+distort the GC figures it reports. The accumulator stores the **id** of the session that created it, never
+a reference to the session itself — a reference would reach that session's whole frame list — so an object
+that survives into the next session is re-keyed on first sight.
 
 Vanilla targets below are Mojang-mapped names as expected for 1.21.1 and are verified in the
 dev environment in the phase 1 plan. Third-party targets were read with `javap` from the jars
@@ -384,6 +392,9 @@ Every row of `blockEntities`, `entities` and `particles` carries `gcFrames`, the
 appeared in that were GC-suspect; its `peakFrameUs` is the largest **clean** frame, `0` when `gcFrames`
 covers all of them. Every entry of `frames[].top` carries `gc`, set when that entry's nanoseconds are
 GC-suspect for the frame it belongs to.
+
+The JSON is streamed to the file a row at a time; the report is never held in memory as a tree or as a
+string. Every array is complete, as above.
 
 ## 7. Configuration
 

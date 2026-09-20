@@ -14,7 +14,10 @@ time**, and what caused each hitch.
 3. In the world, the costliest block entities and entities carry floating labels in green,
    yellow or red, and the most rebuilt chunk sections carry yellow labels at their centres. A
    leading `!` means that thing showed up in a hitch. Labels are shown only in the dimension they
-   were profiled in and are dropped when you leave the world. `/renderable overlay off` hides them.
+   were profiled in and are dropped when you leave the world. `/renderable overlay off` hides them
+   and stays off until you turn it back on, including across later sessions. Editing `overlayEnabled`
+   in `renderable-client.toml` while the game is running does nothing: it is read once per client run,
+   and the command is what changes it after that.
 
 Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `overlay [on|off]`.
 
@@ -37,6 +40,10 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   once a second. Machines drawn by Flywheel do not appear in the block entity tables.
 - **Hooks applied** lists the hooks that have fired at least once since the game started, not
   only during this session.
+- **Renderable's own in-frame work** is measured, not estimated: it is the sampling HUD plus the
+  once-a-second Flywheel visual sample, and it sits inside **other render**. The in-world overlay is
+  cleared when a session starts, so it costs nothing; a highlight left over from an earlier session
+  draws out the rest of its ten seconds unmeasured.
 - **Blocks** ranks block types by the mesh-build time Sodium's workers spent on them, per
   second of session; **Sections** lists the chunk sections that were rebuilt, with rebuild
   counts. Mesh time is worker-thread time summed across Sodium's workers, so it can exceed 1000
@@ -65,17 +72,24 @@ class instead. Mesh timing needs Sodium; without it the Blocks and Sections tabs
 Sodium's translucency re-sorts are not timed. Each hook is a single branch when the mod is not
 sampling (Sodium's mesh hooks pass an argument array per block model on the worker threads, which
 the JIT removes in practice); while sampling, the report states its own overhead, which covers both
-timed calls and vertex counting, and the once-a-second Flywheel visual sample lands in that frame's
-other render time. Timing is CPU-side only; vertex counts stand in for GPU cost.
+timed calls and vertex counting, and separately the measured cost of its own HUD and sampling. The
+once-a-second Flywheel visual sample lands in that frame's other render time. Timing is CPU-side only;
+vertex counts stand in for GPU cost.
 
 ## Report files
 
+Both files go in the folder named by `reportFolder`, which must be a relative path with no `..`
+segment; anything else falls back to `renderable` and says so in the log.
+
+The JSON is streamed to disk a row at a time and is never held in memory as a tree or a string, so a long
+flight costs disk space rather than heap. Every array is still complete: nothing is truncated to a top-N.
+
 The JSON report carries a `schema` number.
 
-Schema 4 (this version) adds `gcFrames` to every ranked row, `gc` to every entry of `frames[].top`, and
-`session.vertexCalls`. `peakFrameUs` keeps its name but is now the largest **clean** frame: a value of `0`
-with `gcFrames > 0` means every frame the key appeared in was GC-suspect, which is what the text report
-prints as `-`.
+Schema 4 (this version) adds `gcFrames` to every ranked row, `gc` to every entry of `frames[].top`,
+`session.vertexCalls` and `session.selfMs`. `peakFrameUs` keeps its name but is now the largest **clean**
+frame: a value of `0` with `gcFrames > 0` means every frame the key appeared in was GC-suspect, which is
+what the text report prints as `-`.
 
 Schema 3 changed the shape of `blocks` and `sections`: each row is now
 `{key, label, calls, meshUs, usPerCall, msPerSecond, callsPerSecond}`, and section rows also carry
