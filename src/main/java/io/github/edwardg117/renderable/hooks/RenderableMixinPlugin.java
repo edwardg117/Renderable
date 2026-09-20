@@ -17,7 +17,8 @@ public final class RenderableMixinPlugin implements IMixinConfigPlugin {
     private static final Map<String, String> REQUIRED_MOD = Map.of(
             "sodium", "sodium",
             "iris", "iris",
-            "flywheel", "flywheel");
+            "flywheel", "flywheel",
+            "acceleratedrendering", "acceleratedrendering");
 
     @Override
     public void onLoad(String mixinPackage) {

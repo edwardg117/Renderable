@@ -9,7 +9,8 @@
     "sodium.ChunkBuilderTaskAccessor",
     "sodium.ChunkBuilderMeshingTaskMixin",
     "sodium.RenderSectionManagerMixin",
-    "sodium.SodiumBufferBuilderMixin"
+    "sodium.SodiumBufferBuilderMixin",
+    "acceleratedrendering.AcceleratedBufferBuilderMixin"
   ],
   "injectors": {
     "defaultRequire": 0

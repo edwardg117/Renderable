@@ -283,6 +283,29 @@ once per model part rather than once per vertex.
 - *Hooking `MeshUploaderPool$MeshUploader`.* Further from the renderer and would miss the direct
   `addVertex` path.
 
+**Verified applying, 2026-09-20.** The dev client with the real jar exports all five handlers and the
+`@Unique` field into `AcceleratedBufferBuilder`, and each is invoked from its target: `addVertex(FFF)` at
+its return, the 11-argument `addVertex` and `addClientMesh` at head, and `addServerMesh` at head plus
+**both** of its return points — confirming the two-branch structure the bytecode analysis predicted, and
+why the delta of `getTotalVertexCount()` is the right measure there rather than either counter alone.
+
+**Accelerated Rendering 1.0.8 does not run against Iris 1.8.14-beta.1.** Found while verifying this hook:
+AR's own `compat.iris` mixin `ModelToEntityVertexSerializerMixin` fails a constant-modifier injection at
+`RenderSystem.initRenderer`, crashing the client before any world loads. Nothing to do with Renderable —
+AR 1.0.8 was built against Iris 1.8.12, which is what the deployed pack runs, and `1.8.14-beta.1` is a pin
+for the pack update in progress. It matters twice: the dev-client proof of this hook must run **without**
+`-PpackMods`, and the pack update cannot ship Iris 1.8.14-beta.1 alongside Accelerated Rendering 1.0.8
+without one of the two moving.
+
+**Accepted idle-cost exception.** `addServerMesh`'s head handler writes `renderable$meshBefore` on every
+call, including when idle, where it stores `-1`. Every other hook in the mod costs exactly one volatile read
+when idle, so this is a deviation from §3.5 and is listed here rather than left silent. The alternative —
+writing only while sampling — leaves a stale baseline that the return handler's `>= 0` guard would accept,
+and the only case that could then inflate a count requires `ACTIVE` to flip between head and return of one
+call, which cannot happen because `attach`/`detach` run at a frame boundary. Both forms are therefore safe;
+the sentinel is chosen because its correctness is legible without that argument, and the cost is one `int`
+store to an object the caller is already writing through. Per mesh upload, not per vertex.
+
 **Risk accepted.** AR 1.0.8 is an alpha. The mixin is gated, `require = 0`, and string-targeted, so a
 rename degrades the `verts/f` column for accelerated renderers to the zero it already shows, logs a warning,
 and changes nothing else. `AcceleratedBufferBuilder` has no `LocalVariableTable`, so no injection may
@@ -292,6 +315,13 @@ capture locals; all four use arguments, the return value, or a shadowed public m
 
 - *Text report, JSON, screen.* `verts/f` becomes non-zero for mob renderers when AR is installed. No shape
   change. `hooks applied` gains `ACCELERATED_VERTICES`.
+- *Environment.* `EnvironmentCollector` gains an `acceleratedrendering` version line beside `sodium`, `iris`,
+  `flywheel` and `distanthorizons`, and base spec §6.1 item 2's list gains it too. This is not cosmetic: it
+  is the only thing that makes this hook's failure mode diagnosable. The hook is string-targeted against an
+  alpha, so a renamed target means the mixin quietly does not apply and `ACCELERATED_VERTICES` is simply
+  absent from `hooks applied` — which, without a version line, reads exactly like a pack that never had the
+  mod installed. With it, "AR 1.0.8 present" beside "`ACCELERATED_VERTICES` absent" is self-diagnosing from
+  the report a user already pastes into an issue.
 - *README.* The caveat that GPU vertex-expansion mods bypass the vertex hooks is replaced with: Accelerated
   Rendering is hooked, other such mods are not.
 

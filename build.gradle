@@ -157,6 +157,23 @@ var installPackMods = tasks.register('installPackMods', InstallPackMods) {
     if (project.hasProperty('packMods')) {
         modFiles.from(configurations.packModRuntime)
     }
+    // -PextraMods="C:\path\one.jar;C:\path\two.jar" adds jars that are on no Maven, such as the pack's
+    // Accelerated Rendering build, beside the pinned pack mods. Split on File.pathSeparator (';' on Windows,
+    // ':' elsewhere) so a path may contain a colon but never break the split, and the flag still works on a
+    // non-Windows checkout. Each entry must exist: modFiles is @InputFiles, which silently drops a missing
+    // path rather than failing, so a typo would run the client without the mod and a javap-style check
+    // against the running client would prove nothing about a build that never loaded it.
+    if (project.hasProperty('extraMods')) {
+        modFiles.from(project.property('extraMods').toString().split(File.pathSeparator)
+                .findAll { !it.trim().isEmpty() }
+                .collect { path ->
+                    var f = project.file(path.trim())
+                    if (!f.exists()) {
+                        throw new GradleException("extraMods: no such file: ${f}")
+                    }
+                    f
+                })
+    }
     modsDir.set(layout.projectDirectory.dir('run/mods'))
 }
 

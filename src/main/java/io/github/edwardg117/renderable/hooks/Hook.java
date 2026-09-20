@@ -13,5 +13,6 @@ public enum Hook {
     IRIS_SHADOW,
     SODIUM_MESH,
     SODIUM_UPLOAD,
-    VERTICES
+    VERTICES,
+    ACCELERATED_VERTICES
 }

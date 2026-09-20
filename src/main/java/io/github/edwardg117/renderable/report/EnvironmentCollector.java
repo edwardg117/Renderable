@@ -52,6 +52,7 @@ public final class EnvironmentCollector {
         m.put("shaderPack", safe(IrisCompat::packName));
         m.put("flywheel", modVersion("flywheel"));
         m.put("flywheelBackend", safe(FlywheelCompat::backendName));
+        m.put("acceleratedrendering", modVersion("acceleratedrendering"));
         m.put("distanthorizons", modVersion("distanthorizons"));
 
         if (mc.level != null) {

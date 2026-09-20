@@ -1512,7 +1512,7 @@ public abstract class AcceleratedBufferBuilderMixin {
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 86 tests, `build/libs/renderable-0.3.0.jar` (the version bump is Task 8).
+Expected: `BUILD SUCCESSFUL`, the suite green at whatever total the earlier tasks reached (90 as of Task 5), and `build/libs/renderable-0.3.0.jar` — the version bump is Task 8. This task adds no tests.
 
 Then a plain export launch with no third-party mods, to prove the gate keeps the mixin out:
 
@@ -1539,11 +1539,38 @@ Expected: five `renderable$` members — `renderable$meshBefore`, `renderable$co
 `renderable$serverMeshAfter` (the field plus five handlers). No `Mixin apply failed` line in
 `run/logs/latest.log`.
 
-**If the dev client does not start with Accelerated Rendering installed** (it is an alpha and has never been
-run in this dev environment), do not spend time on it: record the exact failure from `run/logs/latest.log`
-in your report, remove `-PextraMods` from the launch, confirm the other mixins still apply, and leave the
-proof to Task 9's in-pack run, where the mod is known to work. The gate and `require = 0` mean a mistake
-here degrades the `verts/f` column rather than crashing.
+**Do not use `-PpackMods` for this check.** Run on 2026-09-20: Accelerated Rendering 1.0.8 crashes at
+`RenderSystem.initRenderer` against the Iris version this build pins, before any world loads:
+
+```
+Caused by: org.spongepowered.asm.mixin.injection.throwables.InjectionError: Critical injection failure:
+Constant modifier method modifyMidU(J)J in acceleratedrendering.compat.iris.mixins.json:
+iris.ModelToEntityVertexSerializerMixin from mod acceleratedrendering failed injection check,
+(0/1) succeeded. Scanned 0 target(s).
+```
+
+That is Accelerated Rendering's own Iris-compatibility mixin against Iris `1.8.14-beta.1`, nothing to do
+with Renderable. The deployed pack runs Iris 1.8.12, which AR 1.0.8 was built for.
+
+AR's Iris compat only loads when Iris is present, so the working command is **`-PextraMods` alone**, with no
+`-PpackMods`:
+
+```bash
+JAVA_TOOL_OPTIONS="-Dmixin.debug.export=true" ./gradlew runClient -PquickPlay="New World" -PextraMods="%APPDATA%\.MCUpdater\instances\Gears-And-Frontiers\mods\accelerated_rendering.jar" --no-daemon
+```
+
+That proves the hook applies; it cannot prove it coexists with Sodium and Iris, which Task 9's in-pack run
+covers. The gate and `require = 0` mean a mistake here degrades the `verts/f` column rather than crashing.
+
+**When you stop the client, filter on the process name as well.** The plan's `CommandLine` filter alone also
+matches the shell and PowerShell processes running the check itself, because the pattern appears in their
+own command lines:
+
+```powershell
+Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'java*' -and $_.CommandLine -like '*fml.modFolders=renderable*' } | Select-Object ProcessId, CommandLine
+```
+
+List first, confirm every row is this repository's dev client, then `Stop-Process -Id <id> -Force` each one.
 
 - [ ] **Step 9: Stop the client**
 

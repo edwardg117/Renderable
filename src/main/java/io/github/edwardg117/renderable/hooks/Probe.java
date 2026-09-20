@@ -55,6 +55,7 @@ public final class Probe {
     /** Set from worker threads; SEEN is a plain array only the render thread writes, so this is mirrored into it. */
     private static volatile boolean meshSeen;
     private static boolean seenVertices;
+    private static boolean seenAcceleratedVertices;
 
     private Probe() {
     }
@@ -79,6 +80,7 @@ public final class Probe {
         BY_CLASS.clear();
         MESH_BY_OBJECT.clear();
         seenVertices = false;
+        seenAcceleratedVertices = false;
         dimension = levelDimension;
         renderThread = Thread.currentThread();
         session = s;
@@ -206,6 +208,32 @@ public final class Probe {
         if (!seenVertices) {
             seenVertices = true;
             SEEN[Hook.VERTICES.ordinal()] = true;
+        }
+        s.vertices(n);
+    }
+
+    /**
+     * One vertex written through Accelerated Rendering's own buffer builder (spec addendum §P4.A3). That
+     * builder replaces vanilla's for the renderers the mod takes over, so those vertices never reach
+     * {@code BufferBuilder.beginVertex} and there is no double counting. Render thread only.
+     */
+    public static void acceleratedVertex() {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return;
+        if (!seenAcceleratedVertices) {
+            seenAcceleratedVertices = true;
+            SEEN[Hook.ACCELERATED_VERTICES.ordinal()] = true;
+        }
+        s.vertex();
+    }
+
+    /** {@code n} vertices from one Accelerated Rendering mesh upload. Render thread only. */
+    public static void acceleratedVertices(int n) {
+        Session s = session;
+        if (s == null || n <= 0 || Thread.currentThread() != renderThread) return;
+        if (!seenAcceleratedVertices) {
+            seenAcceleratedVertices = true;
+            SEEN[Hook.ACCELERATED_VERTICES.ordinal()] = true;
         }
         s.vertices(n);
     }
