@@ -9,6 +9,15 @@ import java.util.Map;
  */
 public record Environment(Map<String, String> entries, List<String> hooksApplied) {
 
+    /**
+     * The value written for a mod or feature that is not installed. Its informal partner, written directly as
+     * the literal {@code "unknown"} by the collectors and compat classes that need it, means the opposite
+     * kind of gap: the mod or feature is present but a lookup into it failed, so which value belongs there
+     * could not be determined. {@code ABSENT} answers "is it there"; {@code "unknown"} answers "we tried to
+     * find out and could not".
+     */
+    public static final String ABSENT = "absent";
+
     public static Environment of(Map<String, String> entries, List<String> hooksApplied) {
         return new Environment(entries, List.copyOf(hooksApplied));
     }

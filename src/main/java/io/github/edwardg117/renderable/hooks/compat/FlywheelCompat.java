@@ -6,6 +6,7 @@ import dev.engine_room.flywheel.api.visual.Visual;
 import dev.engine_room.flywheel.api.visualization.VisualManager;
 import dev.engine_room.flywheel.impl.visualization.VisualManagerImpl;
 import dev.engine_room.flywheel.impl.visualization.VisualizationManagerImpl;
+import io.github.edwardg117.renderable.core.Environment;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.neoforged.fml.ModList;
@@ -18,6 +19,14 @@ import java.util.Map;
  * Spec §4.2 and §4.4: Flywheel draws Create's machines through instancing, so they never reach the block
  * entity renderer. Renderable reports Flywheel as one bucket (see the Flywheel mixin) plus visual counts,
  * sampled here about once per second. Flywheel classes are referenced only inside {@link Impl}.
+ *
+ * <p>Spec §4.5: {@link #sample(Level)} and {@link #backendName()} catch {@code Throwable}, not
+ * {@code Exception}, for the same reason documented on {@link IrisCompat}: a Flywheel version bump surfaces
+ * as {@code NoSuchMethodError} or {@code NoClassDefFoundError}, both {@code Error} rather than
+ * {@code Exception}, so narrower catches would let the failure through uncaught. The same catch also takes
+ * {@code OutOfMemoryError} and {@code StackOverflowError}; on this render-thread path, latching the feature
+ * off and returning a safe value is the accepted trade even for those, rather than letting either propagate
+ * into the frame.
  */
 public final class FlywheelCompat {
     public static final boolean PRESENT = ModList.get().isLoaded("flywheel");
@@ -30,18 +39,24 @@ public final class FlywheelCompat {
     }
 
     /** Set once Flywheel's internals stopped matching; sampling then stays off for this client run. */
-    private static volatile boolean broken;
+    private static volatile boolean sampleBroken;
+
+    /**
+     * Set once the backend id lookup stopped matching; separate from {@link #sampleBroken} (spec §P4.B5) so a
+     * failure in this decorative, once-per-session lookup cannot switch off the visual counts sampling gives.
+     */
+    private static volatile boolean backendNameBroken;
 
     /**
      * Counts the level's visuals, or null when Flywheel is absent, not visualizing this level, or its internals
      * no longer match this build (spec §4.5: a version bump degrades to missing data, never a crash). Render thread only.
      */
     public static Counts sample(Level level) {
-        if (!PRESENT || broken) return null;
+        if (!PRESENT || sampleBroken) return null;
         try {
             return Impl.sample(level);
         } catch (Throwable t) {
-            broken = true;
+            sampleBroken = true;
             LoggerFactory.getLogger("Renderable").warn("Flywheel visual sampling failed; disabled for this client run", t);
             return null;
         }
@@ -49,7 +64,15 @@ public final class FlywheelCompat {
 
     /** The active backend id such as {@code flywheel:instancing}, or "absent" without Flywheel. */
     public static String backendName() {
-        return PRESENT ? Impl.backendName() : "absent";
+        if (!PRESENT) return Environment.ABSENT;
+        if (backendNameBroken) return "unknown";
+        try {
+            return Impl.backendName();
+        } catch (Throwable t) {
+            backendNameBroken = true;
+            LoggerFactory.getLogger("Renderable").warn("Flywheel backend lookup failed; disabled for this client run", t);
+            return "unknown";
+        }
     }
 
     private static final class Impl {

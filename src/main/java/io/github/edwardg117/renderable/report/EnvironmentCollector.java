@@ -70,7 +70,7 @@ public final class EnvironmentCollector {
     private static String modVersion(String modId) {
         return ModList.get().getModContainerById(modId)
                 .map(c -> c.getModInfo().getVersion().toString())
-                .orElse("absent");
+                .orElse(Environment.ABSENT);
     }
 
     private static String safe(Supplier<String> s) {

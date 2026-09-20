@@ -635,10 +635,39 @@ against a working Iris.
 | `IrisCompat.packName()` | `Iris` | yes, via `EnvironmentCollector.safe`, and after B4 also by the latch |
 | `FlywheelCompat.sample(Level)` | `VisualizationManagerImpl`, `VisualManagerImpl` | yes, `catch (Throwable)` plus a latch |
 | `FlywheelCompat.backendName()` | `BackendManager`, `Backend.REGISTRY` | via `EnvironmentCollector.safe` only; **gains its own latch** so a non-collector caller is safe too |
-| `hooks/mixin/flywheel/*`, `hooks/mixin/sodium/*`, `hooks/mixin/acceleratedrendering/*` | mixin targets | `require = 0` plus the plugin gate; a failure is a load-time warning, not a runtime throw |
+| `hooks/mixin/flywheel/*`, `hooks/mixin/sodium/*`, `hooks/mixin/acceleratedrendering/*` | mixin targets | `require = 0` plus the plugin gate: a failure **to resolve an injection** is a load-time warning, not a runtime throw. See the qualification below — that guarantee does not extend to the bodies of handlers that did apply |
 
-Both compat classes end up with the same three-part shape — `PRESENT`, a `broken` latch, an inner `Impl`
-class that is the only thing referencing third-party types — which is what §4.5 describes.
+**What `require = 0` does not cover.** The row above is about *injection resolution*. Once a handler has
+applied, its body is ordinary code: a third-party call inside it throws at runtime like any other. Two
+consequences the audit had to chase rather than assume.
+
+The sharper one is a **cross-mixin cast**. `ChunkBuilderMeshingTaskMixin` reaches the section position through
+`((ChunkBuilderTaskAccessor) (Object) this)`, and that accessor is applied by a *different* mixin targeting a
+*different* class — `ChunkBuilderTask`, the generic superclass, deliberately. The two can fail independently:
+if Sodium renames the `render` field, the accessor is skipped with exactly the load-time warning the row
+promises, while the meshing mixin's own injection points may still resolve. The cast would then throw
+`ClassCastException` into Sodium's `execute`, on a worker thread, on the first completed rebuild of a session
+— a runtime throw produced by a load-time failure, breaking the chunk build rather than merely emptying the
+Sections table. Phase 4b guards it with an `instanceof` and skips the section timing when the accessor is
+absent, which is the same degrade-quietly policy as everything else in §4.5.
+
+The milder one is that a handler body which survived a version bump can still call a method that did not:
+`render.getChunkX()` and `Backend.REGISTRY.getId(backend)` are plain runtime calls. The probability is low,
+because a rename usually moves the injection target too and takes the whole handler with it, and
+`backendName()` is now latched. It is recorded rather than guarded.
+
+Both compat classes end up with the same shape — `PRESENT`, an inner `Impl` class that is the only thing
+referencing third-party types, and a latch **per entry point** rather than per class. The per-entry-point
+part is not pedantry: a shared latch lets a decorative failure switch off a data feature. `backendName()`
+runs once per session purely to print a string, and `packName()` likewise; if either shared a flag with
+`sample()` or `shadowActive()`, a renamed id-lookup would disable visual counts or blank the shadow column
+for the rest of the client run, leaving a wrong number in the report and a warning about something else in
+the log. The load-bearing lookups and the cosmetic ones fail independently because they are independent API
+surfaces.
+
+`ABSENT` and `"unknown"` are a pair and mean different things: `ABSENT` is "this mod or feature is not
+installed", `"unknown"` is "it is installed and we could not find out". A reader who sees `shaderPack:
+unknown` should look in the log for a latched failure; `shaderPack: absent` means Iris is simply not there.
 
 **User-visible change.** None.
 

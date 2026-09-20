@@ -161,8 +161,8 @@ public final class TextReportWriter {
     /** Spec §6.1 item 9 and §4.4: the Flywheel bucket plus visual counts, or the exact reason there are none. */
     static void appendFlywheel(StringBuilder sb, SessionResult r, Environment env, int frames, long total) {
         sb.append("Flywheel\n");
-        String backend = env.entries().getOrDefault("flywheelBackend", "absent");
-        if ("absent".equals(backend)) {
+        String backend = env.entries().getOrDefault("flywheelBackend", Environment.ABSENT);
+        if (Environment.ABSENT.equals(backend)) {
             sb.append("  (no data: Flywheel is not installed)\n\n");
             return;
         }

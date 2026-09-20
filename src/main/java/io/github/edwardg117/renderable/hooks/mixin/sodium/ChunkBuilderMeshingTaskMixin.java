@@ -18,7 +18,9 @@ import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
+import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
@@ -35,8 +37,35 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(value = ChunkBuilderMeshingTask.class, remap = false)
 public abstract class ChunkBuilderMeshingTaskMixin {
 
+    /**
+     * Set once {@link ChunkBuilderTaskAccessor} was seen not to apply, so the warning below is logged once per
+     * client run instead of once per rebuild on a worker thread.
+     */
+    @Unique
+    private static volatile boolean renderable$accessorBroken;
+
+    /**
+     * Spec §4.5: {@link ChunkBuilderTaskAccessor} is a separate mixin targeting the generic superclass, so it
+     * can fail to apply independently of this one. A hard cast would then throw a {@code ClassCastException}
+     * into Sodium's {@code execute} on a worker thread instead of just leaving the section timing missing;
+     * {@code instanceof} degrades to null instead, and the caller skips the timing when it does.
+     *
+     * <p>Spec §P4.B5: with the accessor skipped, {@code renderable$timeBlock}/{@code renderable$timeFluid}
+     * still apply and still mark {@code SODIUM_MESH} as an applied hook, so the report cannot tell "no
+     * sections were rebuilt" apart from "sections were rebuilt but the timing was dropped here" — the two read
+     * identically in the Sections table. The log line is the only place that distinction can still be made.
+     */
     private RenderSection renderable$section() {
-        return ((ChunkBuilderTaskAccessor) (Object) this).renderable$render();
+        if (this instanceof ChunkBuilderTaskAccessor acc) {
+            return acc.renderable$render();
+        }
+        if (!renderable$accessorBroken) {
+            renderable$accessorBroken = true;
+            LoggerFactory.getLogger("Renderable").warn(
+                    "Sodium's ChunkBuilderTask accessor did not apply; section rebuild timing is silently "
+                            + "missing from the report for this client run");
+        }
+        return null;
     }
 
     @WrapMethod(
@@ -55,7 +84,9 @@ public abstract class ChunkBuilderMeshingTaskMixin {
         } finally {
             if (out != null) {
                 RenderSection render = renderable$section();
-                Probe.meshSection(render.getChunkX(), render.getChunkY(), render.getChunkZ(), System.nanoTime() - start);
+                if (render != null) {
+                    Probe.meshSection(render.getChunkX(), render.getChunkY(), render.getChunkZ(), System.nanoTime() - start);
+                }
             }
         }
     }
