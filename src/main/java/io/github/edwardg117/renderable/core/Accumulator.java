@@ -12,6 +12,12 @@ public final class Accumulator {
     public final ProfileKey key;
     /** The aggregation shared by every accumulator of this key's type (spec addendum §P4.A2). */
     private final TypeStats type;
+    /**
+     * The id of the session that created this accumulator, or 0 for a standalone one (spec addendum
+     * §P4.B2). An id rather than a {@link Session} reference, so caching this accumulator on a Minecraft
+     * object never keeps a finished session's frame history reachable.
+     */
+    private final long sessionId;
 
     /** Number of timed render calls. */
     public long calls;
@@ -35,19 +41,29 @@ public final class Accumulator {
     /** True once this accumulator has been added to the session's touched list for the current frame. */
     boolean inFrame;
 
-    /** A standalone accumulator with a type aggregation of its own. Sessions use the two-argument form. */
+    /** A standalone accumulator with a type aggregation of its own and no session. */
     Accumulator(ProfileKey key) {
-        this(key, new TypeStats(key.typeId(), key.category()));
+        this(key, new TypeStats(key.typeId(), key.category()), 0);
     }
 
-    Accumulator(ProfileKey key, TypeStats type) {
+    Accumulator(ProfileKey key, TypeStats type, long sessionId) {
         this.key = key;
         this.type = type;
+        this.sessionId = sessionId;
     }
 
     /** The aggregation this key's type shares. Never null. */
     public TypeStats type() {
         return type;
+    }
+
+    /**
+     * The id of the session that created this accumulator, or 0 for a standalone one. A hook that caches an
+     * accumulator on a Minecraft object compares this with the running session's {@link Session#id()}, so an
+     * object that survives into the next session is re-keyed rather than credited to the wrong one.
+     */
+    public long sessionId() {
+        return sessionId;
     }
 
     public long totalNanos() {

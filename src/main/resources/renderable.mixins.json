@@ -11,7 +11,9 @@
     "BoundTickingBlockEntityMixin",
     "LevelMixin",
     "LevelLightEngineMixin",
-    "BufferBuilderMixin"
+    "BufferBuilderMixin",
+    "BlockEntityAccumulatorMixin",
+    "EntityAccumulatorMixin"
   ],
   "injectors": {
     "defaultRequire": 1

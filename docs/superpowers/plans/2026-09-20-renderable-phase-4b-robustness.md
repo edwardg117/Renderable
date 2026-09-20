@@ -1981,8 +1981,13 @@ docs: README and spec for phase 4b
 The user runs this in the real Gears & Frontiers instance with the jar built from this plan's tip. The
 orchestrator writes the log from what comes back, has it reviewed, and commits it.
 
-1. **GC figures (§P4.B2).** Run a 30 s session at the base, at the same place as run 1 of the phase 2/3
-   log. Paste the `GC:` line and compare it with that log's `15 / 369 ms` and with plan 4a's run at the same
+1. **GC figures (§P4.B2).** Run **two** 30 s sessions back to back at the base, at the same place as run 1
+   of the phase 2/3 log. Two, not one, because the second exercises the staleness check: an accumulator
+   cached on a block entity during session 1 must be recognised as stale and replaced in session 2. That
+   branch cannot be unit-tested — it needs a real object surviving between two sessions — so this is its
+   only coverage. If it were broken, session 2's tables would show costs accumulated across both sessions,
+   or empty rows where a long-lived block entity should be. Confirm the Block Entities tab is populated and
+   plausible in **both**. Paste the `GC:` line and compare it with that log's `15 / 369 ms` and with plan 4a's run at the same
    place. The expectation is "no higher", not an exact number: the scene is live and the comparison is
    indicative. Also confirm the Block Entities and Entities tables still have the same shape of content —
    this is the check that the two new vanilla mixins did not break the instance cache.

@@ -15,14 +15,14 @@ import net.minecraft.world.level.material.FluidState;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The single static entry point every hook calls (spec §4). Mixins check {@link #ACTIVE} first, so the idle
- * cost is one volatile read. Accumulators are cached per Minecraft object (block entities, entities) or per
- * class (particles) so the hot path allocates nothing after a key has been seen once. Render and tick hooks
+ * cost is one volatile read. Accumulators are cached on the Minecraft object itself (block entities,
+ * entities, through {@link AccumulatorHolder}) or per class (particles), so the hot path allocates nothing
+ * after a key has been seen once and a session never keeps a rendered object alive. Render and tick hooks
  * for the same object share one accumulator.
  */
 public final class Probe {
@@ -45,7 +45,6 @@ public final class Probe {
     private static Session session;
     private static Listener listener;
     private static Thread renderThread;
-    private static final IdentityHashMap<Object, Accumulator> BY_INSTANCE = new IdentityHashMap<>(4096);
     private static final HashMap<Class<?>, Accumulator> BY_CLASS = new HashMap<>(256);
     private static final boolean[] SEEN = new boolean[Hook.values().length];
     /** Mesh accumulators by Block or Fluid instance; written from Sodium's worker threads. */
@@ -76,7 +75,6 @@ public final class Probe {
      * ACTIVE publishes them. Every hook reads ACTIVE first, so a thread that sees ACTIVE also sees the rest.
      */
     public static void attach(Session s, String levelDimension) {
-        BY_INSTANCE.clear();
         BY_CLASS.clear();
         MESH_BY_OBJECT.clear();
         seenVertices = false;
@@ -89,14 +87,14 @@ public final class Probe {
 
     /**
      * The write order matters: ACTIVE goes false first so no new hook call starts, then the session is
-     * nulled (a call already past its ACTIVE check sees null and returns), then the caches are cleared;
-     * a worker still holding a mesh accumulator may put it back, which the owner check in
-     * meshBlock/meshFluid tolerates.
+     * nulled (a call already past its ACTIVE check sees null and returns), then the class and mesh caches
+     * are cleared; a worker still holding a mesh accumulator may put it back, which the owner check in
+     * meshBlock/meshFluid tolerates. Accumulators cached on block entities and entities are left where they
+     * are: the owner check in {@link #instanceAccumulator} replaces a stale one on first sight.
      */
     public static void detach() {
         ACTIVE = false;
         session = null;
-        BY_INSTANCE.clear();
         BY_CLASS.clear();
         MESH_BY_OBJECT.clear();
     }
@@ -280,20 +278,27 @@ public final class Probe {
         s.mesh().get(KeyFactory.section(dimension, sectionX, sectionY, sectionZ)).add(elapsedNanos);
     }
 
+    /**
+     * The accumulator cached on the object, replaced when it came from an earlier session (spec addendum
+     * §P4.B2). The cast is safe because {@code BlockEntityAccumulatorMixin} is a required vanilla mixin.
+     */
     private static Accumulator instanceAccumulator(Session s, BlockEntity be) {
-        Accumulator a = BY_INSTANCE.get(be);
-        if (a == null) {
+        AccumulatorHolder holder = (AccumulatorHolder) be;
+        Accumulator a = holder.renderable$accumulator();
+        if (a == null || !s.owns(a)) {
             a = s.accumulator(KeyFactory.blockEntity(be));
-            BY_INSTANCE.put(be, a);
+            holder.renderable$accumulator(a);
         }
         return a;
     }
 
+    /** As above, for entities; {@code EntityAccumulatorMixin} is likewise required. */
     private static Accumulator instanceAccumulator(Session s, Entity e) {
-        Accumulator a = BY_INSTANCE.get(e);
-        if (a == null) {
+        AccumulatorHolder holder = (AccumulatorHolder) e;
+        Accumulator a = holder.renderable$accumulator();
+        if (a == null || !s.owns(a)) {
             a = s.accumulator(KeyFactory.entity(e));
-            BY_INSTANCE.put(e, a);
+            holder.renderable$accumulator(a);
         }
         return a;
     }

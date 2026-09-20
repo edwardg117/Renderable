@@ -507,4 +507,29 @@ class SessionTest {
         assertEquals(502, r.accumulators().get(TestSessions.PRESS).vertices);
         assertEquals((1 * 100 + 3 * 7) / 1_000_000.0, r.overheadEstimateMs(), 1e-12);
     }
+
+    @Test
+    void anAccumulatorKnowsTheSessionIdThatMadeIt() {
+        Session first = session(10_000);
+        Session second = session(10_000);
+        Accumulator a = first.accumulator(TestSessions.PRESS);
+
+        assertEquals(first.id(), a.sessionId(), "a cache on a long-lived object uses this to spot a stale accumulator");
+        assertSame(a, first.accumulator(TestSessions.PRESS), "the same key gives the same accumulator");
+        assertNotSame(a, second.accumulator(TestSessions.PRESS), "a new session makes a new one");
+        assertNotEquals(first.id(), second.id(), "each session has its own id");
+        assertEquals(0, new Accumulator(TestSessions.PRESS).sessionId(), "a standalone accumulator has no session");
+        assertNotEquals(0, first.id(), "ids start above zero so a standalone accumulator is never mistaken for a real one");
+    }
+
+    @Test
+    void sessionOwnsExactlyTheAccumulatorsItMade() {
+        Session first = session(10_000);
+        Session second = session(10_000);
+        Accumulator a = first.accumulator(TestSessions.PRESS);
+
+        assertTrue(first.owns(a), "the session that created it owns it");
+        assertFalse(second.owns(a), "a different session does not own it");
+        assertFalse(first.owns(new Accumulator(TestSessions.PRESS)), "a standalone accumulator is owned by no session");
+    }
 }

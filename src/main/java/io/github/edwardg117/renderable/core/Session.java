@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 
@@ -15,9 +16,13 @@ import java.util.function.LongSupplier;
  * The clock is injected so tests can drive it.
  */
 public final class Session {
+    private static final AtomicLong NEXT_ID = new AtomicLong();
+
     private final SessionConfig config;
     private final LongSupplier clock;
     private final long wallStartMillis;
+    /** Identifies this session for staleness checks on accumulators cached outside it (spec addendum §P4.B2). */
+    private final long id = NEXT_ID.incrementAndGet();
 
     private final ArrayList<FrameRecord> frames = new ArrayList<>(4096);
     private final List<FrameRecord> framesView = Collections.unmodifiableList(frames);
@@ -40,7 +45,7 @@ public final class Session {
     public static final int MAX_DEPTH = 64;
 
     private final Map<ProfileKey, Accumulator> accumulators = new HashMap<>(1024);
-    private final Function<ProfileKey, Accumulator> accumulatorFactory = k -> new Accumulator(k, typeStats(k));
+    private final Function<ProfileKey, Accumulator> accumulatorFactory = k -> new Accumulator(k, typeStats(k), id);
     private final ArrayList<Accumulator> touched = new ArrayList<>(1024);
     private final Map<String, TypeStats> types = new HashMap<>(256);
     private final ArrayList<TypeStats> touchedTypes = new ArrayList<>(256);
@@ -73,6 +78,16 @@ public final class Session {
 
     public SessionConfig config() {
         return config;
+    }
+
+    /** Identifies this session for staleness checks on accumulators cached outside it (spec addendum §P4.B2). */
+    public long id() {
+        return id;
+    }
+
+    /** True when this accumulator was created by this session; see {@link Accumulator#sessionId()}. */
+    public boolean owns(Accumulator a) {
+        return a.sessionId() == id;
     }
 
     public long wallStartMillis() {

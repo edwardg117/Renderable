@@ -508,8 +508,19 @@ the mod inflates the numbers it prints. Run 1 recorded 15 collections and 369 ms
 **Design.** Remove the map. A duck-typed interface `hooks/AccumulatorHolder` with
 `Accumulator renderable$accumulator()` / `void renderable$accumulator(Accumulator)` is implemented onto
 `BlockEntity` and `Entity` by two vanilla mixins carrying one `@Unique Accumulator` field each. `Accumulator`
-gains a `Session owner` reference (the same pattern `MeshAccumulator.owner` already uses), so a cached
-accumulator left over from an earlier session is detected and replaced rather than reused.
+carries the **id** of the session that made it — a `long` from a monotonic counter, with `0` reserved for a
+standalone accumulator — so a cached accumulator left over from an earlier session is detected and replaced
+rather than reused.
+
+**An id, not a reference.** The obvious form, and the one the first implementation used, is a `Session owner`
+field mirroring `MeshAccumulator.owner`. It is wrong here, and the difference is the whole point of this
+item. `MeshAccumulator` points at `MeshStats`, a small per-session container; an `Accumulator` pointing at
+the `Session` would reach its `frames` list — every `FrameRecord`, its bucket array and its top list — plus
+`accumulators`, `types` and `touched`, none of which `finish()` clears. Every block entity and entity
+rendered during a session would then hold that session's entire frame history alive until it was re-rendered
+under a newer session or unloaded: roughly a megabyte per stale session from the second session onward. That
+is the same defect this item exists to remove, inverted rather than fixed, and it would have made the
+sentence below false. A `long` comparison has identical staleness semantics and holds nothing.
 
 The hot path becomes a field read and a reference comparison instead of an `IdentityHashMap.get`, so it is
 both allocation-free and faster than today. Nothing is retained: the field lives and dies with the object.
