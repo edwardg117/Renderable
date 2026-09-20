@@ -1,13 +1,15 @@
 package io.github.edwardg117.renderable.ui.screen;
 
-/** Tabs of the results screen and the column layout each one uses. Four per row on the screen. */
+/** Tabs of the results screen and the column layout each one uses. Eight tabs, four per row on the screen. */
 public enum Tab {
     FRAMES("Frames", Columns.METRIC_VALUE),
     HITCHES("Hitches", Columns.HITCH),
     BLOCK_ENTITIES("Block Entities", Columns.RANKED),
     ENTITIES("Entities", Columns.RANKED),
     PARTICLES("Particles", Columns.PARTICLE),
-    FLYWHEEL("Flywheel", Columns.FLYWHEEL);
+    FLYWHEEL("Flywheel", Columns.FLYWHEEL),
+    BLOCKS("Blocks", Columns.BLOCK),
+    SECTIONS("Sections", Columns.SECTION);
 
     private final String title;
     private final Columns columns;
@@ -55,6 +57,14 @@ public enum Tab {
                 new String[]{"visual class", "avg count", "share"},
                 new int[]{6, 1, 1},
                 new boolean[]{false, true, true});
+        static final Columns BLOCK = new Columns(
+                new String[]{"block", "mesh ms/s", "us/call", "calls"},
+                new int[]{8, 2, 2, 2},
+                new boolean[]{false, true, true, true});
+        static final Columns SECTION = new Columns(
+                new String[]{"section", "rebuilds", "rebuilds/s", "mesh ms", "avg ms"},
+                new int[]{6, 2, 2, 2, 2},
+                new boolean[]{false, true, true, true, true});
 
         /** Returns {x offsets, widths} for a row of the given pixel width. Each column keeps 4 px of padding. */
         public int[][] layout(int rowWidth) {

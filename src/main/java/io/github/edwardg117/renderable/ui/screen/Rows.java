@@ -7,9 +7,11 @@ import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
+import io.github.edwardg117.renderable.core.MeshEntry;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.Ranking;
+import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.Splits;
 import io.github.edwardg117.renderable.core.TopEntry;
@@ -37,6 +39,8 @@ public final class Rows {
             case ENTITIES -> ranked(r, ProfileKey.Category.ENTITY, sort, expanded);
             case PARTICLES -> particles(r, sort);
             case FLYWHEEL -> flywheel(r);
+            case BLOCKS -> blocks(r);
+            case SECTIONS -> sections(r);
         };
     }
 
@@ -180,6 +184,32 @@ public final class Rows {
             rows.add(new Row(new String[]{label, Fmt.us(e.getValue()), ""},
                     null, null, false, false, 1, null, -1));
         }
+        return rows;
+    }
+
+    /** Spec §5.3 Blocks tab: one row per block, by mesh time per second; the same order as the report. */
+    static List<Row> blocks(SessionResult r) {
+        double seconds = r.stats().durationSeconds();
+        List<Row> rows = new ArrayList<>();
+        for (MeshEntry e : Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME)) {
+            rows.add(new Row(new String[]{e.key().label(), Fmt.us(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls())},
+                    e.key(), e.key().typeId(), false, false, 0, null, -1));
+        }
+        if (rows.isEmpty()) rows.add(Row.plain("(no data: Sodium mesh hooks did not run)"));
+        return rows;
+    }
+
+    /** Spec §5.3 Sections tab: one row per rebuilt section, by rebuild count; the row's position is the section centre. */
+    static List<Row> sections(SessionResult r) {
+        double seconds = r.stats().durationSeconds();
+        List<Row> rows = new ArrayList<>();
+        for (MeshEntry e : Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS)) {
+            SectionKey k = (SectionKey) e.key();
+            rows.add(new Row(new String[]{k.label(), Fmt.count(e.calls()), Fmt.us(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
+                    Fmt.ms2(e.calls() == 0 ? 0 : e.nanos() / e.calls())},
+                    k, k.typeId(), false, false, 0, new BlockPos(k.centerX(), k.centerY(), k.centerZ()), -1));
+        }
+        if (rows.isEmpty()) rows.add(Row.plain("(no data: Sodium mesh hooks did not run)"));
         return rows;
     }
 

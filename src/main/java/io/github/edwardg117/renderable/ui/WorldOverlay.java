@@ -4,18 +4,23 @@ import io.github.edwardg117.renderable.RenderableConfig;
 import io.github.edwardg117.renderable.core.BlockEntityKey;
 import io.github.edwardg117.renderable.core.EntityKey;
 import io.github.edwardg117.renderable.core.Fmt;
+import io.github.edwardg117.renderable.core.MeshEntry;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.Ranking;
+import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
@@ -23,6 +28,7 @@ import org.joml.Vector4f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -40,8 +46,12 @@ public final class WorldOverlay {
     private static final int HIGHLIGHT_COLOR = 0xFFFF4D4D;
     private static final int MIN_HIGHLIGHT = 8;
 
-    /** One label, built once per result. Block entities carry a fixed position; entities are looked up per frame. */
-    private record Label(double x, double y, double z, int entityId, String text, int color) {
+    /**
+     * One label, built once per result. Block entities and sections carry a fixed position; entities are looked up
+     * per frame by id. A null dimension means the label is drawn in any dimension (entities, whose ids are resolved
+     * live); otherwise it is drawn only in the dimension it was profiled in.
+     */
+    private record Label(String dimension, double x, double y, double z, int entityId, String text, int color) {
     }
 
     private static List<Label> labels = List.of();
@@ -51,6 +61,8 @@ public final class WorldOverlay {
     private static final Vector4f SCRATCH = new Vector4f();
     private static Vec3 cameraPos = Vec3.ZERO;
     private static boolean haveMatrices;
+    private static ResourceKey<Level> lastDimensionKey;
+    private static String lastDimension = "";
 
     private static BlockPos highlight;
     private static long highlightUntilMillis;
@@ -68,29 +80,41 @@ public final class WorldOverlay {
         long sessionTotal = r.stats().totalNanos();
         int frames = r.frameCount();
         Set<ProfileKey> flagged = r.hitchFlaggedKeys();
-        List<Label> out = new ArrayList<>(2 * n);
+        List<Label> out = new ArrayList<>(3 * n);
         for (RankedEntry e : head(Ranking.byKey(r, ProfileKey.Category.BLOCK_ENTITY), n)) {
             BlockEntityKey k = (BlockEntityKey) e.key();
-            out.add(label(e, flagged, frames, sessionTotal, k.x() + 0.5, k.y() + 1.25, k.z() + 0.5, -1));
+            out.add(label(e, flagged, frames, sessionTotal, k.dimension(), k.x() + 0.5, k.y() + 1.25, k.z() + 0.5, -1));
         }
         for (RankedEntry e : head(Ranking.byKey(r, ProfileKey.Category.ENTITY), n)) {
             EntityKey k = (EntityKey) e.key();
-            out.add(label(e, flagged, frames, sessionTotal, 0, 0, 0, k.entityId()));
+            out.add(label(e, flagged, frames, sessionTotal, null, 0, 0, 0, k.entityId()));
+        }
+        for (MeshEntry e : head(Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS), n)) {
+            SectionKey k = (SectionKey) e.key();
+            String text = String.format(Locale.ROOT, "section %d %d %d: %d rebuilds, %s ms",
+                    k.x(), k.y(), k.z(), e.calls(), Fmt.ms(e.nanos()));
+            out.add(new Label(k.dimension(), k.centerX() + 0.5, k.centerY() + 0.5, k.centerZ() + 0.5, -1, text, Colors.YELLOW));
         }
         labels = List.copyOf(out);
         enabled = RenderableConfig.OVERLAY_ENABLED.get();
     }
 
     private static Label label(RankedEntry e, Set<ProfileKey> flagged, int frames, long sessionTotal,
-                               double x, double y, double z, int entityId) {
+                               String dimension, double x, double y, double z, int entityId) {
         boolean isFlagged = flagged.contains(e.key());
         String text = (isFlagged ? "! " : "") + e.typeId() + " " + Fmt.us(e.usPerFrame(frames)) + " us";
         int color = isFlagged ? Colors.FLAGGED : Colors.heat(e.sharePercent(sessionTotal));
-        return new Label(x, y, z, entityId, text, color);
+        return new Label(dimension, x, y, z, entityId, text, color);
     }
 
     public static void clear() {
         labels = List.of();
+    }
+
+    /** Entity ids and dimension names restart in the next world, so a result's labels do not outlive the connection. */
+    @SubscribeEvent
+    public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        clear();
     }
 
     public static boolean isEnabled() {
@@ -145,7 +169,14 @@ public final class WorldOverlay {
         double maxDistSq = (double) maxDist * maxDist;
         int lineH = mc.font.lineHeight;
 
+        ResourceKey<Level> dimKey = mc.level.dimension();
+        if (dimKey != lastDimensionKey) {
+            lastDimensionKey = dimKey;
+            lastDimension = dimKey.location().toString();
+        }
+
         for (Label l : labels) {
+            if (l.dimension() != null && !l.dimension().equals(lastDimension)) continue;
             double x;
             double y;
             double z;

@@ -38,7 +38,7 @@ public final class RenderableConfig {
         b.push("overlay");
         OVERLAY_ENABLED = b.comment("Draw in-world labels for the last finished session.")
                 .define("overlayEnabled", true);
-        OVERLAY_LABEL_COUNT = b.comment("Labels per category (block entities, entities).")
+        OVERLAY_LABEL_COUNT = b.comment("Labels per category (block entities, entities, sections).")
                 .defineInRange("overlayLabelCount", 25, 1, 200);
         OVERLAY_MAX_DISTANCE = b.comment("Only label things within this many blocks of the camera.")
                 .defineInRange("overlayMaxDistance", 64, 8, 512);
