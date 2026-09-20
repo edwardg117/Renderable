@@ -1226,7 +1226,8 @@ Append inside `JsonReportWriterTest`:
     void vertexCallsAreReportedForASessionThatCountedThem() {
         JsonObject o = JsonParser.parseString(
                 JsonReportWriter.write(TestSessions.phase3(), environment(), "0.4.0")).getAsJsonObject();
-        // phase3 counts 100 vertices on the press and 20 on the mixer, one call each, over 20 frames.
+        // phase3 calls vertex() once per vertex: 100 on the press and 20 on the mixer, each frame, over 20
+        // frames. The batched vertices(int) path is covered by SessionTest, not here.
         assertEquals(2400, o.getAsJsonObject("session").get("vertexCalls").getAsLong());
         assertEquals(4, o.get("schema").getAsInt());
     }
@@ -1720,7 +1721,9 @@ Add after that bullet:
 
 In the "Limits" paragraph, replace `while sampling, the report states its own overhead, which does not include vertex counting,` with `while sampling, the report states its own overhead, which covers both timed calls and vertex counting,`.
 
-In the "Report files" section, insert above the schema 3 paragraph:
+In the "Report files" section, first demote the current generation: `Schema 3 (this version) changes the
+shape of...` becomes `Schema 3 changed the shape of...`. Only one paragraph may claim to be current, and
+leaving two is how that section rots. Then insert above it:
 
 ```markdown
 Schema 4 (this version) adds `gcFrames` to every ranked row, `gc` to every entry of `frames[].top`, and

@@ -17,6 +17,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JsonReportWriterTest {
+    private static final List<String> RANKED_KEYS = List.of("key", "label", "typeId", "members", "calls",
+            "tickCalls", "callsPerFrame", "renderUs", "tickUs", "shadowUs", "peakFrameUs", "gcFrames", "vertices");
+
     final SessionResult r = TestSessions.sample();
 
     static Environment environment() {
@@ -32,12 +35,13 @@ class JsonReportWriterTest {
     @Test
     void schemaModEnvironmentAndSession() {
         JsonObject o = parse();
-        assertEquals(3, o.get("schema").getAsInt());
+        assertEquals(4, o.get("schema").getAsInt());
         assertEquals("0.1.0", o.getAsJsonObject("mod").get("version").getAsString());
         assertEquals("1.21.1", o.getAsJsonObject("environment").get("minecraft").getAsString());
         assertEquals(2, o.getAsJsonObject("environment").getAsJsonArray("hooksApplied").size());
 
         JsonObject session = o.getAsJsonObject("session");
+        assertEquals(0, session.get("vertexCalls").getAsLong());
         assertEquals(20, session.get("frames").getAsInt());
         assertEquals(32.0, session.get("hitchThresholdMs").getAsDouble(), 1e-9);
         assertEquals(0.384, session.get("durationSeconds").getAsDouble(), 1e-9);
@@ -175,5 +179,69 @@ class JsonReportWriterTest {
 
         JsonObject press = o.getAsJsonObject("blockEntities").getAsJsonArray("byPosition").get(0).getAsJsonObject();
         assertEquals(2000, press.get("vertices").getAsLong());
+    }
+
+    @Test
+    void rankedRowsHaveTheSchema4ShapeInOrder() {
+        JsonObject o = JsonParser.parseString(
+                JsonReportWriter.write(TestSessions.phase3(), environment(), "0.4.0")).getAsJsonObject();
+
+        List<JsonArray> rankedArrays = List.of(
+                o.getAsJsonObject("blockEntities").getAsJsonArray("byType"),
+                o.getAsJsonObject("blockEntities").getAsJsonArray("byPosition"),
+                o.getAsJsonObject("entities").getAsJsonArray("byType"),
+                o.getAsJsonObject("entities").getAsJsonArray("individuals"),
+                o.getAsJsonArray("particles"));
+
+        for (JsonArray arr : rankedArrays) {
+            assertFalse(arr.isEmpty(), "phase3() should populate every ranked array");
+            JsonObject row = arr.get(0).getAsJsonObject();
+            assertEquals(RANKED_KEYS, List.copyOf(row.keySet()),
+                    "ranked row shape changed - bump SCHEMA if that was intended");
+        }
+    }
+
+    @Test
+    void rankedRowsCarryGcFrames() {
+        JsonObject o = JsonParser.parseString(
+                JsonReportWriter.write(TestSessions.gcSession(), environment(), "0.4.0")).getAsJsonObject();
+
+        JsonObject press = o.getAsJsonObject("blockEntities").getAsJsonArray("byPosition").get(0).getAsJsonObject();
+        assertEquals("create:mechanical_press@minecraft:overworld:100,64,-20", press.get("key").getAsString());
+        assertEquals(1, press.get("gcFrames").getAsLong());
+        assertEquals(2_000, press.get("peakFrameUs").getAsLong(), "the clean 2 ms frame, not the 40 ms GC frame");
+
+        JsonObject cow = o.getAsJsonObject("entities").getAsJsonArray("individuals").get(0).getAsJsonObject();
+        assertEquals(0, cow.get("gcFrames").getAsLong());
+    }
+
+    @Test
+    void topEntriesCarryTheGcFlag() {
+        JsonObject o = JsonParser.parseString(
+                JsonReportWriter.write(TestSessions.gcSession(), environment(), "0.4.0")).getAsJsonObject();
+
+        JsonArray top0 = o.getAsJsonArray("frames").get(0).getAsJsonObject().getAsJsonArray("top");
+        assertFalse(top0.get(0).getAsJsonObject().get("gc").getAsBoolean(), "frame 0 had no pause");
+        JsonArray top1 = o.getAsJsonArray("frames").get(1).getAsJsonObject().getAsJsonArray("top");
+        assertTrue(top1.get(0).getAsJsonObject().get("gc").getAsBoolean(), "40 ms on a frame with a 40 ms pause");
+    }
+
+    @Test
+    void peakFrameUsIsZeroWhenEveryFrameWasGcSuspect() {
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(
+                TestSessions.everyFrameGcSuspect(), environment(), "0.4.0")).getAsJsonObject();
+        JsonObject row = o.getAsJsonObject("blockEntities").getAsJsonArray("byPosition").get(0).getAsJsonObject();
+        assertEquals(0, row.get("peakFrameUs").getAsLong());
+        assertEquals(1, row.get("gcFrames").getAsLong(), "peakFrameUs 0 means \"no clean frame\" only because gcFrames > 0");
+    }
+
+    @Test
+    void vertexCallsAreReportedForASessionThatCountedThem() {
+        JsonObject o = JsonParser.parseString(
+                JsonReportWriter.write(TestSessions.phase3(), environment(), "0.4.0")).getAsJsonObject();
+        // phase3 calls vertex() once per vertex: 100 on the press and 20 on the mixer, each frame, over 20
+        // frames. The batched vertices(int) path is covered by SessionTest, not here.
+        assertEquals(2400, o.getAsJsonObject("session").get("vertexCalls").getAsLong());
+        assertEquals(4, o.get("schema").getAsInt());
     }
 }

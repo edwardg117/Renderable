@@ -22,7 +22,7 @@ import java.util.Map;
 
 /** Spec §6.2: complete, untruncated machine-readable report. */
 public final class JsonReportWriter {
-    public static final int SCHEMA = 3;
+    public static final int SCHEMA = 4;
 
     private JsonReportWriter() {
     }
@@ -50,6 +50,7 @@ public final class JsonReportWriter {
         session.addProperty("hitchThresholdMs", r.hitchThresholdNanos() / 1e6);
         session.addProperty("overheadEstimateMs", r.overheadEstimateMs());
         session.addProperty("timedCalls", r.timedCalls());
+        session.addProperty("vertexCalls", r.vertexCalls());
         session.addProperty("unbalancedFrames", r.unbalancedFrames());
         JsonObject config = new JsonObject();
         config.addProperty("durationSeconds", r.config().durationSeconds());
@@ -101,6 +102,7 @@ public final class JsonReportWriter {
                 JsonObject te = new JsonObject();
                 te.addProperty("key", t.key().serialize());
                 te.addProperty("us", t.nanos() / 1000);
+                te.addProperty("gc", t.gc());
                 top.add(te);
             }
             o.add("top", top);
@@ -157,6 +159,7 @@ public final class JsonReportWriter {
             o.addProperty("tickUs", e.tickNanos() / 1000);
             o.addProperty("shadowUs", e.shadowNanos() / 1000);
             o.addProperty("peakFrameUs", e.maxFrameNanos() / 1000);
+            o.addProperty("gcFrames", e.gcFrames());
             o.addProperty("vertices", e.vertices());
             arr.add(o);
         }

@@ -1,11 +1,7 @@
 package io.github.edwardg117.renderable.report;
 
-import io.github.edwardg117.renderable.core.Accumulator;
-import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
-import io.github.edwardg117.renderable.core.Session;
-import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TestSessions;
 import org.junit.jupiter.api.Test;
@@ -19,7 +15,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class TextReportWriterTest {
     final SessionResult r = TestSessions.sample();
     final Environment env = environment();
-    static final long MS = 1_000_000L;
 
     static Environment environment() {
         LinkedHashMap<String, String> m = new LinkedHashMap<>();
@@ -215,32 +210,9 @@ class TextReportWriterTest {
         assertFalse(empty.contains(TextReportWriter.MESH_NOTE), empty);
     }
 
-    /**
-     * A two-frame session where the second frame's cost is entirely a 40 ms GC pause. The cow renders 1 ms
-     * in that same frame -- nowhere near the pause -- so a hitch line with a real, un-suspect contributor
-     * sits right beside the suspect one, and marking that came from the frame rather than the entry would
-     * wrongly tag the cow too.
-     */
-    static SessionResult gcSession() {
-        long[] clock = {0};
-        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> clock[0], TestSessions.WALL_START);
-        Accumulator press = s.accumulator(TestSessions.PRESS);
-        Accumulator cow = s.accumulator(TestSessions.COW);
-        clock[0] = 0;          s.onRenderPre(0, 0);
-        clock[0] = 1 * MS;     s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 3 * MS;  s.end();
-        clock[0] = 3 * MS;     s.begin(cow, Bucket.ENTITY);         clock[0] = 4 * MS;  s.end();
-        s.onRenderPost();
-        clock[0] = 16 * MS;    s.onRenderPre(0, 0);
-        clock[0] = 17 * MS;    s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 57 * MS; s.end();
-        clock[0] = 57 * MS;    s.begin(cow, Bucket.ENTITY);         clock[0] = 58 * MS; s.end();
-        s.onRenderPost();
-        clock[0] = 100 * MS;   s.onRenderPre(1, 40);
-        return s.finish();
-    }
-
     @Test
     void gcSuspectPeaksAndContributorsAreMarked() {
-        String s = TextReportWriter.write(gcSession(), env, "0.4.0");
+        String s = TextReportWriter.write(TestSessions.gcSession(), env, "0.4.0");
 
         assertTrue(s.contains(TextReportWriter.GC_NOTE + "\n"), s);
         assertTrue(s.contains(TextReportWriter.GC_COLUMN_NOTE + "\n"), s);
@@ -274,14 +246,7 @@ class TextReportWriterTest {
 
     @Test
     void aPeakThatWasOnlyEverGcSuspectPrintsADash() {
-        long[] clock = {0};
-        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> clock[0], TestSessions.WALL_START);
-        Accumulator press = s.accumulator(TestSessions.PRESS);
-        clock[0] = 0;        s.onRenderPre(0, 0);
-        clock[0] = 1 * MS;   s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 41 * MS; s.end();
-        clock[0] = 100 * MS; s.onRenderPre(1, 40);
-
-        String out = TextReportWriter.write(s.finish(), env, "0.4.0");
+        String out = TextReportWriter.write(TestSessions.everyFrameGcSuspect(), env, "0.4.0");
         int at = out.indexOf("Block entities by position (top 20)\n");
         String row = out.substring(at).split("\n", 5)[3];
         assertTrue(row.contains(" - "), "the only frame was GC-suspect, so there is no clean peak: " + row);

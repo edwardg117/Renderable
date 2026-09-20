@@ -120,6 +120,36 @@ Spec addendum §P4.B1, §P4.B6 #3 and #6, §P4.D1's import test and §P4.D2. All
 change the same method, and splitting one method's rework across two independently-ordered plans would make
 whichever ran second conflict.
 
+- [ ] **Step 0: Capture the current output, before you touch anything**
+
+This task's acceptance criterion is that the JSON is **byte-identical** after the rewrite, and no test in the
+repository would detect a whitespace or number-formatting difference. The key-set test added in phase 4a
+pins field order and membership, but not indentation, separators or how a `double` renders. So capture the
+current bytes first and diff against them at the end. Write to a scratch directory, not the repository —
+this is a working artefact, not a golden file to commit:
+
+```bash
+mkdir -p "$TMPDIR/renderable-json" 2>/dev/null || mkdir -p /tmp/renderable-json
+cat > /tmp/CaptureJson.java <<'JAVA'
+// Throwaway: prints the current JSON for one fixture so the rewrite can be diffed against it.
+JAVA
+```
+
+The simplest reliable capture is a temporary JUnit test you delete afterwards: add a method to
+`JsonReportWriterTest` that does
+`java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/renderable-json/before.json"), JsonReportWriter.write(TestSessions.phase3(), environment(), "0.4.0"));`,
+run it with `./gradlew test --tests '...JsonReportWriterTest' --no-daemon`, then remove the method. Repeat
+after Step 3 writing `after.json`, and confirm:
+
+```bash
+diff /tmp/renderable-json/before.json /tmp/renderable-json/after.json && echo "byte-identical"
+```
+
+Expected: `byte-identical`, no output from `diff`. If it differs, the two most likely causes are the indent
+string (Gson's pretty printer is two spaces; `JsonWriter.setIndent("  ")` must match) and HTML-safe escaping
+(`Gson.toJson` escapes `<`, `>`, `&`, `=` and `'` by default; a bare `JsonWriter` does not, which is why
+Step 3 calls `setHtmlSafe(true)`). Fix the writer, not the expectation.
+
 - [ ] **Step 1: Write the failing tests**
 
 Create `src/test/java/io/github/edwardg117/renderable/report/ReportFilesTest.java`:

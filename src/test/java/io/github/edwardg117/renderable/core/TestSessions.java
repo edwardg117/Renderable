@@ -90,6 +90,56 @@ public final class TestSessions {
     }
 
     /**
+     * Two-frame fixture for GC-suspect peaks (spec addendum §P4.A0). Public because the report tests in
+     * another package reuse it.
+     *
+     * Frame 0 (0-16 ms) is clean: press renders 1-3 ms (2 ms), cow renders 3-4 ms (1 ms). Frame 1 (16-32 ms)
+     * has the press call straddle the reported pause: press renders 17-57 ms (40 ms), cow renders 57-58 ms
+     * (1 ms), nowhere near the pause. The pause (1 GC, 40 ms) is reported at the onRenderPre that opens the
+     * third, discarded frame, at 100 ms, and is attributed back to frame 1, the one that just closed, giving
+     * a 39 ms suspicion threshold (the pause minus the 1 ms slack): the press's 40 ms frame total clears it
+     * by 1 ms and is marked GC-suspect, while the cow's 1 ms is nowhere near it and stays clean.
+     */
+    public static SessionResult gcSession() {
+        long[] clock = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> clock[0], WALL_START);
+        Accumulator press = s.accumulator(PRESS);
+        Accumulator cow = s.accumulator(COW);
+        clock[0] = 0;          s.onRenderPre(0, 0);
+        clock[0] = 1 * MS;     s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 3 * MS;  s.end();
+        clock[0] = 3 * MS;     s.begin(cow, Bucket.ENTITY);         clock[0] = 4 * MS;  s.end();
+        s.onRenderPost();
+        clock[0] = 16 * MS;    s.onRenderPre(0, 0);
+        clock[0] = 17 * MS;    s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 57 * MS; s.end();
+        clock[0] = 57 * MS;    s.begin(cow, Bucket.ENTITY);         clock[0] = 58 * MS; s.end();
+        s.onRenderPost();
+        clock[0] = 100 * MS;   s.onRenderPre(1, 40);
+        return s.finish();
+    }
+
+    /**
+     * One frame whose only cost is a press call that straddles the reported pause (spec addendum §P4.A0), so
+     * the press never has a clean frame at all: {@code peakFrameUs} is 0 and {@code gcFrames} is 1, and the
+     * zero is distinguishable from "never cost anything" only by that gcFrames count. Public for the same
+     * reason as {@link #gcSession()}.
+     *
+     * Frame 0 (0-16 ms): press renders 1-41 ms (40 ms). The pause (1 GC, 40 ms) is reported at the
+     * onRenderPre that opens the second, discarded frame, at 100 ms, giving a 39 ms suspicion threshold (the
+     * pause minus the 1 ms slack): the press's 40 ms frame total clears it by 1 ms, so the frame has no clean
+     * sample at all.
+     */
+    public static SessionResult everyFrameGcSuspect() {
+        long[] clock = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> clock[0], WALL_START);
+        Accumulator press = s.accumulator(PRESS);
+        clock[0] = 0;        s.onRenderPre(0, 0);
+        clock[0] = 1 * MS;   s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 41 * MS; s.end();
+        s.onRenderPost();
+        clock[0] = 100 * MS; s.onRenderPre(1, 40);
+        return s.finish();
+    }
+
+    /**
      * The phase 2 skeleton: the {@link #sample()} frames plus particles, ticks, light, Flywheel and visual samples.
      *
      * Per frame: 0.1 ms other render, press 2 ms (60 in frame 10), press2 1.5, mixer 1, cow 0.5, player 0.3,
