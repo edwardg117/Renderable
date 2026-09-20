@@ -131,10 +131,11 @@ public final class ResultsScreen extends Screen {
     }
 
     private void updateButtons() {
+        boolean worldGone = ProfilerController.get().resultWorldGone();
         boolean hasPos = selected != null && selected.pos() != null;
         boolean hasEntity = selected != null && selected.entityId() >= 0;
-        highlightButton.active = hasPos;
-        teleportButton.active = hasPos || hasEntity;
+        highlightButton.active = hasPos && !worldGone;
+        teleportButton.active = (hasPos || hasEntity) && !worldGone;
         sortButton.visible = tab.sortable();
     }
 

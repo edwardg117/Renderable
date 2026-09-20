@@ -1055,6 +1055,14 @@ feat(ui): the tabs use the report's empty-state sentences and cap the Sections l
 
 ---
 
+Carried in from phase 4b's review of its Task 5, since this task is already rewriting the buttons: **a
+disabled Highlight or Teleport button now gives no reason.** Phase 4b greys them out for a second,
+unrelated cause — the result's world is gone — and `ResultsScreen` has no tooltip anywhere to distinguish
+that from "nothing is selected". It is the same shape as the unexplained `gc f` column phase 4a had to fix
+with a note. Adding the file's first tooltip was not worth it inside 4b's small diff; here, where the button
+row is being touched anyway, it is. A tooltip reading "the world this session was taken in is gone" on the
+disabled state is enough.
+
 ### Task 4: Click a header to sort; teleport somewhere a player can stand; truncate right-aligned cells
 
 **Files:**

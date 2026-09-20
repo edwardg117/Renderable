@@ -55,7 +55,8 @@ public final class WorldOverlay {
     }
 
     private static List<Label> labels = List.of();
-    private static boolean enabled = true;
+    /** Null until first read, then whatever the config said or the user last chose. */
+    private static Boolean enabled;
 
     private static final Matrix4f VIEW_PROJECTION = new Matrix4f();
     private static final Vector4f SCRATCH = new Vector4f();
@@ -97,7 +98,6 @@ public final class WorldOverlay {
             out.add(new Label(k.dimension(), k.centerX() + 0.5, k.centerY() + 0.5, k.centerZ() + 0.5, -1, text, Colors.YELLOW));
         }
         labels = List.copyOf(out);
-        enabled = RenderableConfig.OVERLAY_ENABLED.get();
     }
 
     private static Label label(RankedEntry e, Set<ProfileKey> flagged, int frames, long sessionTotal,
@@ -119,8 +119,17 @@ public final class WorldOverlay {
         highlight = null;
     }
 
+    /**
+     * Whether labels are drawn. Read from the config on first use, not at every session end, so
+     * {@code /renderable overlay off} survives the next session (spec addendum §P4.B6).
+     */
     public static boolean isEnabled() {
-        return enabled;
+        Boolean e = enabled;
+        if (e == null) {
+            e = RenderableConfig.OVERLAY_ENABLED.get();
+            enabled = e;
+        }
+        return e;
     }
 
     public static void setEnabled(boolean on) {
@@ -128,7 +137,7 @@ public final class WorldOverlay {
     }
 
     public static void toggle() {
-        enabled = !enabled;
+        setEnabled(!isEnabled());
     }
 
     /** Draw a red rectangle around the block on screen for ten seconds. */
@@ -147,7 +156,7 @@ public final class WorldOverlay {
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
-        boolean wantLabels = enabled && !labels.isEmpty();
+        boolean wantLabels = isEnabled() && !labels.isEmpty();
         if ((!wantLabels && highlight == null) || Minecraft.getInstance().level == null) {
             haveMatrices = false;
             return;
@@ -166,7 +175,7 @@ public final class WorldOverlay {
         int guiW = g.guiWidth();
         int guiH = g.guiHeight();
 
-        if (enabled && !labels.isEmpty()) {
+        if (isEnabled() && !labels.isEmpty()) {
             drawLabels(g, mc, cam, guiW, guiH);
         }
         drawHighlight(g, cam, guiW, guiH);

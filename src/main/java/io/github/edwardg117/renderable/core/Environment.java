@@ -1,5 +1,7 @@
 package io.github.edwardg117.renderable.core;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -18,11 +20,31 @@ public record Environment(Map<String, String> entries, List<String> hooksApplied
      */
     public static final String ABSENT = "absent";
 
+    /**
+     * Copies both collections so the record is really immutable, however it is built. The entries copy is a
+     * {@link LinkedHashMap}, not {@code Map.copyOf}, because {@code Map.copyOf} does not keep order.
+     */
+    public Environment {
+        entries = Collections.unmodifiableMap(new LinkedHashMap<>(entries));
+        hooksApplied = List.copyOf(hooksApplied);
+    }
+
     public static Environment of(Map<String, String> entries, List<String> hooksApplied) {
-        return new Environment(entries, List.copyOf(hooksApplied));
+        return new Environment(entries, hooksApplied);
     }
 
     public static Environment empty() {
         return new Environment(Map.of(), List.of());
+    }
+
+    /** True when {@code key} was collected and is not {@link #ABSENT}. */
+    public boolean has(String key) {
+        String v = entries.get(key);
+        return v != null && !ABSENT.equals(v);
+    }
+
+    /** The collected value for {@code key}, or {@link #ABSENT} when it was not collected. */
+    public String value(String key) {
+        return entries.getOrDefault(key, ABSENT);
     }
 }

@@ -37,6 +37,9 @@ public final class Probe {
 
         /** The level went away; the listener should discard the running session. */
         void onDiscardRequested(String reason);
+
+        /** The player left the world; a result kept in memory now describes a world that is gone. */
+        void onWorldGone();
     }
 
     /** True while a session is sampling. Volatile so worker-thread hooks see it. */

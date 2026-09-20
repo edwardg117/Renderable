@@ -1849,7 +1849,26 @@ compile:
 
 Expected: `BUILD SUCCESSFUL`, **98 tests**.
 
-- [ ] **Step 9: Compile and check the two behaviours in the client**
+- [ ] **Step 9: Compile, and hand the two in-game behaviours to Task 7**
+
+```bash
+./gradlew build --no-daemon
+```
+
+Neither of the two behaviours below can be verified from an automated step: both need someone to type a
+command into a running client, and `Rows`, `WorldOverlay` and `ResultsScreen` all import Minecraft types, so
+none of them is unit-testable. Do not claim a check nobody performed — add them to Task 7's list, where the
+user already has the pack open:
+
+- `/renderable overlay off`, then a session: no labels when it finishes. `/renderable overlay on`: they
+  appear. Before this task, finishing a session silently re-enabled them from the config.
+- Run a session, disconnect to the title screen, reconnect, `/renderable results`: **Highlight** and
+  **Teleport** greyed out, **Copy report** still working.
+
+What *is* verified here is everything underneath them: the defensive copy and its ordering, `has`/`value`,
+and that `onWorldGone` reaches `ProfilerController` from both `FrameEvents` paths.
+
+- [ ] **Step 9 (superseded): Compile and check the two behaviours in the client**
 
 ```bash
 ./gradlew runClient -PquickPlay="New World" --no-daemon
@@ -1927,6 +1946,22 @@ Also add, in "Reading a report", after the `verts/f` bullet:
 - The `reportFolder` config value must be a relative path with no `..` segment. Anything else falls back to
   `renderable` and the log says so.
 ```
+
+Two corrections where the code is right and the spec text lags, both found in Task 5's review:
+
+- §P4.B6 item 4 says to initialise `enabled` "from config once, **at mod construction**". The code reads it
+  lazily on first use instead, which is strictly safer: `ModConfigSpec.ConfigValue.get()` throws
+  `IllegalStateException` before the config loads, and mod construction is exactly when that is possible.
+  Amend the item to say "on first use".
+- §P4.B6 item 5 names `ABSENT` and `has(String)`; the code also has `value(String)`, which is already
+  earning its place in `TextReportWriter.appendFlywheel`. Add it.
+
+And one user-visible behaviour change that neither the spec nor the README mentions: because `setResult` no
+longer re-reads `overlayEnabled`, **editing `renderable-client.toml` mid-run no longer takes effect at the
+next session** — the value is cached for the rest of the client run once read. That is the direct
+consequence of item 4 and the right trade, since the in-game toggle must win over a stale config read, but
+a user who edits the file and sees nothing happen deserves the sentence. Put it in the README beside the
+`/renderable overlay off` note.
 
 - [ ] **Step 2: Apply the spec amendments**
 

@@ -42,6 +42,7 @@ public final class ProfilerController implements Probe.Listener {
     private long lastVisualSampleSecond = -1;
 
     private SessionResult lastResult;
+    private boolean resultWorldGone;
     private Environment lastEnvironment;
     private String lastReportText;
     private Path lastFolder;
@@ -61,6 +62,14 @@ public final class ProfilerController implements Probe.Listener {
     /** The last finished session, or null. */
     public SessionResult lastResult() {
         return lastResult;
+    }
+
+    /**
+     * True when the last result was taken in a world the client has since left, so its positions and entity
+     * ids no longer mean anything (spec addendum §P4.B6). The report itself is still worth copying.
+     */
+    public boolean resultWorldGone() {
+        return resultWorldGone;
     }
 
     public Environment lastEnvironment() {
@@ -167,6 +176,7 @@ public final class ProfilerController implements Probe.Listener {
         }
 
         lastResult = result;
+        resultWorldGone = false;
         lastEnvironment = env;
         lastReportText = text;
         // Only trust the folder if something actually reached disk - e.partial.folder() above may name a
@@ -294,6 +304,11 @@ public final class ProfilerController implements Probe.Listener {
     @Override
     public void onDiscardRequested(String reason) {
         if (isRunning()) discard(reason);
+    }
+
+    @Override
+    public void onWorldGone() {
+        resultWorldGone = true;
     }
 
     public static void chat(String text) {

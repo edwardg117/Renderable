@@ -50,11 +50,14 @@ public final class FrameEvents {
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         discard("logged out");
+        worldGone();
     }
 
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
-        if (event.getLevel().isClientSide()) discard("level unloaded");
+        if (!event.getLevel().isClientSide()) return;
+        discard("level unloaded");
+        worldGone();
     }
 
     private static void discard(String reason) {
@@ -65,5 +68,10 @@ public final class FrameEvents {
         } else {
             Probe.detach();
         }
+    }
+
+    private static void worldGone() {
+        Probe.Listener l = Probe.listener();
+        if (l != null) l.onWorldGone();
     }
 }
