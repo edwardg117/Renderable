@@ -11,7 +11,7 @@ public final class Calibration {
     }
 
     public static long measureCallNanos(LongSupplier clock) {
-        Session s = new Session(new SessionConfig(Long.MAX_VALUE, 2.0, 0, 5, 0), clock, 0);
+        Session s = new Session(new SessionConfig(Long.MAX_VALUE, 2.0, 0, 5, 0, 0), clock, 0);
         Accumulator a = s.accumulator(new EntityKey("renderable:calibration", 0, ""));
         for (int i = 0; i < WARMUP; i++) {
             s.begin(a, Bucket.ENTITY);

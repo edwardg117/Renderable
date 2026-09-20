@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 
 /**
@@ -31,11 +32,18 @@ public final class Session {
     private long lastGcCount = -1;
     private long lastGcMillis;
 
+    /** Spec addendum §P4.A0: pauses below this are too small to make a peak misleading, so they are ignored. */
+    public static final long GC_MIN_NANOS = 2_000_000L;
+    /** Spec addendum §P4.A0: the JVM reports pauses in whole milliseconds, so the comparison allows one. */
+    public static final long GC_SLACK_NANOS = 1_000_000L;
     /** Maximum nesting depth tracked. Deeper calls are counted but not timed. */
     public static final int MAX_DEPTH = 64;
 
     private final Map<ProfileKey, Accumulator> accumulators = new HashMap<>(1024);
+    private final Function<ProfileKey, Accumulator> accumulatorFactory = k -> new Accumulator(k, typeStats(k));
     private final ArrayList<Accumulator> touched = new ArrayList<>(1024);
+    private final Map<String, TypeStats> types = new HashMap<>(256);
+    private final ArrayList<TypeStats> touchedTypes = new ArrayList<>(256);
     private final MeshStats mesh = new MeshStats();
 
     private final Accumulator[] stack = new Accumulator[MAX_DEPTH];
@@ -128,7 +136,17 @@ public final class Session {
 
     /** Returns the accumulator for a key, creating it on first sight. Hooks cache the result per instance. */
     public Accumulator accumulator(ProfileKey key) {
-        return accumulators.computeIfAbsent(key, Accumulator::new);
+        return accumulators.computeIfAbsent(key, accumulatorFactory);
+    }
+
+    /**
+     * The aggregation shared by every key of one category and type id. Resolved once, when an accumulator is
+     * created, so the per-frame roll-up in {@link #closeFrame} reaches a type by one field dereference rather
+     * than a map lookup per touched key (spec addendum §P4.A2).
+     */
+    private TypeStats typeStats(ProfileKey key) {
+        return types.computeIfAbsent(key.category().ordinal() + ":" + key.typeId(),
+                k -> new TypeStats(key.typeId(), key.category()));
     }
 
     /** Mesh-build accumulators, safe to write from any thread (spec §3.4). */
@@ -279,6 +297,10 @@ public final class Session {
     }
 
     private void closeFrame(long now, int gcCount, long gcMillis) {
+        // Spec addendum P4.A0. Long.MAX_VALUE means "nothing in this frame can be suspect".
+        long gcNanos = gcMillis * 1_000_000L;
+        long suspectAt = gcNanos < GC_MIN_NANOS ? Long.MAX_VALUE : gcNanos - GC_SLACK_NANOS;
+
         int n = config.topContributorsPerFrame();
         Accumulator[] topAcc = new Accumulator[n];
         int topSize = 0;
@@ -286,7 +308,20 @@ public final class Session {
         for (int i = 0, size = touched.size(); i < size; i++) {
             Accumulator a = touched.get(i);
             long fn = a.frameNanos;
-            if (fn > a.maxFrameNanos) a.maxFrameNanos = fn;
+            if (fn >= suspectAt) {
+                a.gcFrames++;
+            } else if (fn > a.maxFrameNanos) {
+                a.maxFrameNanos = fn;
+            }
+
+            // The type's frame total is the sum of its members', gathered here rather than in end() so no
+            // work lands inside an enclosing call's timing window.
+            TypeStats ts = a.type();
+            if (!ts.inFrame) {
+                ts.inFrame = true;
+                touchedTypes.add(ts);
+            }
+            ts.frameNanos += fn;
 
             if (n == 0) continue;
             if (topSize < n) {
@@ -306,11 +341,27 @@ public final class Session {
             }
         }
 
+        // same rule as the accumulator loop above, at type granularity
+        for (int i = 0, size = touchedTypes.size(); i < size; i++) {
+            TypeStats ts = touchedTypes.get(i);
+            long fn = ts.frameNanos;
+            if (fn >= suspectAt) {
+                ts.gcFrames++;
+            } else if (fn > ts.maxFrameNanos) {
+                ts.maxFrameNanos = fn;
+            }
+            ts.frameNanos = 0;
+            ts.inFrame = false;
+        }
+        touchedTypes.clear();
+
         List<TopEntry> top = new ArrayList<>(topSize);
         for (int i = 0; i < topSize; i++) {
-            top.add(new TopEntry(topAcc[i].key, topAcc[i].frameNanos));
+            long fn = topAcc[i].frameNanos;
+            top.add(new TopEntry(topAcc[i].key, fn, fn >= suspectAt));
         }
 
+        // Runs last: the top-entry loop above still needs each accumulator's frameNanos.
         for (int i = 0, size = touched.size(); i < size; i++) {
             Accumulator a = touched.get(i);
             a.frameNanos = 0;

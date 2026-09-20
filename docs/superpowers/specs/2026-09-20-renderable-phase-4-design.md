@@ -158,9 +158,24 @@ came from one member.
 `maxFrameNanos` and `gcFrames` — the same four fields `Accumulator` already keeps, at type granularity.
 `Session` owns a `HashMap<String, TypeStats>` (key `category.ordinal() + ":" + typeId`) and a
 `touchedTypes` list that mirrors the existing `touched` list. Each `Accumulator` holds a final reference to
-its `TypeStats`, resolved once when the accumulator is created, so `Session.end()` costs one field
-dereference and one add rather than a map lookup. `closeFrame` walks `touchedTypes` with the same
-GC-suspect rule as P4.A0 and resets it.
+its `TypeStats`, resolved once when the accumulator is created, so no lookup is ever needed at timing time.
+
+**`Session.end()` is not changed at all.** A type's frame total is accumulated at the frame boundary, in
+the loop `closeFrame` already runs over `touched`: a type's total is by definition the sum of its members'
+`frameNanos`, so adding those up once per key per frame gives the identical number that adding each
+`elapsed` would. `closeFrame` then walks `touchedTypes` with the same GC-suspect rule as P4.A0 and resets
+it.
+
+That placement is load-bearing, not tidiness. Work done inside `end()` lands **inside the enclosing call's
+timing window** whenever calls nest — an item renderer inside a block entity renderer — so it inflates the
+outer measurement. `closeFrame` runs at the frame boundary with nothing open, and inflates nothing.
+
+**Known limitation.** Because members contribute their inclusive times, a renderer of type T that renders
+another T (Create's nested contraption renderers are the realistic case) has the inner call's time counted
+twice in the type's frame total, and a type's peak can exceed the frame it was measured in. This is
+inherent to summing inclusive times, and is documented on `TypeStats.frameNanos` rather than corrected:
+subtracting nested same-type time would need a per-type depth counter on the hot path, which §3.5 forbids
+for a case that changes one row of one table.
 
 `RankedEntry.group` reads the type peak and `gcFrames` from `members.get(0).type()` rather than computing
 them, because every member of a group shares one `TypeStats`.
@@ -169,6 +184,11 @@ them, because every member of a group shares one `TypeStats`.
 
 - *Summing member peaks.* `sum(member.maxFrameNanos)` over-reports: members peak in different frames.
 - *A map lookup per `end()`.* Correct but puts a `HashMap.get` on the hot path, which §3.5 forbids.
+- *Accumulating the type total inside `end()`*, through the accumulator's field reference rather than a
+  map. Allocation-free and correct, and it is what the first implementation did, but it puts a dereference,
+  a branch and an add on the per-call path to compute a number the per-frame path already has — and it does
+  so inside the enclosing call's timing window. Superseded by the frame-boundary form above, found in the
+  code-quality review of phase 4a Task 1.
 - *Computing it at report time from the frame records.* Frame records only keep the top N keys, so the
   information is not there.
 

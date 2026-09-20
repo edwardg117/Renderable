@@ -146,7 +146,9 @@ Append inside `SessionTest`:
         // earlier clean frame's 2 ms; one nanosecond below, the frame is clean and sets the peak itself.
         assertEquals(9 * MS - 1, peakAfterOneFrameOf(9 * MS - 1, 10), "one nanosecond below the threshold is clean");
         assertEquals(2 * MS, peakAfterOneFrameOf(9 * MS, 10), "9 ms against a 10 ms pause is suspect");
-        // p = 1 ms is below the two-millisecond floor, so nothing in that frame is suspect.
+        // The floor is inclusive on the suspect side: a 2 ms pause arms the rule, a 1 ms pause does not.
+        // Without the first of these, a `<=` typo in the floor comparison would pass every other case here.
+        assertEquals(2 * MS, peakAfterOneFrameOf(5 * MS, 2), "a 2 ms pause is at the floor, so it arms the rule");
         assertEquals(5 * MS, peakAfterOneFrameOf(5 * MS, 1), "a 1 ms pause is below the floor");
         assertEquals(5 * MS, peakAfterOneFrameOf(5 * MS, 0), "no pause at all");
     }
@@ -342,28 +344,10 @@ Replace `accumulator(ProfileKey key)` with:
     }
 ```
 
-In `end()`, replace the block that starts `if (frameStartNanos >= 0) {` with:
-
-```java
-        if (frameStartNanos >= 0) {
-            if (a != null) {
-                if (!a.inFrame) {
-                    a.inFrame = true;
-                    touched.add(a);
-                }
-                a.frameNanos += elapsed;
-                TypeStats ts = a.type();
-                if (!ts.inFrame) {
-                    ts.inFrame = true;
-                    touchedTypes.add(ts);
-                }
-                ts.frameNanos += elapsed;
-            }
-            if (depth == 0) {
-                buckets[bucket.ordinal()] += elapsed;
-            }
-        }
-```
+**`end()` is not touched.** A type's frame total is the sum of its members' `frameNanos`, so it is
+accumulated at the frame boundary instead — see `closeFrame` below. Putting it in `end()` would compute the
+same number on the per-call path, and would do it inside the enclosing call's timing window whenever calls
+nest, inflating the outer measurement.
 
 Replace the whole `closeFrame` method with:
 
@@ -385,6 +369,15 @@ Replace the whole `closeFrame` method with:
             } else if (fn > a.maxFrameNanos) {
                 a.maxFrameNanos = fn;
             }
+
+            // The type's frame total is the sum of its members', gathered here rather than in end() so no
+            // work lands inside an enclosing call's timing window.
+            TypeStats ts = a.type();
+            if (!ts.inFrame) {
+                ts.inFrame = true;
+                touchedTypes.add(ts);
+            }
+            ts.frameNanos += fn;
 
             if (n == 0) continue;
             if (topSize < n) {
@@ -471,10 +464,19 @@ and replace `ofSeconds`:
 
 - [ ] **Step 8: Update every existing `SessionConfig` construction**
 
-Five call sites. In `src/test/java/io/github/edwardg117/renderable/core/SessionTest.java`:
+Eight call sites across four files. Find them all before editing — `ofSeconds` is a factory, so a grep for
+`new SessionConfig(` alone misses three of them:
+
+```bash
+grep -rn 'new SessionConfig(\|SessionConfig.ofSeconds(' src
+```
+
+In `src/test/java/io/github/edwardg117/renderable/core/SessionTest.java`:
 
 - line 17: `return new Session(new SessionConfig(durationMs * MS, 2.0, 16 * MS, 5, 0, 0), clock, 1_700_000_000_000L);`
 - line 114: `assertThrows(IllegalArgumentException.class, () -> new SessionConfig(0, 2.0, 0, 5, 0, 0));`
+- line 115: `SessionConfig c = SessionConfig.ofSeconds(30, 2.0, 16, 5, 25, 2);` (the test does not assert on the
+  calibration values, so the two new arguments are arbitrary)
 - line 199: `Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 2, 0, 0), clock, 0);`
 
 In `src/test/java/io/github/edwardg117/renderable/core/TestSessions.java`, both occurrences of
@@ -817,9 +819,23 @@ Replace the `finish()` body's last two statements with:
 
 In `SessionResult.java`, add `long vertexCalls,` immediately after `long timedCalls,` in the record header. Nothing else in the file changes.
 
-- [ ] **Step 6: Add `Calibration.measureVertexNanos`**
+- [ ] **Step 6: Fix and extend `Calibration`**
 
-In `Calibration.java`, add after `measureCallNanos`:
+First, a pre-existing bug the phase 4a Task 1 review turned up: `measureCallNanos` never calls
+`onRenderPre`, so `frameStartNanos` stays `-1` and the whole `if (frameStartNanos >= 0)` block in `end()`
+— the touched-list bookkeeping and the bucket add — is skipped for all 12,000 calibration pairs. The
+constant therefore under-states what `end()` really costs, and every overhead figure the mod has ever
+printed is low by that amount. Add one line to `measureCallNanos`, immediately after the `accumulator(...)`
+call:
+
+```java
+        s.onRenderPre(0, 0);   // calibrate the path a real session runs, not the frameless shortcut
+```
+
+The session's duration is `Long.MAX_VALUE`, so opening a frame changes nothing else; the throwaway
+`touched` and `buckets` writes are harmless.
+
+Then add `measureVertexNanos` after `measureCallNanos`:
 
 ```java
     /**
@@ -829,6 +845,7 @@ In `Calibration.java`, add after `measureCallNanos`:
     public static long measureVertexNanos(LongSupplier clock) {
         Session s = new Session(new SessionConfig(Long.MAX_VALUE, 2.0, 0, 5, 0, 0), clock, 0);
         Accumulator a = s.accumulator(new EntityKey("renderable:calibration", 0, ""));
+        s.onRenderPre(0, 0);
         s.begin(a, Bucket.ENTITY);
         for (int i = 0; i < WARMUP; i++) s.vertex();
         long start = clock.getAsLong();

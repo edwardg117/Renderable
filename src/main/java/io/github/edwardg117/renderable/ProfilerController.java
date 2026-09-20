@@ -92,7 +92,8 @@ public final class ProfilerController implements Probe.Listener {
                 RenderableConfig.HITCH_MEDIAN_MULTIPLIER.get(),
                 RenderableConfig.HITCH_MIN_EXCESS_MS.get(),
                 RenderableConfig.TOP_CONTRIBUTORS_PER_FRAME.get(),
-                calibratedCallNanos);
+                calibratedCallNanos,
+                0);
         lastVisualSampleSecond = -1;
         session = new Session(config, System::nanoTime, System.currentTimeMillis());
         WorldOverlay.clear();

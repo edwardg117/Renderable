@@ -14,7 +14,7 @@ class SessionTest {
     final LongSupplier clock = () -> now[0];
 
     Session session(long durationMs) {
-        return new Session(new SessionConfig(durationMs * MS, 2.0, 16 * MS, 5, 0), clock, 1_700_000_000_000L);
+        return new Session(new SessionConfig(durationMs * MS, 2.0, 16 * MS, 5, 0, 0), clock, 1_700_000_000_000L);
     }
 
     void at(long ms) {
@@ -111,8 +111,8 @@ class SessionTest {
 
     @Test
     void configRejectsNonPositiveDuration() {
-        assertThrows(IllegalArgumentException.class, () -> new SessionConfig(0, 2.0, 0, 5, 0));
-        SessionConfig c = SessionConfig.ofSeconds(30, 2.0, 16, 5, 25);
+        assertThrows(IllegalArgumentException.class, () -> new SessionConfig(0, 2.0, 0, 5, 0, 0));
+        SessionConfig c = SessionConfig.ofSeconds(30, 2.0, 16, 5, 25, 2);
         assertEquals(30_000 * MS, c.durationNanos());
         assertEquals(16 * MS, c.hitchMinExcessNanos());
         assertEquals(30.0, c.durationSeconds(), 1e-9);
@@ -196,7 +196,7 @@ class SessionTest {
 
     @Test
     void topListIsCappedAtConfiguredSize() {
-        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 2, 0), clock, 0);
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 2, 0, 0), clock, 0);
         at(0); s.onRenderPre(0, 0);
         for (int i = 0; i < 5; i++) {
             Accumulator a = s.accumulator(new EntityKey("minecraft:zombie", i, ""));
@@ -400,5 +400,88 @@ class SessionTest {
         assertEquals(1, mesh.size());
         assertEquals(new BlockKey("minecraft:stone"), mesh.get(0).key());
         assertEquals(4 * MS, mesh.get(0).nanos());
+    }
+
+    @Test
+    void gcSuspectFramesDoNotSetTheKeyPeak() {
+        // onRenderPre takes the JVM's CUMULATIVE counters, and the delta is credited to the frame it closes.
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(TestSessions.PRESS);
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.begin(a, Bucket.BLOCK_ENTITY); at(4); s.end();      // 3 ms
+        at(16); s.onRenderPre(0, 0);                                   // closes a clean frame: the peak is 3 ms
+        at(17); s.begin(a, Bucket.BLOCK_ENTITY); at(57); s.end();      // 40 ms
+        at(80); s.onRenderPre(1, 40);                                  // that frame paused for 40 ms: suspect
+        at(81); s.begin(a, Bucket.BLOCK_ENTITY); at(83); s.end();      // 2 ms
+        at(96); s.onRenderPre(1, 40);                                  // cumulative unchanged, so a clean frame
+
+        assertEquals(3 * MS, a.maxFrameNanos, "the 40 ms frame was GC-suspect and must not set the peak");
+        assertEquals(1, a.gcFrames, "only the 40 ms frame was GC-suspect");
+    }
+
+    @Test
+    void gcSuspicionIsBoundedByTheReportedPause() {
+        // p = 10 ms, so the threshold is 9 ms: at 9 ms the frame is suspect and the peak stays at the
+        // earlier clean frame's 2 ms; one nanosecond below, the frame is clean and sets the peak itself.
+        assertEquals(9 * MS - 1, peakAfterOneFrameOf(9 * MS - 1, 10), "one nanosecond below the threshold is clean");
+        assertEquals(2 * MS, peakAfterOneFrameOf(9 * MS, 10), "9 ms against a 10 ms pause is suspect");
+        // The floor is inclusive on the suspect side: a 2 ms pause arms the rule, a 1 ms pause does not.
+        // Without this, a `<=` typo in the floor comparison would pass every other case here.
+        assertEquals(2 * MS, peakAfterOneFrameOf(5 * MS, 2), "a 2 ms pause is at the floor, so it arms the rule");
+        // p = 1 ms is below the two-millisecond floor, so nothing in that frame is suspect.
+        assertEquals(5 * MS, peakAfterOneFrameOf(5 * MS, 1), "a 1 ms pause is below the floor");
+        assertEquals(5 * MS, peakAfterOneFrameOf(5 * MS, 0), "no pause at all");
+    }
+
+    /**
+     * Runs one 2 ms frame, then one frame costing {@code costNanos} closed with a {@code gcMillis} pause,
+     * and returns the key's peak. The 2 ms first frame is the clean fallback the peak falls back to.
+     */
+    long peakAfterOneFrameOf(long costNanos, long gcMillis) {
+        Session s = session(10_000);
+        Accumulator a = s.accumulator(TestSessions.PRESS);
+        now[0] = 0;              s.onRenderPre(0, 0);
+        now[0] = 1 * MS;         s.begin(a, Bucket.BLOCK_ENTITY);
+        now[0] = 3 * MS;         s.end();
+        now[0] = 100 * MS;       s.onRenderPre(0, 0);
+        now[0] = 101 * MS;       s.begin(a, Bucket.BLOCK_ENTITY);
+        now[0] = 101 * MS + costNanos; s.end();
+        now[0] = 300 * MS;       s.onRenderPre(gcMillis == 0 ? 0 : 1, gcMillis);
+        return a.maxFrameNanos;
+    }
+
+    @Test
+    void typePeakIsTheTypesWorstFrameAndTopEntriesCarryTheGcFlag() {
+        Session s = session(10_000);
+        Accumulator one = s.accumulator(TestSessions.PRESS);
+        Accumulator two = s.accumulator(TestSessions.PRESS2);
+        Accumulator cow = s.accumulator(TestSessions.COW);
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.begin(one, Bucket.BLOCK_ENTITY); at(3);  s.end();    // 2 ms
+        at(3);  s.begin(two, Bucket.BLOCK_ENTITY); at(6);  s.end();    // 3 ms; the type cost 5 ms this frame
+        at(16); s.onRenderPre(0, 0);
+        at(17); s.begin(one, Bucket.BLOCK_ENTITY); at(21); s.end();    // 4 ms alone: this key's worst clean frame
+        at(32); s.onRenderPre(0, 0);
+        at(33); s.begin(one, Bucket.BLOCK_ENTITY); at(40); s.end();    // 7 ms, but the frame paused for 7 ms
+        now[0] = 41 * MS;               s.begin(cow, Bucket.ENTITY);
+        now[0] = 41 * MS + 300_000;     s.end();                       // 0.3 ms, well under the 6 ms threshold
+        at(48); s.onRenderPre(1, 7);
+        SessionResult r = s.finish();
+
+        assertEquals(4 * MS, one.maxFrameNanos, "the 7 ms frame was GC-suspect and did not count");
+        assertEquals(1, one.gcFrames, "only the 7 ms frame was GC-suspect for this key");
+        assertEquals(3 * MS, two.maxFrameNanos);
+        assertEquals(0, two.gcFrames, "press2 was not touched in the GC frame, so it is unaffected");
+        assertEquals(5 * MS, one.type().maxFrameNanos, "the type's worst frame, not its worst member");
+        assertSame(one.type(), two.type(), "members of a type share one TypeStats");
+        assertEquals(1, one.type().gcFrames, "the type saw one GC-suspect frame, matching its member");
+
+        List<TopEntry> gcFrame = r.frames().get(2).top();
+        assertEquals(2, gcFrame.size());
+        assertEquals(TestSessions.PRESS, gcFrame.get(0).key());
+        assertTrue(gcFrame.get(0).gc(), "7 ms on a frame with a 7 ms pause is GC-suspect");
+        assertEquals(TestSessions.COW, gcFrame.get(1).key());
+        assertFalse(gcFrame.get(1).gc(), "0.3 ms is well under this frame's 6 ms suspect threshold");
+        assertFalse(r.frames().get(1).top().get(0).gc(), "the second frame had no pause");
     }
 }

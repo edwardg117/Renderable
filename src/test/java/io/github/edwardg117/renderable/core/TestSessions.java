@@ -34,7 +34,7 @@ public final class TestSessions {
     /** Public because the report tests in another package reuse it. */
     public static SessionResult sample() {
         long[] now = {0};
-        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25), () -> now[0], WALL_START);
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25, 2), () -> now[0], WALL_START);
         Accumulator press = s.accumulator(PRESS);
         Accumulator press2 = s.accumulator(PRESS2);
         Accumulator mixer = s.accumulator(MIXER);
@@ -94,7 +94,10 @@ public final class TestSessions {
      * render 9.2 ms (67.2 in frame 10). Tick: cow 0.2 (entity tick), press 0.4 (be tick), two FlameParticle
      * ticks of 0.05 (particle tick), 0.3 other tick; tick 1.0 ms. Frames are 16 ms (frame 10: 80 ms).
      * Visual counts sampled at frames 5, 10 and 15: 100/120/140 block entities, 10 entities, 0 effects,
-     * PRESS_VISUAL 100/120/140. One 5 ms GC in frame 15.
+     * PRESS_VISUAL 100/120/140. One 5 ms GC in frame 15, deliberately larger than every key's and every
+     * type's frame total there, so the fixture stays clean: the press type's total in that frame is
+     * 2.4 (press, render + be tick) + 1.5 (press2) = 3.9 ms against the pause's 4 ms threshold, a 0.1 ms
+     * margin that Task 2's type-peak tests rely on.
      *
      * Totals: 20 frames, 384 ms; tick avg 1.00 [particle tick 0.10, be tick 0.40, entity tick 0.20];
      * block entity 7.40, entity 0.80, particle render 0.30, flywheel 1.20, light 0.30, other render 2.10,
@@ -103,7 +106,7 @@ public final class TestSessions {
      */
     private static SessionResult build(boolean phase3) {
         long[] now = {0};
-        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25), () -> now[0], WALL_START);
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25, 2), () -> now[0], WALL_START);
         Accumulator press = s.accumulator(PRESS);
         Accumulator press2 = s.accumulator(PRESS2);
         Accumulator mixer = s.accumulator(MIXER);
