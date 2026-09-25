@@ -88,8 +88,6 @@ class RankingTest {
         assertEquals(COW, Ranking.sort(entities, Ranking.Sort.CALLS).get(0).key());
         List<RankedEntry> blocks = Ranking.byKey(r, ProfileKey.Category.BLOCK_ENTITY);
         assertEquals(PRESS, Ranking.sort(blocks, Ranking.Sort.PEAK).get(0).key());
-        assertEquals(Ranking.Sort.RENDER, Ranking.Sort.TOTAL.next());
-        assertEquals(Ranking.Sort.TOTAL, Ranking.Sort.LABEL.next());
     }
 
     @Test

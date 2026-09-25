@@ -39,8 +39,8 @@ public final class Rows {
     }
 
     /**
-     * Rows for one tab. {@code sort} is the clicked column, or null for the tab's default order; {@code ascending}
-     * its direction.
+     * Rows for one tab. {@code sort} is always the active column's sort ({@link ColumnSort#NONE} on Frames and
+     * Hitches, which ignore it); {@code ascending} its direction.
      */
     public static List<Row> build(Tab tab, SessionResult r, Environment env, ColumnSort sort, boolean ascending,
                                   Set<String> expanded) {
@@ -58,12 +58,12 @@ public final class Rows {
 
     /** The ranked sort a clicked column means, or the report's order, by total time, when there is none. */
     private static Ranking.Sort rankedSort(ColumnSort sort) {
-        return sort == null || sort.ranked() == null ? Ranking.Sort.TOTAL : sort.ranked();
+        return sort.ranked() == null ? Ranking.Sort.TOTAL : sort.ranked();
     }
 
     /** The mesh sort a clicked column means, or {@code fallback}, the report's order for that table. */
     private static Ranking.MeshSort meshSort(ColumnSort sort, Ranking.MeshSort fallback) {
-        return sort == null || sort.mesh() == null ? fallback : sort.mesh();
+        return sort.mesh() == null ? fallback : sort.mesh();
     }
 
     static List<Row> frames(SessionResult r) {
@@ -211,7 +211,7 @@ public final class Rows {
                 null, null, true, false, 0, null, -1));
 
         List<Map.Entry<String, Double>> ordered = new ArrayList<>(fw.byAverageDesc());
-        boolean byName = sort != null && sort.ranked() == Ranking.Sort.LABEL;
+        boolean byName = sort.ranked() == Ranking.Sort.LABEL;
         Comparator<Map.Entry<String, Double>> by = byName
                 ? Comparator.comparing(e -> shortName(e.getKey()))
                 : Comparator.comparingDouble(Map.Entry::getValue);

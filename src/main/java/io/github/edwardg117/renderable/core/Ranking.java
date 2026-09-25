@@ -11,12 +11,7 @@ public final class Ranking {
 
     /** What a column of a ranked table sorts by (spec §5.3). */
     public enum Sort {
-        TOTAL, RENDER, TICK, PEAK, VERTICES, CALLS, SHADOW, GC_FRAMES, LABEL;
-
-        public Sort next() {
-            Sort[] v = values();
-            return v[(ordinal() + 1) % v.length];
-        }
+        TOTAL, RENDER, TICK, PEAK, VERTICES, CALLS, SHADOW, GC_FRAMES, LABEL
     }
 
     /**

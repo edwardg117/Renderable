@@ -1603,6 +1603,8 @@ feat(ui): the tabs use the report's empty-state sentences and cap the Sections l
 - Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Tab.java` (delete `sortable()`)
 - Modify: `src/main/java/io/github/edwardg117/renderable/core/Ranking.java` (delete `Sort.next()`)
 - Modify: `src/test/java/io/github/edwardg117/renderable/core/RankingTest.java` (two assertions)
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/RowList.java` (`reselect`, Step 4a)
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Rows.java` (dead null checks, Step 4a)
 
 Spec addendum §P4.C3 and §P4.C7, plus one item carried in from phase 4b's review of its Task 5 (Step 4).
 Right-aligned truncation, which the first draft put here, moved to Task 2.
@@ -1640,12 +1642,13 @@ Replace `rebuild()`, and add the three helpers after it:
         colW = layout[1];
         list.setLayout(colX, colW);
         list.setRows(tab, Rows.build(tab, result, environment, activeSort(), ascending(), expanded));
+        if (selected != null && !list.reselect(selected)) selected = null;
         updateButtons();
     }
 
     /** The column this tab is sorted by: the last one clicked, or the one the tab opens on. */
     private int sortIndex() {
-        return sortColumn.computeIfAbsent(tab, t -> t.columns().defaultSortColumn());
+        return sortColumn.getOrDefault(tab, tab.columns().defaultSortColumn());
     }
 
     private boolean ascending() {
@@ -1665,8 +1668,7 @@ Add the click handler after `onRowClicked`:
     /**
      * A click in the header band sorts by that column. The active column flips direction; a new column starts
      * in its natural direction, which is A to Z for a name and largest first for a number (spec §5.3).
-     * Columns whose {@link ColumnSort} is {@link ColumnSort#NONE} ignore it, which is every column of the
-     * Frames and Hitches tabs.
+     * Columns that are not sortable ignore it, and the click falls through to the widgets (see {@link ColumnSort}).
      */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -1742,20 +1744,29 @@ Expected: only `ColumnSort.sortable()` and its callers, and no `Sort.next()`.
 
 - [ ] **Step 3: Teleport somewhere a player can stand**
 
-Replace `teleportToSelected`:
+The first version kept the player's current Y for a section row. That is where the player stands now, not a
+place they can stand at the section's column: a player on foot heading towards a hill landed inside it. The
+review replaced it with the player's height raised to the first height at which the player's box fits in that
+column. A column the client has not loaded has no collision shapes, so it keeps the player's height. The
+client's heightmap was checked and rejected: for an unloaded chunk it returns the bottom of the world, in the
+Nether the top of the bedrock roof. Every call below was verified with javap against the pinned jar.
+Imports: `net.minecraft.client.multiplayer.ClientLevel`, `net.minecraft.client.player.LocalPlayer`,
+`net.minecraft.world.entity.Pose`, `net.minecraft.world.phys.AABB`.
+
+Replace `teleportToSelected`, and add `standingY` after it:
 
 ```java
     /**
      * Sends a teleport for the selected row. A section row's stored position is the section's centre block,
-     * which is solid ground for anything below the surface, so section rows keep the player's current Y
-     * (spec addendum §P4.C3); block entity rows go one block above the block.
+     * which is solid ground for anything below the surface, so section rows keep the player's height, raised
+     * until the player fits (spec addendum §P4.C3); block entity rows go one block above the block.
      */
     private void teleportToSelected() {
         if (selected == null || minecraft == null || minecraft.getConnection() == null) return;
         if (selected.pos() != null) {
             BlockPos p = selected.pos();
-            int y = selected.key() instanceof SectionKey && minecraft.player != null
-                    ? minecraft.player.blockPosition().getY()
+            int y = selected.key() instanceof SectionKey && minecraft.player != null && minecraft.level != null
+                    ? standingY(minecraft.level, minecraft.player, p.getX(), p.getZ())
                     : p.getY() + 1;
             minecraft.getConnection().sendCommand("tp @s " + p.getX() + " " + y + " " + p.getZ());
         } else if (selected.entityId() >= 0 && minecraft.level != null) {
@@ -1768,6 +1779,21 @@ Replace `teleportToSelected`:
             minecraft.getConnection().sendCommand(String.format(Locale.ROOT, "tp @s %.1f %.1f %.1f", v.x, v.y, v.z));
         }
         onClose();
+    }
+
+    /**
+     * The height a section-row teleport lands at: the player's own, raised to the first height at which the
+     * player fits in the section's column, so it never ends inside a hill (spec addendum §P4.C3). {@code /tp}
+     * centres whole-number X and Z in their block, so that is where the player's box is tested. A column the
+     * client has not loaded has no collision shapes, so it keeps the player's height.
+     */
+    private static int standingY(ClientLevel level, LocalPlayer player, int x, int z) {
+        int y = player.blockPosition().getY();
+        AABB box = player.getDimensions(Pose.STANDING).makeBoundingBox(x + 0.5, y, z + 0.5);
+        for (int up = 0; y + up < level.getMaxBuildHeight(); up++) {
+            if (level.noBlockCollision(player, box.move(0, up, 0))) return y + up;
+        }
+        return y;
     }
 ```
 
@@ -1788,7 +1814,8 @@ Add the field beside the others:
 
 ```java
     /** Shown on Highlight and Teleport while they are disabled because the session's world is gone. */
-    private final Tooltip worldGoneTooltip = Tooltip.create(Component.literal("The world this session was taken in is gone"));
+    private final Tooltip worldGoneTooltip =
+            Tooltip.create(Component.literal("You have left the world or dimension this session was taken in"));
 ```
 
 and replace `updateButtons()`, which keeps 4b's stale-world guard and drops the `sortButton` line:
@@ -1805,6 +1832,48 @@ and replace `updateButtons()`, which keeps 4b's stale-world guard and drops the 
         teleportButton.setTooltip(why);
     }
 ```
+
+- [ ] **Step 4a: Keep the selection and the scroll position across a rebuild**
+
+Found in review. `RowList.setRows` clears the list's entries, and with them its selection, but `selected`
+survived. After a re-sort, Highlight and Teleport stayed live on a row that no longer looked selected, and
+header clicks would make that routine. Expanding or collapsing a group also jumped the list back to the top.
+Add to `RowList`:
+
+```java
+    /** Selects the row with {@code r}'s key again after the rows were rebuilt; false if it is no longer listed. */
+    boolean reselect(Row r) {
+        if (r.key() == null) return false;
+        for (Entry e : children()) {
+            if (r.key().equals(e.row.key())) {
+                setSelected(e);
+                return true;
+            }
+        }
+        return false;
+    }
+```
+
+`rebuild()` (Step 1) calls it before `updateButtons()`. `onRowClicked` keeps the scroll position around the
+rebuild that opens or closes a group; sorting and switching tabs still start at the top:
+
+```java
+    void onRowClicked(Row row) {
+        if (row.expandable()) {
+            if (!expanded.add(row.typeId())) expanded.remove(row.typeId());
+            double scroll = list.getScrollAmount();
+            rebuild();
+            list.setScrollAmount(scroll);   // opening a group should not jump the list back to the top
+            return;
+        }
+        selected = row;
+        updateButtons();
+    }
+```
+
+`Rows.build`'s only caller now always passes the active column's sort (`ColumnSort.NONE` on Frames and
+Hitches), so its Javadoc says so and the `sort == null` checks in `Rows.rankedSort`, `Rows.meshSort` and
+`Rows.flywheel` go.
 
 - [ ] **Step 5: Run the whole build**
 
@@ -2253,8 +2322,9 @@ true for entities as well and needs no change. Add a new item 4:
    its column is rounded to a whole number, and shows as `###` only if it still does not fit; widen the window
    or lower the GUI scale to read it. **Highlight** draws a wireframe box around the
    selected block, or around the whole 16-block section for a Sections row, for ten seconds and through
-   walls. Highlight and Teleport are greyed out once the world the session was taken in is gone, and hovering
-   over them says so.
+   walls. **Teleport** from a Sections row keeps your height, raised until you fit in that column, so it never
+   leaves you inside a hill. Highlight and Teleport are greyed out once you leave the world or dimension the
+   session was taken in, and hovering over them says so.
 ```
 
 In "Reading a report", add:
@@ -2283,9 +2353,10 @@ name), clicking the active header reverses it, and the active header carries an 
 tabs have a fixed order. A number too wide for its column is rounded to a whole number and, if it still does
 not fit, drawn as `#`s; it is never cut short. Position and
 individual rows have **Highlight** (draw a wireframe box at the position for 10 s, the whole 16-block section
-for a Sections row) and **Teleport** (sends `/tp @s x y z` as chat, keeping the player's current Y for a
-section row so they do not arrive inside stone; if the player lacks permission the server's error is what
-they see). Both are disabled, with a tooltip saying why, once the world the session was taken in is gone. A
+for a Sections row) and **Teleport** (sends `/tp @s x y z` as chat; for a section row, at the player's own
+height raised to the first height at which the player fits in that column, so they do not arrive inside
+terrain; if the player lacks permission the server's error is what they see). Both are disabled, with a
+tooltip saying why, once the player leaves the world or dimension the session was taken in. A
 **Copy report** button copies the text report; **Open folder** opens the report directory. The Sections list
 shows at most 200 sections, the first 200 in its current order, and a trailing row saying how many it left out
 and that the JSON has them all. The ranked and particle column
@@ -2322,7 +2393,7 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
 5. Check §P4.C1, §P4.C2, §P4.C3, §P4.C4 and §P4.C5 against the code and correct anything that no longer
    matches. §P4.C5 in particular should not claim the highlight allocates per frame: its corner arrays are
    static scratch space.
-6. **§P4.3** (deferred items), add three:
+6. **§P4.3** (deferred items), add four:
    - The Blocks table and the Sections cells are still written twice, in `TextReportWriter` and `Rows`, and
      could move into `core` the way Task 1a moved the ranked ones; only the Sections `avg ms/rb` header
      differs between the surfaces, by design.
@@ -2333,7 +2404,20 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
      timed here" heading, so an otherwise empty tab shows only that heading and never an empty-state sentence
      (open terrain, or an area whose only block entities Flywheel draws). Fix it together with the sentence
      above.
-7. **§P4.C2**, correct the example trailing row: the text report prints only its top 20 sections, so the row
+   - Highlight and Teleport are disabled by any level unload, which includes every dimension change, so after
+     a portal round trip they stay greyed until the next session finishes, though the player is back where the
+     session was taken. An exact check would compare the selected row's dimension (block entity and section
+     keys carry one; entity rows would use the session dimension Task 6 records) with the current level's, and
+     keep the blanket flag for logout only.
+7. **§P4.C3**, the design changed in review. The player's current Y is where they stand now, not a place
+   they can stand at the section's column, so a player on foot heading towards a hill landed inside it. The
+   teleport now keeps the player's Y raised to the first height at which the player's box fits in that column
+   (`ResultsScreen.standingY`); a column the client has not loaded has no collision shapes and keeps the
+   player's Y. Correct the rejected alternative "The client does not have one": the client has the collision
+   shapes of loaded chunks, which is what this uses. Add the heightmap as a rejected alternative: for an
+   unloaded chunk `ClientLevel.getHeight` reads an empty chunk and returns the bottom of the world, in the
+   Nether it returns the top of the bedrock roof, and `MOTION_BLOCKING` counts water and leaves.
+8. **§P4.C2**, correct the example trailing row: the text report prints only its top 20 sections, so the row
    reads `... and N more sections (the JSON has all M)`, singular at one. Also say that the cap takes the first
    200 in the tab's current order, which is the 200 most-rebuilt only in the default order.
 
@@ -2388,13 +2472,15 @@ session, the greyed Highlight and Teleport after a disconnect and reconnect, and
    flywheel:off)`, the same sentence the report prints. Paste both.
 3. **Sections cap (§P4.C2).** After the 30 s flight from 4b's JSON check, open the Sections tab and paste its
    last row, which should read `... and N more sections (the JSON has all M)`.
-4. **Teleport (§P4.C3).** Select a Sections row and press Teleport: you should arrive above ground at that
-   section's column, not inside it.
+4. **Teleport (§P4.C3).** Stand on the ground, select a Sections row whose column is on higher terrain, and
+   press Teleport: you should arrive at that column standing on or above the terrain, not inside it. From the
+   air, you should keep your height.
 5. **Highlight (§P4.C5).** Highlight a block entity and a section. Confirm a box in perspective rather than a
    flat rectangle, visible through walls; that standing inside the highlighted section still draws the edges
    in front of you; and that from far away it shrinks to a small square rather than vanishing.
-6. **Labels (§P4.C4).** After a session with entities in view, go through a portal: no entity labels. Come
-   back: they return.
+6. **Labels (§P4.C4).** Run this after checks 4 and 5: any dimension change greys Highlight and Teleport until
+   the next session (a deferred limitation). After a session with entities in view, go through a portal: no
+   entity labels. Come back: they return.
 7. **Header parity and narrow columns (§P4.C6).** The Sections tab's last header reads `avg ms/rb`; the
    Flywheel tab and the report's Flywheel table both read `SingleAxisRotatingVisual`. At GUI scale 3, where
    every column is wide, nothing overflows, so also switch the GUI scale to **Auto** (6 at 2560x1440, a 426-px
@@ -2403,8 +2489,8 @@ session, the greyed Highlight and Teleport after a disconnect and reconnect, and
    cannot fit even rounded shows as `#`s. Say whether the tab is still usable at that scale.
 8. **The gc f note.** After a session with at least one collection, the Frames tab shows the `gc f` note
    under its `GC` row.
-9. **The tooltip.** During 4b's reconnect check, hover over the greyed Highlight: it reads "The world this
-   session was taken in is gone".
+9. **The tooltip.** During 4b's reconnect check, hover over the greyed Highlight: it reads "You have left the
+   world or dimension this session was taken in".
 
 **Phase 4a's Check 7:** the ranked tabs show nine columns ending `peak ms | gc f | shadow | verts/f | calls`,
 the Particles tab seven ending `verts/f | gc f`, and the `Renderable overhead` row names both counts. Say

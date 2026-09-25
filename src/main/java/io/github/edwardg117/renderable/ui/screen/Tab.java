@@ -38,11 +38,6 @@ public enum Tab {
         return columns;
     }
 
-    /** True for tabs whose rows are ranked entries the Sort button can reorder. */
-    public boolean sortable() {
-        return this == BLOCK_ENTITIES || this == ENTITIES || this == PARTICLES;
-    }
-
     /**
      * One column: its header, its share of the row width, whether it holds a right-aligned number, and what
      * clicking its header sorts by.

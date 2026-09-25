@@ -32,6 +32,18 @@ public final class RowList extends ObjectSelectionList<RowList.Entry> {
         setScrollAmount(0);
     }
 
+    /** Selects the row with {@code r}'s key again after the rows were rebuilt; false if it is no longer listed. */
+    boolean reselect(Row r) {
+        if (r.key() == null) return false;
+        for (Entry e : children()) {
+            if (r.key().equals(e.row.key())) {
+                setSelected(e);
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public int getRowWidth() {
         return width - 20;
