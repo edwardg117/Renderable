@@ -37,6 +37,9 @@
 - Each tab opens in the text report's order, and a name column's first click sorts A to Z (Tasks 2 and 4).
 - The Blocks and Sections name columns sort by `MeshSort.LABEL` directly, instead of carrying `Ranking.Sort.LABEL` for `Rows` to translate (Task 2).
 - A number too wide for its column is drawn as `#`s instead of being truncated like text (Task 2).
+- `Sort.SHADOW` sorts by the shadow share the `shadow` column prints, not by shadow nanoseconds, and
+  `MeshSort` has no `AVG`: the Sections average column sorts by `PER_CALL`, which for a section is per
+  rebuild and orders rows identically (Task 1, from its spec review).
 - The ranked and particle column names and cells move into `core/RankedTable`, which both surfaces call (Task 1a).
 
 ---
@@ -73,8 +76,8 @@ src/test/java/io/github/edwardg117/renderable/
 docs/acceptance/phase-4b-4c.md                                Create (Task 8)
 ```
 
-**Expected test totals**, starting from 108 with 4a and 4b in: 110 after Task 1, 111 after Task 1a, 114 after
-Task 2, 116 after Task 3, 116 after Task 4, 118 after Task 5, 118 at the end. Every task ends with
+**Expected test totals**, starting from 108 with 4a and 4b in: 112 after Task 1, 113 after Task 1a, 116 after
+Task 2, 118 after Task 3, 118 after Task 4, 120 after Task 5, 120 at the end. Every task ends with
 `./gradlew build` green.
 
 ---
@@ -89,33 +92,71 @@ Spec addendum §P4.C7. `Ranking.Sort` covers six of the nine ranked columns; `Me
 nine mesh columns; neither can sort ascending. The two-argument `sort` and three-argument `mesh` keep their
 current meaning (descending) so no existing caller changes.
 
+**Every sort orders rows by what its column displays.** Two corrections from this task's spec review on
+2026-09-25, which the code below already carries:
+
+- `Sort.SHADOW` sorts by `RankedEntry::shadowPercent`, the shadow share of the row's own render time that the
+  `shadow` column prints. The first version sorted by `shadowNanos`, which puts a 2000 us renderer with 40%
+  shadow above a 50 us one with 60% under a descending arrow — the reverse of what the column is for.
+- `MeshSort` has no `AVG`. The first version had one for the Sections table's `avg ms/rb` column, computed as
+  nanoseconds per rebuild, but `PER_CALL` (microseconds per call, and for a section a call is a rebuild)
+  orders rows identically. Task 2 gives that column `PER_CALL`.
+
+The review also found assertions that a plausibly wrong implementation would pass; the tests below close
+them. The code-quality review then folded `LABEL` into each `switch` as an ordinary arm (identical results:
+the shared label tie-break is a no-op when the primary key is the label), rewrote the Javadocs to say what
+each form does, and added `meshTimeAndCallsAreDifferentSortsAndTiesReadAToZ`, because `phase3()` ranks every
+mesh row the same by time as by calls and so could not tell `TIME` from `CALLS`. The code below is the
+reviewed code as committed.
+
 - [ ] **Step 1: Write the failing test**
 
-Append inside `RankingTest`:
+Append inside `RankingTest` (the helpers `keys` and `meshKeys` go with them):
 
 ```java
     @Test
-    void everyNumericColumnHasASortAndBothDirectionsWork() {
+    void ascendingFlipsTheColumnButNotItsTies() {
         SessionResult p3 = TestSessions.phase3();
         List<RankedEntry> be = Ranking.byKey(p3, ProfileKey.Category.BLOCK_ENTITY);
 
-        // Descending is what the two-argument form has always meant.
-        assertEquals(PRESS, Ranking.sort(be, Ranking.Sort.VERTICES).get(0).key());
-        assertEquals(PRESS, Ranking.sort(be, Ranking.Sort.VERTICES, false).get(0).key());
-        // Ascending puts the smallest first; MIXER has 400 vertices, PRESS2 none.
-        assertEquals(PRESS2, Ranking.sort(be, Ranking.Sort.VERTICES, true).get(0).key());
-        assertEquals(PRESS, Ranking.sort(be, Ranking.Sort.VERTICES, true).get(2).key());
+        // Vertices: PRESS 2000, MIXER 400, PRESS2 none. The two-argument form has always meant descending.
+        assertEquals(List.of(PRESS, MIXER, PRESS2), keys(Ranking.sort(be, Ranking.Sort.VERTICES)));
+        assertEquals(List.of(PRESS, MIXER, PRESS2), keys(Ranking.sort(be, Ranking.Sort.VERTICES, false)));
+        assertEquals(List.of(PRESS2, MIXER, PRESS), keys(Ranking.sort(be, Ranking.Sort.VERTICES, true)));
 
-        // LABEL sorts alphabetically ascending and reverse-alphabetically descending.
-        assertEquals("create:mechanical_mixer @ 90 65 -22", Ranking.sort(be, Ranking.Sort.LABEL, true).get(0).label());
-        assertEquals("create:mechanical_press @ 103 64 -20", Ranking.sort(be, Ranking.Sort.LABEL, false).get(0).label());
+        // LABEL is A to Z ascending and Z to A descending: mixer @ 90 65 -22, press @ 100 64 -20, press @ 103 64 -20.
+        assertEquals(List.of(MIXER, PRESS, PRESS2), keys(Ranking.sort(be, Ranking.Sort.LABEL, true)));
+        assertEquals(List.of(PRESS2, PRESS, MIXER), keys(Ranking.sort(be, Ranking.Sort.LABEL, false)));
 
-        // SHADOW and GC_FRAMES exist and are stable when every row is zero: the label breaks the tie.
-        assertEquals(List.of("create:mechanical_mixer @ 90 65 -22",
-                        "create:mechanical_press @ 100 64 -20",
-                        "create:mechanical_press @ 103 64 -20"),
-                Ranking.sort(be, Ranking.Sort.SHADOW, false).stream().map(RankedEntry::label).toList());
-        assertEquals(3, Ranking.sort(be, Ranking.Sort.GC_FRAMES, false).size());
+        // No row in phase3() has shadow time, so all three tie on SHADOW and the label decides, A to Z both ways.
+        assertEquals(List.of(MIXER, PRESS, PRESS2), keys(Ranking.sort(be, Ranking.Sort.SHADOW, false)));
+        assertEquals(List.of(MIXER, PRESS, PRESS2), keys(Ranking.sort(be, Ranking.Sort.SHADOW, true)));
+    }
+
+    @Test
+    void shadowAndGcFramesSortByWhatTheirColumnsShow() {
+        // The shadow column shows shadow time as a share of the row's own render time, so a small renderer that
+        // is mostly shadow outranks a large one that is partly shadow. Largest first, shadow share orders these
+        // rows PRESS, PRESS2, MIXER and GC frames PRESS, MIXER, PRESS2, while shadow nanoseconds and total time
+        // both give PRESS2, MIXER, PRESS. None of those is label order, so each assertion fails on its own if
+        // the sort reads the wrong field.
+        Accumulator a = new Accumulator(PRESS);    // 50 us render, 30 us of it shadow: 60%, 5 GC frames
+        a.renderNanos = 50_000;
+        a.shadowNanos = 30_000;
+        a.gcFrames = 5;
+        Accumulator b = new Accumulator(PRESS2);   // 2000 us render, 800 us of it shadow: 40%, no GC frames
+        b.renderNanos = 2_000_000;
+        b.shadowNanos = 800_000;
+        Accumulator c = new Accumulator(MIXER);    // 400 us render, 80 us of it shadow: 20%, 2 GC frames
+        c.renderNanos = 400_000;
+        c.shadowNanos = 80_000;
+        c.gcFrames = 2;
+        List<RankedEntry> rows = List.of(RankedEntry.of(a), RankedEntry.of(b), RankedEntry.of(c));
+
+        assertEquals(List.of(PRESS, PRESS2, MIXER), keys(Ranking.sort(rows, Ranking.Sort.SHADOW)));
+        assertEquals(List.of(MIXER, PRESS2, PRESS), keys(Ranking.sort(rows, Ranking.Sort.SHADOW, true)));
+        assertEquals(List.of(PRESS, MIXER, PRESS2), keys(Ranking.sort(rows, Ranking.Sort.GC_FRAMES)));
+        assertEquals(List.of(PRESS2, MIXER, PRESS), keys(Ranking.sort(rows, Ranking.Sort.GC_FRAMES, true)));
     }
 
     @Test
@@ -132,15 +173,50 @@ Append inside `RankingTest`:
                 Ranking.mesh(p3, ProfileKey.Category.BLOCK, Ranking.MeshSort.CALLS, false).get(0).key().label());
         assertEquals("create:shaft",
                 Ranking.mesh(p3, ProfileKey.Category.BLOCK, Ranking.MeshSort.LABEL, true).get(0).key().label());
+        assertEquals("minecraft:water",
+                Ranking.mesh(p3, ProfileKey.Category.BLOCK, Ranking.MeshSort.LABEL, false).get(0).key().label());
 
         // section (0,4,0) 3 rebuilds / 9 ms = 3.00 ms each; (1,4,0) 1 rebuild / 2 ms = 2.00 ms each
         assertEquals(SECTION_A,
-                Ranking.mesh(p3, ProfileKey.Category.SECTION, Ranking.MeshSort.AVG, false).get(0).key());
+                Ranking.mesh(p3, ProfileKey.Category.SECTION, Ranking.MeshSort.PER_CALL, false).get(0).key());
         assertEquals(SECTION_B,
-                Ranking.mesh(p3, ProfileKey.Category.SECTION, Ranking.MeshSort.AVG, true).get(0).key());
+                Ranking.mesh(p3, ProfileKey.Category.SECTION, Ranking.MeshSort.PER_CALL, true).get(0).key());
         assertEquals(SECTION_A,
                 Ranking.mesh(p3, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS).get(0).key(),
                 "the three-argument form still means descending");
+    }
+
+    @Test
+    void meshTimeAndCallsAreDifferentSortsAndTiesReadAToZ() {
+        // phase3() ranks every mesh row the same by time as by calls, so it cannot tell TIME from CALLS. Here
+        // stone is many cheap calls, and shaft and water tie on one call each. The session's own list puts water
+        // first because it took longer, so only the label tie-break puts shaft ahead of it on calls.
+        long[] clock = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> clock[0], 0);
+        s.onRenderPre(0, 0);
+        for (int i = 0; i < 10; i++) s.mesh().get(STONE).add(100_000);   // 10 calls, 1 ms
+        s.mesh().get(SHAFT).add(2 * MS);                                   // 1 call, 2 ms
+        s.mesh().get(WATER).add(3 * MS);                                   // 1 call, 3 ms
+        clock[0] = 16 * MS;
+        s.onRenderPre(0, 0);
+        SessionResult r = s.finish();
+
+        assertEquals(List.of(WATER, SHAFT, STONE),
+                meshKeys(Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME)));
+        assertEquals(List.of(STONE, SHAFT, WATER),
+                meshKeys(Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME, true)));
+        assertEquals(List.of(STONE, SHAFT, WATER),
+                meshKeys(Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.CALLS)));
+        assertEquals(List.of(SHAFT, WATER, STONE),
+                meshKeys(Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.CALLS, true)));
+    }
+
+    private static List<ProfileKey> meshKeys(List<MeshEntry> rows) {
+        return rows.stream().map(MeshEntry::key).toList();
+    }
+
+    private static List<ProfileKey> keys(List<RankedEntry> rows) {
+        return rows.stream().map(RankedEntry::key).toList();
     }
 ```
 
@@ -151,14 +227,14 @@ Append inside `RankingTest`:
 ```
 
 Expected: compilation failure — `cannot find symbol: variable LABEL`, `SHADOW`, `GC_FRAMES`, `PER_CALL`,
-`AVG`, and no three-argument `sort` or four-argument `mesh`.
+and no three-argument `sort` or four-argument `mesh`.
 
 - [ ] **Step 3: Extend `Ranking`**
 
 Replace the two enums and the two sorting methods. The enums first:
 
 ```java
-    /** A column a ranked table can be sorted by (spec §5.3). */
+    /** What a column of a ranked table sorts by (spec §5.3). */
     public enum Sort {
         TOTAL, RENDER, TICK, PEAK, VERTICES, CALLS, SHADOW, GC_FRAMES, LABEL;
 
@@ -168,8 +244,11 @@ Replace the two enums and the two sorting methods. The enums first:
         }
     }
 
-    /** A sortable column of the Blocks or Sections table. */
-    public enum MeshSort { TIME, CALLS, PER_CALL, AVG, LABEL }
+    /**
+     * What a column of the Blocks or Sections table sorts by. PER_CALL is time per call, which for a
+     * section is time per rebuild, so the Sections table's average column sorts by it.
+     */
+    public enum MeshSort { TIME, CALLS, PER_CALL, LABEL }
 ```
 
 `next()` now cycles through nine values. Its callers are the Sort button in `ResultsScreen`, which Task 4
@@ -191,16 +270,10 @@ Then the ranked sort:
     }
 
     /**
-     * Returns a new list sorted by the chosen column. Ties are always broken by label ascending, so the
-     * order is stable whichever direction the column itself is read in.
+     * Returns a new list sorted by the chosen column, smallest first when {@code ascending}. Ties go A to Z
+     * by label in both directions, so flipping a column never reorders the rows it ties.
      */
     public static List<RankedEntry> sort(List<RankedEntry> entries, Sort sort, boolean ascending) {
-        List<RankedEntry> copy = new ArrayList<>(entries);
-        if (sort == Sort.LABEL) {
-            Comparator<RankedEntry> byLabel = Comparator.comparing(RankedEntry::label);
-            copy.sort(ascending ? byLabel : byLabel.reversed());
-            return copy;
-        }
         Comparator<RankedEntry> by = switch (sort) {
             case TOTAL -> Comparator.comparingLong(RankedEntry::totalNanos);
             case RENDER -> Comparator.comparingLong(RankedEntry::renderNanos);
@@ -208,10 +281,12 @@ Then the ranked sort:
             case PEAK -> Comparator.comparingLong(RankedEntry::maxFrameNanos);
             case VERTICES -> Comparator.comparingLong(RankedEntry::vertices);
             case CALLS -> Comparator.comparingLong(RankedEntry::calls);
-            case SHADOW -> Comparator.comparingLong(RankedEntry::shadowNanos);
+            // The shadow column shows shadow time as a share of the row's own render time, not nanoseconds.
+            case SHADOW -> Comparator.comparingDouble(RankedEntry::shadowPercent);
             case GC_FRAMES -> Comparator.comparingLong(RankedEntry::gcFrames);
-            case LABEL -> throw new IllegalStateException("handled above");
+            case LABEL -> Comparator.comparing(RankedEntry::label);
         };
+        List<RankedEntry> copy = new ArrayList<>(entries);
         copy.sort((ascending ? by : by.reversed()).thenComparing(RankedEntry::label));
         return copy;
     }
@@ -220,28 +295,26 @@ Then the ranked sort:
 And the mesh sort:
 
 ```java
-    /** Mesh rows of one category, most expensive first; the default order the report and JSON use. */
+    /** Mesh rows of one category, descending by the chosen column, ties broken by label. */
     public static List<MeshEntry> mesh(SessionResult r, ProfileKey.Category category, MeshSort sort) {
         return mesh(r, category, sort, false);
     }
 
-    /** Mesh rows of one category, sorted by any column the Blocks or Sections table shows. */
-    public static List<MeshEntry> mesh(SessionResult r, ProfileKey.Category category, MeshSort sort, boolean ascending) {
+    /**
+     * Mesh rows of one category sorted by the chosen column, smallest first when {@code ascending}. Ties go
+     * A to Z by label in both directions, as in {@link #sort(List, Sort, boolean)}.
+     */
+    public static List<MeshEntry> mesh(SessionResult r, ProfileKey.Category category, MeshSort sort,
+                                       boolean ascending) {
         List<MeshEntry> out = new ArrayList<>();
         for (MeshEntry e : r.mesh()) {
             if (e.key().category() == category) out.add(e);
-        }
-        if (sort == MeshSort.LABEL) {
-            Comparator<MeshEntry> byLabel = Comparator.comparing(e -> e.key().label());
-            out.sort(ascending ? byLabel : byLabel.reversed());
-            return out;
         }
         Comparator<MeshEntry> by = switch (sort) {
             case TIME -> Comparator.comparingLong(MeshEntry::nanos);
             case CALLS -> Comparator.comparingLong(MeshEntry::calls);
             case PER_CALL -> Comparator.comparingDouble(MeshEntry::usPerCall);
-            case AVG -> Comparator.comparingDouble(e -> e.calls() == 0 ? 0 : (double) e.nanos() / e.calls());
-            case LABEL -> throw new IllegalStateException("handled above");
+            case LABEL -> Comparator.comparing(e -> e.key().label());
         };
         out.sort((ascending ? by : by.reversed()).thenComparing(e -> e.key().label()));
         return out;
@@ -257,7 +330,7 @@ is unchanged.
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **110 tests**.
+Expected: `BUILD SUCCESSFUL`, **112 tests**.
 
 - [ ] **Step 5: Stage and report**
 
@@ -498,7 +571,7 @@ In `src/main/java/io/github/edwardg117/renderable/ui/screen/Rows.java`, add
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **111 tests**.
+Expected: `BUILD SUCCESSFUL`, **113 tests**.
 
 - [ ] **Step 7: Stage and report**
 
@@ -610,7 +683,7 @@ class TabTest {
             assertTrue(sortable >= 2, t + " has only " + sortable + " sortable columns");
         }
         assertEquals(ColumnSort.of(Ranking.Sort.VERTICES), Tab.BLOCK_ENTITIES.columns().get(7).sort(), "verts/f");
-        assertEquals(ColumnSort.of(Ranking.MeshSort.AVG), Tab.SECTIONS.columns().get(4).sort(), "avg ms/rb");
+        assertEquals(ColumnSort.of(Ranking.MeshSort.PER_CALL), Tab.SECTIONS.columns().get(4).sort(), "avg ms/rb, per rebuild");
         assertEquals("avg ms/rb", Tab.SECTIONS.columns().get(4).name(), "the report calls it avg ms/rebuild");
 
         // A name reads A to Z on its first click; a number reads largest first.
@@ -811,7 +884,7 @@ public enum Tab {
                 right("rebuilds", 2, ColumnSort.of(Ranking.MeshSort.CALLS)),
                 right("rebuilds/s", 2, ColumnSort.of(Ranking.MeshSort.CALLS)),
                 right("mesh ms", 2, ColumnSort.of(Ranking.MeshSort.TIME)),
-                right("avg ms/rb", 3, ColumnSort.of(Ranking.MeshSort.AVG)));
+                right("avg ms/rb", 3, ColumnSort.of(Ranking.MeshSort.PER_CALL)));
 
         /** Columns that open sorted by the first column whose sort is {@code opensBy}. */
         private static Columns of(ColumnSort opensBy, Column... columns) {
@@ -921,7 +994,7 @@ Task 4 adds the sort arrow to this loop.
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **114 tests**.
+Expected: `BUILD SUCCESSFUL`, **116 tests**.
 
 If `layoutFitsTheRowAndNeverOverlaps` fails at `rowWidth = 120` because a column does not advance, the weights
 are too uneven for a narrow screen: that is a real finding, not a test to relax. Report it.
@@ -1329,7 +1402,7 @@ button is hidden.
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **116 tests**.
+Expected: `BUILD SUCCESSFUL`, **118 tests**.
 
 - [ ] **Step 8: Stage and report**
 
@@ -1562,7 +1635,7 @@ and replace `updateButtons()`, which keeps 4b's stale-world guard and drops the 
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **116 tests**.
+Expected: `BUILD SUCCESSFUL`, **118 tests**.
 
 Nothing in this task is unit-testable: `ResultsScreen` is a Minecraft `Screen`. The by-eye checks the first
 draft put here — the arrow, the clicks, the narrow window, the teleport, the tooltip — are in Task 8, where a
@@ -1727,7 +1800,7 @@ two cannot drift:
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **118 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
+Expected: `BUILD SUCCESSFUL`, **120 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
 keys `a`, `b`, `c`, whose simple names are themselves, so it is unaffected.
 
 - [ ] **Step 6: Stage and report**
@@ -1962,7 +2035,7 @@ Replace `drawHighlight` and add the two helpers below it:
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 118 tests. Nothing here is unit-testable, and the first draft's dev-client look
+Expected: `BUILD SUCCESSFUL`, 120 tests. Nothing here is unit-testable, and the first draft's dev-client look
 (the box in perspective, the corner behind the camera, the distant 8-pixel square, the portal) is in Task 8,
 where a person runs it in the pack. Do not launch a client for this task.
 
@@ -2056,8 +2129,11 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
    of `Column(name, weight, rightAlign, sort)` records, so parallel arrays cannot drift; keep the paragraph's
    reasoning for a record over the two existing enums. Add to the design: each tab opens in the text report's
    order (`TabTest` pins each to the report's ordering); a new column's first click is A to Z for a name and
-   largest first for a number; the Blocks and Sections name columns carry `MeshSort.LABEL`. Amend the
-   acceptance check's "Click `name` and the rows sort alphabetically" only if it no longer matches.
+   largest first for a number; the Blocks and Sections name columns carry `MeshSort.LABEL`. Correct the
+   `Ranking` bullet: `MeshSort` gains `PER_CALL` and `LABEL` only (the Sections average column sorts by
+   `PER_CALL`, which for a section is per rebuild, so an `AVG` would order rows identically), and every sort
+   orders rows by what its column displays — `SHADOW` by the shadow share, not by shadow nanoseconds. Amend
+   the acceptance check's "Click `name` and the rows sort alphabetically" only if it no longer matches.
 4. **§P4.C6**, add a row: the ranked and particle column names and cell expressions were written twice, in
    `TextReportWriter` and `Rows`; they are now defined once in `core/RankedTable`, and `TabTest` asserts that
    the screen's ranked and particle headers equal it.
@@ -2071,7 +2147,7 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 118 tests.
+Expected: `BUILD SUCCESSFUL`, 120 tests.
 
 - [ ] **Step 5: Stage and report**
 
