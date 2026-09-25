@@ -60,7 +60,7 @@ public final class RowList extends ObjectSelectionList<RowList.Entry> {
             Font font = minecraft.font;
             int color = row.group() ? 0xFFFFFF : 0xC8C8C8;
             int indentPx = row.indent() * 12;
-            boolean[] right = tab.columns().rightAlign();
+            Tab.Columns columns = tab.columns();
 
             String first = row.cells()[0];
             if (row.expandable()) first = (screen.isExpanded(row.typeId()) ? "v " : "> ") + first;
@@ -68,13 +68,13 @@ public final class RowList extends ObjectSelectionList<RowList.Entry> {
             int firstWidth = row.cells().length == 1 ? width - 8 - indentPx : colW[0] - indentPx;
             g.drawString(font, font.plainSubstrByWidth(first, firstWidth), left + 4 + indentPx, top + 2, color, false);
 
-            for (int i = 1; i < row.cells().length && i < colX.length; i++) {
-                String cell = row.cells()[i];
+            for (int i = 1; i < row.cells().length && i < colX.length && i < columns.size(); i++) {
                 int cx = left + 4 + colX[i];
-                if (right[i]) {
+                if (columns.get(i).rightAlign()) {
+                    String cell = Tab.Columns.fitNumber(row.cells()[i], colW[i], font::width);
                     g.drawString(font, cell, cx + colW[i] - font.width(cell), top + 2, color, false);
                 } else {
-                    g.drawString(font, font.plainSubstrByWidth(cell, colW[i]), cx, top + 2, color, false);
+                    g.drawString(font, font.plainSubstrByWidth(row.cells()[i], colW[i]), cx, top + 2, color, false);
                 }
             }
         }

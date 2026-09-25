@@ -5,9 +5,10 @@ import java.util.List;
 /**
  * The columns of the ranked tables (block entities, entities) and of the particle table: their names and the
  * text of each cell, written once for the text report and the results screen. The report takes its headers
- * from here; the screen writes its headers out in {@code Tab}, beside their widths and sorts. Widths,
- * truncation and sorting stay with each surface. The first cell is the row's name and the rest are numbers,
- * except that a peak with no clean frame reads "-" (see {@link Fmt#peakMs}).
+ * from here; the screen writes its headers out in {@code Tab}, beside their widths and sorts, and
+ * {@code TabTest} asserts they equal {@link #RANKED} and {@link #PARTICLE}. Widths, truncation and
+ * sorting stay with each surface. The first cell is the row's name and the rest are numbers, except
+ * that a peak with no clean frame reads "-" (see {@link Fmt#peakMs}).
  */
 public final class RankedTable {
 

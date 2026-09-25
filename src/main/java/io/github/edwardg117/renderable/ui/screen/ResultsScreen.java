@@ -179,12 +179,12 @@ public final class ResultsScreen extends Screen {
         g.drawString(font, font.plainSubstrByWidth(summary, width - 8), 4, SUMMARY_Y, 0xE0E0E0, false);
 
         int left = list.getRowLeft();
-        String[] headers = tab.columns().headers();
-        boolean[] right = tab.columns().rightAlign();
-        for (int i = 0; i < headers.length && i < colX.length; i++) {
+        Tab.Columns columns = tab.columns();
+        for (int i = 0; i < columns.size() && i < colX.length; i++) {
+            Tab.Column column = columns.get(i);
             int cx = left + 4 + colX[i];
-            String h = font.plainSubstrByWidth(headers[i], colW[i]);
-            if (right[i]) {
+            String h = font.plainSubstrByWidth(column.name(), colW[i]);
+            if (column.rightAlign()) {
                 g.drawString(font, h, cx + colW[i] - font.width(h), HEADER_Y, 0xA0A0A0, false);
             } else {
                 g.drawString(font, h, cx, HEADER_Y, 0xA0A0A0, false);

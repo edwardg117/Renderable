@@ -76,8 +76,8 @@ src/test/java/io/github/edwardg117/renderable/
 docs/acceptance/phase-4b-4c.md                                Create (Task 8)
 ```
 
-**Expected test totals**, starting from 108 with 4a and 4b in: 112 after Task 1, 114 after Task 1a, 117 after
-Task 2, 119 after Task 3, 119 after Task 4, 121 after Task 5, 121 at the end. Every task ends with
+**Expected test totals**, starting from 108 with 4a and 4b in: 112 after Task 1, 114 after Task 1a, 120 after
+Task 2, 122 after Task 3, 122 after Task 4, 124 after Task 5, 124 at the end. Every task ends with
 `./gradlew build` green.
 
 ---
@@ -652,10 +652,25 @@ differ from the first draft and from the addendum's wording, and Task 7 amends t
 3. **The Blocks and Sections name columns sort by `MeshSort.LABEL`** directly, instead of carrying
    `Ranking.Sort.LABEL` for `Rows` to translate. The column says what it means, and no tab carries both kinds
    of sort.
-4. **A number too wide for its column is drawn as `#`s**, as a spreadsheet does, instead of being truncated
-   like text as §P4.C6 #4 said. A truncated number reads as a different, smaller one: `4900.0` cut to `490`
-   is wrong by a factor of ten, which is worse in a profiler than the overlap it replaces. This fix lived in
-   Task 4 in the first draft; it moves here because this task already rewrites the same loop in `RowList`.
+4. **A number too wide for its column is never cut short like text**, as §P4.C6 #4 said, because a
+   truncated number reads as a different one: `125,539` cut to `125,5`. It may reach three of the four blank
+   pixels `layout` leaves before it, which still leaves two blank pixels before its neighbour; if it is still
+   too wide its decimals are rounded away (`10780.9` reads `10781`, less precise but never a different
+   number); and only then is it drawn as `#`s, as a spreadsheet does. The first version of this task drew
+   `#`s as soon as a number exceeded its column, and its review showed that at 1920x1080 on the Auto GUI scale
+   (a 480-px GUI, the most common setup) that hid real values from the acceptance logs — `1501.5` verts/f,
+   `31,920` calls, `1054.9` render us/f — which the old code drew legibly a pixel into the gap. The logic lives
+   in `Tab.Columns.fitNumber`, which is pure Java and tested with the vanilla font's glyph widths. This fix
+   lived in Task 4 in the first draft; it moves here because this task already rewrites the same loop in
+   `RowList`.
+
+This task's review on 2026-09-25 changed decision 4 as described there, and found that the first `TabTest`
+passed 11 of 14 deliberate one-line mistakes in `Tab` (neighbouring sorts swapped, a wrong opening column on
+Particles or Flywheel, a renamed header, a changed weight, columns overlapping). `TabTest` now pins every
+tab's columns in full, checks the padding `layout` leaves at the GUI widths players use, and tests
+`fitNumber`. It also gave `ColumnSort` a constructor that rejects a column carrying both kinds of sort, and
+replaced the `N` alias in `Tab` with a static import of `ColumnSort.NONE`. The code below is the reviewed
+code as committed.
 
 The tree compiles and the suite passes at the end of this task. The first draft said the tree would not
 compile until Task 4; that was wrong about why, and an uncompilable tree cannot run a scoped test either —
@@ -673,6 +688,7 @@ import io.github.edwardg117.renderable.core.Ranking;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.function.ToIntFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -758,12 +774,73 @@ class TabTest {
         assertEquals(1, Tab.SECTIONS.columns().defaultSortColumn(), "rebuilds, not rebuilds/s, which sorts the same way");
     }
 
+    @Test
+    void everyTabShowsTheseColumnsAndOpensOnTheStarredOne() {
+        // name weight alignment sort; * marks the column a tab opens sorted by. Pinned in full because RowList and
+        // ResultsScreen cannot be unit-tested: a sort swapped with its neighbour's fails here and nowhere else.
+        assertEquals("metric 2 L - | value 3 L -", describe(Tab.FRAMES));
+        assertEquals("frame 2 L - | total ms 1 R - | split 7 L -", describe(Tab.HITCHES));
+        String ranked = "name 5 L LABEL | render us/f 1 R RENDER | tick us/f 1 R TICK | *share 1 R TOTAL | peak ms 1 R PEAK"
+                + " | gc f 1 R GC_FRAMES | shadow 1 R SHADOW | verts/f 1 R VERTICES | calls 1 R CALLS";
+        assertEquals(ranked, describe(Tab.BLOCK_ENTITIES));
+        assertEquals(ranked, describe(Tab.ENTITIES));
+        assertEquals("class 5 L LABEL | render us/f 1 R RENDER | tick us/f 1 R TICK | *share 1 R TOTAL"
+                + " | avg live 1 R CALLS | verts/f 1 R VERTICES | gc f 1 R GC_FRAMES", describe(Tab.PARTICLES));
+        assertEquals("visual class 6 L LABEL | *avg count 1 R TOTAL | share 1 R -", describe(Tab.FLYWHEEL));
+        assertEquals("block 8 L LABEL | *mesh ms/s 2 R TIME | us/call 2 R PER_CALL | calls 2 R CALLS", describe(Tab.BLOCKS));
+        assertEquals("section 6 L LABEL | *rebuilds 2 R CALLS | rebuilds/s 2 R CALLS | mesh ms 2 R TIME"
+                + " | avg ms/rb 3 R PER_CALL", describe(Tab.SECTIONS));
+    }
+
+    @Test
+    void layoutKeepsItsPaddingAfterEveryColumnAndEndsInsideTheRow() {
+        for (Tab t : Tab.values()) {
+            for (int rowWidth : new int[]{320, 407, 460, 620, 834, 1920}) {   // 407..834: GUI 427, 480, 640, 854
+                int[][] layout = t.columns().layout(rowWidth);
+                int[] x = layout[0];
+                int[] w = layout[1];
+                for (int i = 1; i < x.length; i++) {
+                    assertTrue(x[i] - (x[i - 1] + w[i - 1]) >= Tab.Columns.PADDING,
+                            t + " column " + (i - 1) + " leaves too little padding at " + rowWidth);
+                }
+                assertTrue(x[x.length - 1] + w[w.length - 1] <= rowWidth, t + " ends past the row at " + rowWidth);
+            }
+        }
+    }
+
+    @Test
+    void aNumberMayReachIntoThePaddingAndIsRoundedBeforeItBecomesHashes() {
+        // The vanilla font's advances: '.' and ',' are 2 px; digits, '%' and '#' are 6 px.
+        ToIntFunction<String> vanilla = s -> s.chars().map(ch -> ch == '.' || ch == ',' ? 2 : 6).sum();
+        assertEquals("74,287", Tab.Columns.fitNumber("74,287", 32, vanilla), "fits its column");
+        assertEquals("1501.5", Tab.Columns.fitNumber("1501.5", 31, vanilla), "a ranked column at 1920x1080, Auto scale");
+        assertEquals("100.0%", Tab.Columns.fitNumber("100.0%", 29, vanilla), "three px into the padding leave two blank");
+        assertEquals("100%", Tab.Columns.fitNumber("100.0%", 28, vanilla), "four would leave one, so it is rounded instead");
+        assertEquals("10781", Tab.Columns.fitNumber("10780.9", 31, vanilla), "rounded, never cut short");
+        assertEquals("#####", Tab.Columns.fitNumber("125,539", 31, vanilla), "a count has no decimals to round away");
+        assertEquals("####", Tab.Columns.fitNumber("12345.6", 24, vanilla), "too wide even when rounded");
+    }
+
     private static List<String> names(Tab t) {
         return t.columns().all().stream().map(Tab.Column::name).toList();
     }
 
     private static ColumnSort opening(Tab t) {
         return t.columns().get(t.columns().defaultSortColumn()).sort();
+    }
+
+    private static String describe(Tab t) {
+        Tab.Columns c = t.columns();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < c.size(); i++) {
+            Tab.Column col = c.get(i);
+            ColumnSort s = col.sort();
+            if (i > 0) sb.append(" | ");
+            if (s.sortable() && i == c.defaultSortColumn()) sb.append('*');
+            sb.append(col.name()).append(' ').append(col.weight()).append(col.rightAlign() ? " R " : " L ")
+                    .append(s.ranked() != null ? s.ranked() : s.mesh() != null ? s.mesh() : "-");
+        }
+        return sb.toString();
     }
 }
 ```
@@ -788,13 +865,19 @@ import io.github.edwardg117.renderable.core.Ranking;
 /**
  * What clicking a column header sorts by (spec §5.3). A tab's rows are either ranked entries or mesh entries,
  * so at most one of the two is set; {@link #NONE} marks a column that is not sortable, which is every column
- * of the Frames and Hitches tabs.
+ * of the Frames and Hitches tabs, and the Flywheel tab's {@code share} column.
  *
  * <p>The Flywheel tab's rows are neither: they are class names and average counts. It reuses
  * {@link Ranking.Sort#LABEL} for the class column and {@link Ranking.Sort#TOTAL} for the count, which
  * {@code Rows.flywheel} interprets directly.
  */
 public record ColumnSort(Ranking.Sort ranked, Ranking.MeshSort mesh) {
+
+    public ColumnSort {
+        if (ranked != null && mesh != null) {
+            throw new IllegalArgumentException("a column sorts one kind of row, not both");
+        }
+    }
 
     /** A column that cannot be sorted by. */
     public static final ColumnSort NONE = new ColumnSort(null, null);
@@ -828,7 +911,14 @@ package io.github.edwardg117.renderable.ui.screen;
 
 import io.github.edwardg117.renderable.core.Ranking;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
+import java.util.function.ToIntFunction;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static io.github.edwardg117.renderable.ui.screen.ColumnSort.NONE;
 
 /** Tabs of the results screen and the column layout each one uses. Eight tabs, four per row on the screen. */
 public enum Tab {
@@ -872,6 +962,8 @@ public enum Tab {
     /**
      * A tab's columns and the one it opens sorted by. {@link #layout(int)} turns weights into pixel offsets.
      * Kept as a nested class so enum constants can reference the constants without a forward-reference error.
+     * Frames and Hitches have no sortable column, so their {@code defaultSortColumn} of 0 means nothing, and
+     * the screen only draws a sort arrow on a sortable column.
      */
     public record Columns(List<Column> all, int defaultSortColumn) {
         public Columns {
@@ -882,16 +974,18 @@ public enum Tab {
             }
         }
 
-        /** Declared before the constants below, which read it while the class initialises. */
-        private static final ColumnSort N = ColumnSort.NONE;
+        /** Blank pixels {@link #layout} leaves after every column; {@link #fitNumber} lets a number use all but one. */
+        static final int PADDING = 4;
 
-        static final Columns METRIC_VALUE = of(N,
-                left("metric", 2, N),
-                left("value", 3, N));
-        static final Columns HITCH = of(N,
-                left("frame", 2, N),
-                right("total ms", 1, N),
-                left("split", 7, N));
+        private static final Pattern DECIMALS = Pattern.compile("\\d+\\.\\d+");
+
+        static final Columns METRIC_VALUE = of(NONE,
+                left("metric", 2, NONE),
+                left("value", 3, NONE));
+        static final Columns HITCH = of(NONE,
+                left("frame", 2, NONE),
+                right("total ms", 1, NONE),
+                left("split", 7, NONE));
         static final Columns RANKED = of(ColumnSort.of(Ranking.Sort.TOTAL),
                 left("name", 5, ColumnSort.of(Ranking.Sort.LABEL)),
                 right("render us/f", 1, ColumnSort.of(Ranking.Sort.RENDER)),
@@ -913,7 +1007,7 @@ public enum Tab {
         static final Columns FLYWHEEL = of(ColumnSort.of(Ranking.Sort.TOTAL),
                 left("visual class", 6, ColumnSort.of(Ranking.Sort.LABEL)),
                 right("avg count", 1, ColumnSort.of(Ranking.Sort.TOTAL)),
-                right("share", 1, N));
+                right("share", 1, NONE));
         static final Columns BLOCK = of(ColumnSort.of(Ranking.MeshSort.TIME),
                 left("block", 8, ColumnSort.of(Ranking.MeshSort.LABEL)),
                 right("mesh ms/s", 2, ColumnSort.of(Ranking.MeshSort.TIME)),
@@ -960,10 +1054,31 @@ public enum Tab {
             for (int i = 0; i < all.size(); i++) {
                 int px = rowWidth * all.get(i).weight() / total;
                 x[i] = cursor;
-                w[i] = Math.max(8, px - 4);
+                w[i] = Math.max(8, px - PADDING);
                 cursor += px;
             }
             return new int[][]{x, w};
+        }
+
+        /**
+         * What to draw for a right-aligned number in a column {@code width} px wide. It may reach up to
+         * {@code PADDING - 1} px left of its column: every glyph's advance ends in a blank pixel, so that still leaves
+         * two blank pixels before the column on its left, twice the spacing inside a number. Wider than that, its
+         * decimals are rounded away, and if it still does not fit it is drawn as #s, as a spreadsheet does. It is
+         * never cut short like text, because a truncated number reads as a different one: {@code 125,539} cut to
+         * {@code 125,5} (spec addendum §P4.C6 #4).
+         */
+        static String fitNumber(String cell, int width, ToIntFunction<String> textWidth) {
+            int room = width + PADDING - 1;
+            if (textWidth.applyAsInt(cell) <= room) return cell;
+            Matcher m = DECIMALS.matcher(cell);
+            if (m.find()) {
+                // Rounded to a whole number, 10780.9 still reads 10781: less precise, never a different number.
+                String whole = new BigDecimal(m.group()).setScale(0, RoundingMode.HALF_UP).toPlainString();
+                String rounded = cell.substring(0, m.start()) + whole + cell.substring(m.end());
+                if (textWidth.applyAsInt(rounded) <= room) return rounded;
+            }
+            return "#".repeat(Math.max(1, width / textWidth.applyAsInt("#")));
         }
     }
 }
@@ -979,18 +1094,21 @@ index, so each column is one line a reader can check; `TabTest` asserts they equ
 Now that a test ties the two lists together, say so where a reader of `core` will look. In
 `core/RankedTable.java`, the class Javadoc's sentence "the screen writes its headers out in {@code Tab}, beside
 their widths and sorts" becomes "the screen writes its headers out in {@code Tab}, beside their widths and
-sorts, and {@code TabTest} asserts they equal {@link #RANKED} and {@link #PARTICLE}".
+sorts, and {@code TabTest} asserts they equal {@link #RANKED} and {@link #PARTICLE}". Keep each `{@code ...}`
+tag on one line: split across a line break it renders with a stray space.
 
-- [ ] **Step 5: `RowList` reads the records, and draws a number that does not fit as `#`s**
+- [ ] **Step 5: `RowList` reads the records, and fits numbers with `Tab.Columns.fitNumber`**
 
-In `RowList.Entry.render`, replace `boolean[] right = tab.columns().rightAlign();` with
-`Tab.Columns columns = tab.columns();`, and replace the cell loop with:
+`fitNumber` lives in `Tab.Columns` (Step 4), beside the `PADDING` it depends on, so a unit test can exercise
+it with the vanilla font's glyph widths; `RowList` passes `font::width`. In `RowList.Entry.render`, replace
+`boolean[] right = tab.columns().rightAlign();` with `Tab.Columns columns = tab.columns();`, and replace the
+cell loop with:
 
 ```java
             for (int i = 1; i < row.cells().length && i < colX.length && i < columns.size(); i++) {
                 int cx = left + 4 + colX[i];
                 if (columns.get(i).rightAlign()) {
-                    String cell = fitNumber(font, row.cells()[i], colW[i]);
+                    String cell = Tab.Columns.fitNumber(row.cells()[i], colW[i], font::width);
                     g.drawString(font, cell, cx + colW[i] - font.width(cell), top + 2, color, false);
                 } else {
                     g.drawString(font, font.plainSubstrByWidth(row.cells()[i], colW[i]), cx, top + 2, color, false);
@@ -998,18 +1116,7 @@ In `RowList.Entry.render`, replace `boolean[] right = tab.columns().rightAlign()
             }
 ```
 
-and add to `RowList` (the outer class), after `getScrollbarPosition`:
-
-```java
-    /**
-     * A right-aligned number too wide for its column is drawn as #s, as a spreadsheet does, instead of being cut
-     * short like text: a truncated number reads as a different, smaller one (spec addendum §P4.C6 #4).
-     */
-    static String fitNumber(Font font, String cell, int width) {
-        if (font.width(cell) <= width) return cell;
-        return "#".repeat(Math.max(1, width / font.width("#")));
-    }
-```
+The number keeps its right edge and grows leftward, into up to three pixels of the padding before its column.
 
 - [ ] **Step 6: `ResultsScreen` draws its headers from the records**
 
@@ -1039,7 +1146,7 @@ Task 4 adds the sort arrow to this loop.
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **117 tests**.
+Expected: `BUILD SUCCESSFUL`, **120 tests**.
 
 If `layoutFitsTheRowAndNeverOverlaps` fails at `rowWidth = 120` because a column does not advance, the weights
 are too uneven for a narrow screen: that is a real finding, not a test to relax. Report it.
@@ -1047,14 +1154,14 @@ are too uneven for a narrow screen: that is a real finding, not a test to relax.
 - [ ] **Step 8: Stage and report**
 
 ```bash
-git add src/main/java/io/github/edwardg117/renderable/ui/screen src/test/java/io/github/edwardg117/renderable/ui
+git add src/main/java/io/github/edwardg117/renderable/ui/screen src/test/java/io/github/edwardg117/renderable/ui src/main/java/io/github/edwardg117/renderable/core/RankedTable.java
 git status --short
 ```
 
 Commit message for the orchestrator:
 
 ```
-feat(ui): columns are records that declare what they sort by; a number too wide for its column shows as #s
+feat(ui): columns are records that declare what they sort by; a number too wide for its column is rounded, never cut short
 ```
 
 ---
@@ -1447,7 +1554,7 @@ button is hidden.
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **119 tests**.
+Expected: `BUILD SUCCESSFUL`, **122 tests**.
 
 - [ ] **Step 8: Stage and report**
 
@@ -1680,7 +1787,7 @@ and replace `updateButtons()`, which keeps 4b's stale-world guard and drops the 
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **119 tests**.
+Expected: `BUILD SUCCESSFUL`, **122 tests**.
 
 Nothing in this task is unit-testable: `ResultsScreen` is a Minecraft `Screen`. The by-eye checks the first
 draft put here — the arrow, the clicks, the narrow window, the teleport, the tooltip — are in Task 8, where a
@@ -1845,7 +1952,7 @@ two cannot drift:
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **121 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
+Expected: `BUILD SUCCESSFUL`, **124 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
 keys `a`, `b`, `c`, whose simple names are themselves, so it is unaffected.
 
 - [ ] **Step 6: Stage and report**
@@ -2080,7 +2187,7 @@ Replace `drawHighlight` and add the two helpers below it:
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 121 tests. Nothing here is unit-testable, and the first draft's dev-client look
+Expected: `BUILD SUCCESSFUL`, 124 tests. Nothing here is unit-testable, and the first draft's dev-client look
 (the box in perspective, the corner behind the camera, the distant 8-pixel square, the portal) is in Task 8,
 where a person runs it in the pack. Do not launch a client for this task.
 
@@ -2118,7 +2225,8 @@ true for entities as well and needs no change. Add a new item 4:
 4. On the results screen, click a column header to sort by it; click it again to reverse. Each list opens in
    the same order as the text report, the active column carries `v` (descending) or `^` (ascending), and a
    name column sorts A to Z on its first click. Frames and Hitches have a fixed order. A number too wide for
-   its column shows as `###`; widen the window to read it. **Highlight** draws a wireframe box around the
+   its column is rounded to a whole number, and shows as `###` only if it still does not fit; widen the window
+   or lower the GUI scale to read it. **Highlight** draws a wireframe box around the
    selected block, or around the whole 16-block section for a Sections row, for ten seconds and through
    walls. Highlight and Teleport are greyed out once the world the session was taken in is gone, and hovering
    over them says so.
@@ -2147,7 +2255,8 @@ In `docs/superpowers/specs/2026-09-19-renderable-fps-profiler-design.md`:
 The Block Entities, Entities, Particles, Blocks, Sections and Flywheel lists sort by any column. Each opens in
 the order the text report uses; clicking a column header sorts by it (largest first for a number, A to Z for a
 name), clicking the active header reverses it, and the active header carries an arrow. The Frames and Hitches
-tabs have a fixed order. A number too wide for its column is drawn as `#`s rather than cut short. Position and
+tabs have a fixed order. A number too wide for its column is rounded to a whole number and, if it still does
+not fit, drawn as `#`s; it is never cut short. Position and
 individual rows have **Highlight** (draw a wireframe box at the position for 10 s, the whole 16-block section
 for a Sections row) and **Teleport** (sends `/tp @s x y z` as chat, keeping the player's current Y for a
 section row so they do not arrive inside stone; if the player lacks permission the server's error is what
@@ -2167,9 +2276,11 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
 1. **§P4.B3**, in the paragraph on why the overlay is not measured, the leftover highlight is described as
    "today two nested screen-space outlines around the block's projected corners, not the wireframe §P4.C5
    proposes". That is no longer true; it is now the wireframe box of §P4.C5. Say so.
-2. **§P4.C6 #4**, replace the resolution with: a right-aligned number too wide for its column is drawn as
-   `#`s, as a spreadsheet does, because truncating it like text makes it read as a different, smaller number
-   (`4900.0` cut to `490`).
+2. **§P4.C6 #4**, replace the resolution with: a right-aligned number too wide for its column may reach three
+   of the four blank pixels before it; beyond that its decimals are rounded away, and only if it still does not
+   fit is it drawn as `#`s, as a spreadsheet does. It is never truncated like text, because a truncated number
+   reads as a different one (`125,539` cut to `125,5`). Record why the threshold is not the column width: at
+   1920x1080 on the Auto GUI scale that hid real values the old code drew legibly.
 3. **§P4.C7**, the bullet beginning "`Tab.Columns` gains a `ColumnSort[] sorts`": the columns are now a list
    of `Column(name, weight, rightAlign, sort)` records, so parallel arrays cannot drift; keep the paragraph's
    reasoning for a record over the two existing enums. Add to the design: each tab opens in the text report's
@@ -2195,7 +2306,7 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 121 tests.
+Expected: `BUILD SUCCESSFUL`, 124 tests.
 
 - [ ] **Step 5: Stage and report**
 
@@ -2247,10 +2358,12 @@ session, the greyed Highlight and Teleport after a disconnect and reconnect, and
    in front of you; and that from far away it shrinks to a small square rather than vanishing.
 6. **Labels (§P4.C4).** After a session with entities in view, go through a portal: no entity labels. Come
    back: they return.
-7. **Header parity and a narrow window (§P4.C6).** The Sections tab's last header reads `avg ms/rb`; the
-   Flywheel tab and the report's Flywheel table both read `SingleAxisRotatingVisual`. With a narrow window at
-   GUI scale 3, a number too wide for its column shows as `###`: no number overlaps its neighbour, and none is
-   shown cut short.
+7. **Header parity and narrow columns (§P4.C6).** The Sections tab's last header reads `avg ms/rb`; the
+   Flywheel tab and the report's Flywheel table both read `SingleAxisRotatingVisual`. At GUI scale 3, where
+   every column is wide, nothing overflows, so also switch the GUI scale to **Auto** (6 at 2560x1440, a 426-px
+   GUI, the same as 1440p and 4K players get by default) and open Block Entities: four-digit decimals such as
+   `1501.5` read rounded (`1502`), no number overlaps its neighbour, none is shown cut short, and anything that
+   cannot fit even rounded shows as `#`s. Say whether the tab is still usable at that scale.
 8. **The gc f note.** After a session with at least one collection, the Frames tab shows the `gc f` note
    under its `GC` row.
 9. **The tooltip.** During 4b's reconnect check, hover over the greyed Highlight: it reads "The world this
