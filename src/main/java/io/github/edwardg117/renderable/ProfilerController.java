@@ -40,6 +40,8 @@ public final class ProfilerController implements Probe.Listener {
     private long calibratedVertexNanos = -1;
     private int pendingStallMs;
     private long lastVisualSampleSecond = -1;
+    /** The dimension the running session started in, so the overlay can scope its labels to it. */
+    private String sessionDimension = "";
 
     private SessionResult lastResult;
     private boolean resultWorldGone;
@@ -107,9 +109,10 @@ public final class ProfilerController implements Probe.Listener {
                 calibratedVertexNanos);
         lastVisualSampleSecond = -1;
         session = new Session(config, System::nanoTime, System.currentTimeMillis());
+        sessionDimension = mc.level.dimension().location().toString();
         WorldOverlay.clear();
         Probe.setListener(this);
-        Probe.attach(session, mc.level.dimension().location().toString());
+        Probe.attach(session, sessionDimension);
         chat("Renderable: sampling for " + seconds + " s. Press the key again or run /renderable stop to end early.");
     }
 
@@ -184,7 +187,7 @@ public final class ProfilerController implements Probe.Listener {
         if (written != null && (written.text() != null || written.json() != null)) {
             lastFolder = written.folder();
         }
-        WorldOverlay.setResult(result);
+        WorldOverlay.setResult(result, sessionDimension);
 
         chat(finishedMessage(result, written, writeFailure));
 

@@ -4,7 +4,7 @@
 
 **Goal:** Make the results screen do what spec §5.3 promised and stop it disagreeing with the report: sort by any numeric column by clicking its header, tell "that mod is not installed" from "nothing happened", cap the Sections list, teleport somewhere a player can stand, truncate right-aligned cells, print Flywheel class names the same way in both places, dimension-filter entity labels, and draw a real wireframe box instead of a bounding rectangle.
 
-**Architecture:** The sortable columns become data: a `ColumnSort` value on every `Tab.Columns` entry says which `Ranking.Sort` or `Ranking.MeshSort` that header means, or that it means nothing. `ResultsScreen` keeps a sort column and direction per tab, handles clicks in the header band, and passes the resolved `ColumnSort` to `Rows`, which also receives the `Environment` it has been missing. The empty-state sentences move to one `core` class so the screen and the report cannot drift. The highlight projects the eight corners as before but draws the twelve edges as run-merged two-pixel lines in the same GUI layer, so it still shows through walls and shaders.
+**Architecture:** The sortable columns become data: a `ColumnSort` value on every `Tab.Columns` entry says which `Ranking.Sort` or `Ranking.MeshSort` that header means, or that it means nothing. `ResultsScreen` keeps a sort column and direction per tab, handles clicks in the header band, and passes the resolved `ColumnSort` to `Rows`, which also receives the `Environment` it has been missing. The empty-state sentences move to one `core` class so the screen and the report cannot drift. The highlight projects the eight corners as before but draws the twelve edges as two-pixel quads in the same GUI layer, clipped at the camera's near plane and flushed once, so it still shows through walls and shaders.
 
 **Tech Stack:** Java 21, ModDevGradle 2.0.147, NeoForge 21.1.220, vanilla `Screen` and `ObjectSelectionList`, JUnit 5 for everything outside `ui.screen.Rows` and `ui.WorldOverlay` (both import Minecraft types and cannot be unit-tested).
 
@@ -41,6 +41,8 @@
   `MeshSort` has no `AVG`: the Sections average column sorts by `PER_CALL`, which for a section is per
   rebuild and orders rows identically (Task 1, from its spec review).
 - The ranked and particle column names and cells move into `core/RankedTable`, which both surfaces call (Task 1a).
+- The highlight's edges are quads in the GUI buffer, clipped at the near plane, not CPU-rasterised runs of `fill` with
+  edges behind the camera skipped (Task 6, from its review: each `fill` is its own draw call in a GUI layer).
 
 ---
 
@@ -2182,14 +2184,27 @@ Update the `Label` record's Javadoc, which still describes the old behaviour:
 ```java
     /**
      * One label, built once per result. Block entities and sections carry the position they were profiled
-     * at; entities are looked up per frame by id and carry the dimension the session ran in, because entity
-     * ids are reused across dimensions. A label is drawn only in the dimension it names.
+     * at; entities are looked up per frame by id. Every label is drawn only in the dimension it was measured
+     * in; for an entity that is the session's dimension, which matters for an entity that keeps its id
+     * through a portal, such as another player.
      */
 ```
 
 - [ ] **Step 3: Draw the box**
 
-Replace `drawHighlight` and add the two helpers below it:
+The first version of this step rasterised each edge on the CPU into runs of `GuiGraphics.fill`. Its review
+on 2026-09-25 found that in 1.21.1 a GUI layer is not drawn managed, so every `fill` flushes: each run was its
+own draw call with about 1 KB of vanilla garbage, up to 1,275 a frame for a section highlighted from three
+blocks away, where the old rectangle took 8, and the loop was unbounded for a corner just in front of the
+camera. It also skipped every edge with a corner behind the camera, so standing inside a highlighted section
+showed a flat rectangle. What was committed draws each edge as one two-pixel quad in the GUI buffer
+(`RenderType.gui()`, wound like `fill`'s so it stays front-facing), flushes once, and clips an edge that
+crosses the camera's near plane (`GameRenderer.PROJECTION_Z_NEAR`) in clip space. Every API it uses was
+verified with javap against the pinned jars. Imports: `com.mojang.blaze3d.vertex.VertexConsumer`,
+`net.minecraft.client.renderer.GameRenderer`, `net.minecraft.client.renderer.RenderType`,
+`org.joml.Vector3f`.
+
+Replace `drawHighlight` and everything after it up to `head` with:
 
 ```java
     /**
@@ -2197,9 +2212,13 @@ Replace `drawHighlight` and add the two helpers below it:
      * A highlight can outlive the session it came from and keep drawing while the next one samples, so it
      * allocates nothing per frame.
      */
-    private static final float[] CORNER_X = new float[8];
-    private static final float[] CORNER_Y = new float[8];
-    private static final boolean[] CORNER_VISIBLE = new boolean[8];
+    private static final float[] CLIP_X = new float[8];
+    private static final float[] CLIP_Y = new float[8];
+    private static final float[] CLIP_W = new float[8];
+    private static final Vector3f VERTEX = new Vector3f();
+
+    /** The camera's near plane in clip space: a point is in front of it when its w exceeds this. */
+    private static final float NEAR_W = GameRenderer.PROJECTION_Z_NEAR;
 
     /** The twelve edges of a cube, as pairs of corner indices differing in one bit. */
     private static final int[] EDGES = {
@@ -2207,10 +2226,11 @@ Replace `drawHighlight` and add the two helpers below it:
             2, 6, 3, 7, 4, 5, 4, 6, 5, 7, 6, 7};
 
     /**
-     * Projects the highlighted cube's eight corners and draws its twelve edges, two pixels thick, over
-     * everything (spec addendum §P4.C5). An edge with an endpoint behind the camera is skipped rather than
-     * abandoning the whole marker, and a cube that projects smaller than {@link #MIN_HIGHLIGHT} falls back
-     * to the rectangle so a distant block stays findable.
+     * Projects the highlighted cube's eight corners and draws its twelve edges over everything (spec
+     * addendum §P4.C5). An edge that crosses the camera's near plane is clipped at that plane, so a box the
+     * camera stands inside still shows its edges. Each edge is drawn as one two-pixel-wide quad, and the
+     * whole box is one flush. A wholly visible cube that projects smaller than {@link #MIN_HIGHLIGHT} falls
+     * back to a small square instead, so a distant block stays findable. Allocates nothing per frame.
      */
     private static void drawHighlight(GuiGraphics g, Vec3 cam, int guiW, int guiH) {
         BlockPos p = highlight;
@@ -2219,9 +2239,7 @@ Replace `drawHighlight` and add the two helpers below it:
             highlight = null;
             return;
         }
-        float[] sx = CORNER_X;
-        float[] sy = CORNER_Y;
-        boolean[] ok = CORNER_VISIBLE;
+        int inFront = 0;
         float minX = Float.MAX_VALUE;
         float minY = Float.MAX_VALUE;
         float maxX = -Float.MAX_VALUE;
@@ -2231,95 +2249,109 @@ Replace `drawHighlight` and add the two helpers below it:
             double y = p.getY() + ((i & 2) == 0 ? -0.01 : highlightSize + 0.01);
             double z = p.getZ() + ((i & 4) == 0 ? -0.01 : highlightSize + 0.01);
             SCRATCH.set((float) (x - cam.x), (float) (y - cam.y), (float) (z - cam.z), 1.0f).mul(VIEW_PROJECTION);
-            float w = SCRATCH.w();
-            ok[i] = w > 0.001f;                               // reset every frame: the arrays are reused
-            if (!ok[i]) continue;                             // behind the camera; the edges using it are skipped
-            sx[i] = (SCRATCH.x() / w + 1.0f) * 0.5f * guiW;
-            sy[i] = (1.0f - SCRATCH.y() / w) * 0.5f * guiH;
-            minX = Math.min(minX, sx[i]);
-            maxX = Math.max(maxX, sx[i]);
-            minY = Math.min(minY, sy[i]);
-            maxY = Math.max(maxY, sy[i]);
+            CLIP_X[i] = SCRATCH.x();
+            CLIP_Y[i] = SCRATCH.y();
+            CLIP_W[i] = SCRATCH.w();
+            if (CLIP_W[i] <= NEAR_W) continue;
+            inFront++;
+            float sx = screenX(CLIP_X[i], CLIP_W[i], guiW);
+            float sy = screenY(CLIP_Y[i], CLIP_W[i], guiH);
+            minX = Math.min(minX, sx);
+            maxX = Math.max(maxX, sx);
+            minY = Math.min(minY, sy);
+            maxY = Math.max(maxY, sy);
         }
+        if (inFront == 0) return; // entirely behind the camera
 
-        boolean allVisible = true;
-        for (boolean v : ok) allVisible &= v;
-        // A distant block projects to a few pixels: a box would be invisible, so draw the old marker instead.
-        if (allVisible && maxX - minX < MIN_HIGHLIGHT && maxY - minY < MIN_HIGHLIGHT) {
+        VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
+        Matrix4f pose = g.pose().last().pose();
+        if (inFront == 8 && maxX - minX < MIN_HIGHLIGHT && maxY - minY < MIN_HIGHLIGHT) {
+            // Only an unclipped cube can be distant. It projects to a few pixels, so mark it with the
+            // MIN_HIGHLIGHT square instead; centre lines 1 px inside, so the 2 px lines end flush with it.
             float cx = (minX + maxX) * 0.5f;
             float cy = (minY + maxY) * 0.5f;
-            int x0 = Math.round(cx - MIN_HIGHLIGHT * 0.5f);
-            int y0 = Math.round(cy - MIN_HIGHLIGHT * 0.5f);
-            if (x0 + MIN_HIGHLIGHT <= 0 || y0 + MIN_HIGHLIGHT <= 0 || x0 >= guiW || y0 >= guiH) return;
-            g.renderOutline(x0, y0, MIN_HIGHLIGHT, MIN_HIGHLIGHT, HIGHLIGHT_COLOR);
-            return;
+            float h = MIN_HIGHLIGHT * 0.5f - 1.0f;
+            line(vc, pose, cx - h, cy - h, cx + h, cy - h);
+            line(vc, pose, cx + h, cy - h, cx + h, cy + h);
+            line(vc, pose, cx + h, cy + h, cx - h, cy + h);
+            line(vc, pose, cx - h, cy + h, cx - h, cy - h);
+        } else {
+            for (int e = 0; e < EDGES.length; e += 2) {
+                edge(vc, pose, EDGES[e], EDGES[e + 1], guiW, guiH);
+            }
         }
-
-        for (int e = 0; e < EDGES.length; e += 2) {
-            int a = EDGES[e];
-            int b = EDGES[e + 1];
-            if (ok[a] && ok[b]) line(g, sx[a], sy[a], sx[b], sy[b], guiW, guiH);
-        }
+        g.flush(); // what fill() does after every rectangle, once for the whole box
     }
 
     /**
-     * A two-pixel line between two screen points. Pixels with the same minor coordinate are merged into one
-     * fill, so a long edge costs a handful of quads rather than one per pixel.
+     * One edge of the cube. An endpoint behind the near plane is moved along the edge onto it; the move is
+     * made in clip space, where the edge is still a straight line, so the part in front is exact.
      */
-    private static void line(GuiGraphics g, float x0f, float y0f, float x1f, float y1f, int guiW, int guiH) {
-        int x0 = Math.round(x0f);
-        int y0 = Math.round(y0f);
-        int x1 = Math.round(x1f);
-        int y1 = Math.round(y1f);
-        if (Math.abs(x1 - x0) >= Math.abs(y1 - y0)) {
-            if (x0 > x1) {
-                int t = x0; x0 = x1; x1 = t;
-                t = y0; y0 = y1; y1 = t;
-            }
-            if (x1 < 0 || x0 > guiW) return;
-            int span = x1 - x0;
-            int runStart = x0;
-            int runY = y0;
-            for (int x = x0; x <= x1; x++) {
-                int y = span == 0 ? y0 : y0 + Math.round((float) (y1 - y0) * (x - x0) / span);
-                if (y != runY) {
-                    fillClamped(g, runStart, runY, x, runY + 2, guiW, guiH);
-                    runStart = x;
-                    runY = y;
-                }
-            }
-            fillClamped(g, runStart, runY, x1 + 2, runY + 2, guiW, guiH);
-        } else {
-            if (y0 > y1) {
-                int t = y0; y0 = y1; y1 = t;
-                t = x0; x0 = x1; x1 = t;
-            }
-            if (y1 < 0 || y0 > guiH) return;
-            int span = y1 - y0;
-            int runStart = y0;
-            int runX = x0;
-            for (int y = y0; y <= y1; y++) {
-                int x = span == 0 ? x0 : x0 + Math.round((float) (x1 - x0) * (y - y0) / span);
-                if (x != runX) {
-                    fillClamped(g, runX, runStart, runX + 2, y, guiW, guiH);
-                    runStart = y;
-                    runX = x;
-                }
-            }
-            fillClamped(g, runX, runStart, runX + 2, y1 + 2, guiW, guiH);
+    private static void edge(VertexConsumer vc, Matrix4f pose, int a, int b, int guiW, int guiH) {
+        float ax = CLIP_X[a];
+        float ay = CLIP_Y[a];
+        float aw = CLIP_W[a];
+        float bx = CLIP_X[b];
+        float by = CLIP_Y[b];
+        float bw = CLIP_W[b];
+        if (aw <= NEAR_W && bw <= NEAR_W) return;
+        if (aw <= NEAR_W) {
+            float t = (bw - NEAR_W) / (bw - aw);
+            ax = bx + t * (ax - bx);
+            ay = by + t * (ay - by);
+            aw = NEAR_W;
+        } else if (bw <= NEAR_W) {
+            float t = (aw - NEAR_W) / (aw - bw);
+            bx = ax + t * (bx - ax);
+            by = ay + t * (by - ay);
+            bw = NEAR_W;
         }
+        line(vc, pose, screenX(ax, aw, guiW), screenY(ay, aw, guiH), screenX(bx, bw, guiW), screenY(by, bw, guiH));
     }
 
-    /** Fills a rectangle clipped to the screen; nothing is drawn when it falls entirely outside. */
-    private static void fillClamped(GuiGraphics g, int x0, int y0, int x1, int y1, int guiW, int guiH) {
-        int cx0 = Math.max(0, x0);
-        int cy0 = Math.max(0, y0);
-        int cx1 = Math.min(guiW, x1);
-        int cy1 = Math.min(guiH, y1);
-        if (cx1 <= cx0 || cy1 <= cy0) return;
-        g.fill(cx0, cy0, cx1, cy1, HIGHLIGHT_COLOR);
+    private static float screenX(float clipX, float w, int guiW) {
+        return (clipX / w + 1.0f) * 0.5f * guiW;
+    }
+
+    private static float screenY(float clipY, float w, int guiH) {
+        return (1.0f - clipY / w) * 0.5f * guiH;
+    }
+
+    /**
+     * A line two GUI pixels wide with square ends, as one quad in the GUI buffer. The GPU rasterises and clips
+     * it, so it costs the same however long it is and however far off screen it runs. The corners go round
+     * the same way as {@link GuiGraphics#fill}'s, which the GUI's y-down projection keeps front-facing.
+     */
+    private static void line(VertexConsumer vc, Matrix4f pose, float x0, float y0, float x1, float y1) {
+        float dx = x1 - x0;
+        float dy = y1 - y0;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        float ux = 1.0f;
+        float uy = 0.0f;
+        if (len > 1.0e-3f) {
+            ux = dx / len;
+            uy = dy / len;
+        }
+        // One pixel of cap along the line at each end, one pixel of half-width across it.
+        float sx = x0 - ux;
+        float sy = y0 - uy;
+        float ex = x1 + ux;
+        float ey = y1 + uy;
+        vertex(vc, pose, sx - uy, sy + ux);
+        vertex(vc, pose, ex - uy, ey + ux);
+        vertex(vc, pose, ex + uy, ey - ux);
+        vertex(vc, pose, sx + uy, sy - ux);
+    }
+
+    private static void vertex(VertexConsumer vc, Matrix4f pose, float x, float y) {
+        pose.transformPosition(x, y, 0.0f, VERTEX);
+        vc.addVertex(VERTEX.x, VERTEX.y, VERTEX.z).setColor(HIGHLIGHT_COLOR);
     }
 ```
+
+In `drawLabels`, no label can carry a null dimension any more, so the guard becomes
+`if (!lastDimension.equals(l.dimension())) continue;`, which is null-safe and draws a label without a dimension
+nowhere. The two `highlight(...)` Javadocs say "wireframe box" instead of "red rectangle".
 
 - [ ] **Step 4: Run the whole build**
 
@@ -2442,7 +2474,7 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
 6. Check §P4.C1, §P4.C2, §P4.C3, §P4.C4 and §P4.C5 against the code and correct anything that no longer
    matches. §P4.C5 in particular should not claim the highlight allocates per frame: its corner arrays are
    static scratch space.
-7. **§P4.3** (deferred items), add four:
+7. **§P4.3** (deferred items), add six:
    - The Blocks table and the Sections cells are still written twice, in `TextReportWriter` and `Rows`, and
      could move into `core` the way Task 1a moved the ranked ones; only the Sections `avg ms/rb` header
      differs between the surfaces, by design.
@@ -2458,6 +2490,12 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
      session was taken. An exact check would compare the selected row's dimension (block entity and section
      keys carry one; entity rows would use the session dimension Task 6 records) with the current level's, and
      keep the blanket flag for logout only.
+   - The label overlay has the same flush-per-call cost the highlight had: each label is a `fill` and a
+     `drawString`, each its own draw call, so 75 labels are 150 draws a frame during ordinary play after a
+     session (labels are cleared while sampling, so measurements are unaffected). Drawing them inside
+     `GuiGraphics.drawManaged` batches them; check the draw order of overlapping labels when doing it.
+   - The highlight has no dimension: a box set just before a portal keeps drawing, for the rest of its ten
+     seconds, at the same coordinates in the new dimension.
 8. **§P4.C3**, the design changed in review. The player's current Y is where they stand now, not a place
    they can stand at the section's column, so a player on foot heading towards a hill landed inside it. The
    teleport now keeps the player's Y raised to the first height at which the player's box fits in that column
@@ -2466,7 +2504,15 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
    shapes of loaded chunks, which is what this uses. Add the heightmap as a rejected alternative: for an
    unloaded chunk `ClientLevel.getHeight` reads an empty chunk and returns the bottom of the world, in the
    Nether it returns the top of the bedrock roof, and `MOTION_BLOCKING` counts water and leaves.
-9. **§P4.C2**, correct the example trailing row: the text report prints only its top 20 sections, so the row
+9. **§P4.C5**, the design changed in review. The first version rasterised each edge on the CPU into runs of
+   `GuiGraphics.fill`, but in 1.21.1 a GUI layer is not drawn managed, so every `fill` flushes: each run was
+   its own draw call with about 1 KB of vanilla garbage, up to 1,275 a frame for a section highlighted from
+   three blocks away (the old rectangle took 8), and the loop was unbounded for a corner just in front of the
+   camera. Each edge is now one two-pixel quad written into the GUI buffer and flushed once, and an edge that
+   crosses the camera's near plane is clipped there in clip space instead of skipped, so standing inside a
+   highlighted section shows the box around you. Replace "skipped" in the design, and record the rasteriser as
+   a rejected alternative with those numbers.
+10. **§P4.C2**, correct the example trailing row: the text report prints only its top 20 sections, so the row
    reads `... and N more sections (the JSON has all M)`, singular at one. Also say that the cap takes the first
    200 in the tab's current order, which is the 200 most-rebuilt only in the default order.
 
@@ -2525,8 +2571,10 @@ session, the greyed Highlight and Teleport after a disconnect and reconnect, and
    press Teleport: you should arrive at that column standing on or above the terrain, not inside it. From the
    air, you should keep your height.
 5. **Highlight (§P4.C5).** Highlight a block entity and a section. Confirm a box in perspective rather than a
-   flat rectangle, visible through walls; that standing inside the highlighted section still draws the edges
-   in front of you; and that from far away it shrinks to a small square rather than vanishing.
+   flat rectangle, visible through walls; that standing inside the highlighted section shows the edges that
+   reach behind you, not just a rectangle in front; and that from far away it shrinks to a small square rather
+   than vanishing. With F3 open, compare the frame time with a section highlighted from three blocks away
+   against no highlight: it should be within noise.
 6. **Labels (§P4.C4).** Run this after checks 4 and 5: any dimension change greys Highlight and Teleport until
    the next session (a deferred limitation). After a session with entities in view, go through a portal: no
    entity labels. Come back: they return.
