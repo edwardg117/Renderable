@@ -1,6 +1,7 @@
 package io.github.edwardg117.renderable.report;
 
 import io.github.edwardg117.renderable.core.Bucket;
+import io.github.edwardg117.renderable.core.EmptyStates;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.Fmt;
@@ -114,7 +115,7 @@ public final class TextReportWriter {
     static void appendRanked(StringBuilder sb, String title, List<RankedEntry> entries, int frames, long total) {
         sb.append(title).append(" (top ").append(TOP).append(")\n");
         if (entries.isEmpty()) {
-            sb.append("  (no data: hook not active in this build)\n\n");
+            sb.append("  ").append(EmptyStates.ranked()).append("\n\n");
             return;
         }
         Table t = Table.nameThenNumbers(RankedTable.RANKED);
@@ -129,9 +130,7 @@ public final class TextReportWriter {
         sb.append("Particles (top ").append(TOP).append(")\n");
         List<RankedEntry> entries = Ranking.byKey(r, ProfileKey.Category.PARTICLE);
         if (entries.isEmpty()) {
-            sb.append(env.hooksApplied().contains("PARTICLE_RENDER")
-                    ? "  (no particles were rendered)\n\n"
-                    : "  (no data: hook not active in this build)\n\n");
+            sb.append("  ").append(EmptyStates.particles(env)).append("\n\n");
             return;
         }
         Table t = Table.nameThenNumbers(RankedTable.PARTICLE);
@@ -144,16 +143,13 @@ public final class TextReportWriter {
     /** Spec §6.1 item 9 and §4.4: the Flywheel bucket plus visual counts, or the exact reason there are none. */
     static void appendFlywheel(StringBuilder sb, SessionResult r, Environment env, int frames, long total) {
         sb.append("Flywheel\n");
-        if (!env.has("flywheelBackend")) {
-            sb.append("  (no data: Flywheel is not installed)\n\n");
+        FlywheelStats fw = r.flywheel();
+        String empty = EmptyStates.flywheel(env, fw.samples());
+        if (!empty.isEmpty()) {
+            sb.append("  ").append(empty).append("\n\n");
             return;
         }
         String backend = env.value("flywheelBackend");
-        FlywheelStats fw = r.flywheel();
-        if (fw.samples() == 0) {
-            sb.append("  (no data: no Flywheel visualization ran; backend ").append(backend).append(")\n\n");
-            return;
-        }
         long bucketNanos = r.bucketTotalNanos(Bucket.FLYWHEEL);
         if (bucketNanos == 0 && !env.hooksApplied().contains("FLYWHEEL")) {
             sb.append("  (hook did not apply for flywheel ").append(env.entries().getOrDefault("flywheel", "?"))
@@ -176,7 +172,7 @@ public final class TextReportWriter {
         sb.append("Blocks (mesh build, top ").append(TOP).append(" by mesh ms/s)\n");
         List<MeshEntry> rows = Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME);
         if (rows.isEmpty()) {
-            sb.append(meshNoData(env, "blocks were meshed")).append('\n');
+            sb.append("  ").append(EmptyStates.blocks(env)).append("\n\n");
             return;
         }
         double seconds = r.stats().durationSeconds();
@@ -192,7 +188,7 @@ public final class TextReportWriter {
         sb.append("Sections (mesh rebuilds, top ").append(TOP).append(" by rebuilds)\n");
         List<MeshEntry> rows = Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS);
         if (rows.isEmpty()) {
-            sb.append(meshNoData(env, "sections were rebuilt")).append('\n');
+            sb.append("  ").append(EmptyStates.sections(env)).append("\n\n");
             return;
         }
         double seconds = r.stats().durationSeconds();
@@ -203,11 +199,5 @@ public final class TextReportWriter {
                     Fmt.ms2(e.calls() == 0 ? 0 : e.nanos() / e.calls()));
         }
         sb.append(t.render("  ")).append(MESH_NOTE).append("\n\n");
-    }
-
-    private static String meshNoData(Environment env, String nothing) {
-        return env.hooksApplied().contains("SODIUM_MESH")
-                ? "  (no data: no " + nothing + ")\n"
-                : "  (no data: Sodium hooks were not active)\n";
     }
 }

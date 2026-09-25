@@ -1182,6 +1182,15 @@ neither.
 Plan 4b has run, so `Environment` already has `ABSENT`, `has(String)` and `value(String)`, and
 `TextReportWriter.appendFlywheel` already uses them. The first draft's step to add them is gone.
 
+This task's review on 2026-09-25 proved the report byte-identical over 323 fixture and environment pairs and
+compared 46,512 screen row lists field by field, then corrected four things that the code below already
+carries: the Sections cap row claimed "the report and JSON have all" the sections, but the text report prints
+only its top 20, so it now names the JSON (and says "1 more section" in the singular); the Flywheel tab no
+longer shows a zero bucket row above "Flywheel is not installed", which the report never printed; the
+`EmptyStates.ranked()` Javadoc no longer blames the hook (the sentence itself stays, to keep the report
+unchanged, and Task 7 records it as deferred); and `EmptyStatesTest` uses one hook per environment, because
+with both hooks in one environment, crossing their names in `EmptyStates` still passed it.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `src/test/java/io/github/edwardg117/renderable/core/EmptyStatesTest.java`:
@@ -1210,10 +1219,15 @@ class EmptyStatesTest {
         assertEquals("(no data: Sodium hooks were not active)", EmptyStates.sections(none));
         assertEquals("(no data: hook not active in this build)", EmptyStates.particles(none));
 
-        Environment hooked = env(Map.of("sodium", "0.8.13"), "SODIUM_MESH", "PARTICLE_RENDER");
-        assertEquals("(no data: no blocks were meshed)", EmptyStates.blocks(hooked));
-        assertEquals("(no data: no sections were rebuilt)", EmptyStates.sections(hooked));
-        assertEquals("(no particles were rendered)", EmptyStates.particles(hooked));
+        Environment sodiumOnly = env(Map.of(), "SODIUM_MESH");
+        assertEquals("(no data: no blocks were meshed)", EmptyStates.blocks(sodiumOnly));
+        assertEquals("(no data: no sections were rebuilt)", EmptyStates.sections(sodiumOnly));
+        assertEquals("(no data: hook not active in this build)", EmptyStates.particles(sodiumOnly));
+
+        Environment particlesOnly = env(Map.of(), "PARTICLE_RENDER");
+        assertEquals("(no particles were rendered)", EmptyStates.particles(particlesOnly));
+        assertEquals("(no data: Sodium hooks were not active)", EmptyStates.blocks(particlesOnly));
+        assertEquals("(no data: Sodium hooks were not active)", EmptyStates.sections(particlesOnly));
 
         assertEquals("(no data: hook not active in this build)", EmptyStates.ranked());
     }
@@ -1256,7 +1270,11 @@ public final class EmptyStates {
     private EmptyStates() {
     }
 
-    /** A ranked category with no rows: in practice the hook for it is not in this build. */
+    /**
+     * A ranked category with no rows. The sentence blames the hook, but the block entity and entity hooks are
+     * required vanilla mixins, so in practice an empty list means nothing of that kind was drawn; correcting the
+     * sentence changes the report and is deferred (spec addendum §P4.3).
+     */
     public static String ranked() {
         return "(no data: hook not active in this build)";
     }
@@ -1358,7 +1376,10 @@ Replace `Rows.build` and the five list builders it dispatches to. `Rows` keeps e
 `frames`, `hitches` and the helpers.
 
 ```java
-    /** Rows for one tab. {@code sort} is the clicked column, or null for the tab's default order; {@code ascending} its direction. */
+    /**
+     * Rows for one tab. {@code sort} is the clicked column, or null for the tab's default order; {@code ascending}
+     * its direction.
+     */
     public static List<Row> build(Tab tab, SessionResult r, Environment env, ColumnSort sort, boolean ascending,
                                   Set<String> expanded) {
         return switch (tab) {
@@ -1442,12 +1463,14 @@ Replace `Rows.build` and the five list builders it dispatches to. `Rows` keeps e
         long total = r.stats().totalNanos();
         long bucket = r.bucketTotalNanos(Bucket.FLYWHEEL);
         FlywheelStats fw = r.flywheel();
-        List<Row> rows = new ArrayList<>();
-        rows.add(new Row(new String[]{"Flywheel bucket",
-                Fmt.us(frames == 0 ? 0 : bucket / 1000.0 / frames) + " us/f",
-                Fmt.pct(total == 0 ? 0 : 100.0 * bucket / total)},
-                null, null, true, false, 0, null, -1));
         String empty = EmptyStates.flywheel(env, fw.samples());
+        List<Row> rows = new ArrayList<>();
+        if (bucket > 0 || empty.isEmpty()) {
+            rows.add(new Row(new String[]{"Flywheel bucket",
+                    Fmt.us(frames == 0 ? 0 : bucket / 1000.0 / frames) + " us/f",
+                    Fmt.pct(total == 0 ? 0 : 100.0 * bucket / total)},
+                    null, null, true, false, 0, null, -1));
+        }
         if (!empty.isEmpty()) {
             rows.add(Row.plain(empty));
             return rows;
@@ -1498,7 +1521,7 @@ and Task 5 deletes it together with its Javadoc.
     /**
      * Spec §5.3 Sections tab: one row per rebuilt section; the row's position is the section centre. A
      * 30 s flight can rebuild a thousand sections, so the list is capped and says how many it left out
-     * (spec addendum §P4.C2); the report and JSON still carry every one.
+     * (spec addendum §P4.C2); the JSON carries every one, the text report only its top 20.
      */
     static List<Row> sections(SessionResult r, Environment env, ColumnSort sort, boolean ascending) {
         double seconds = r.stats().durationSeconds();
@@ -1511,8 +1534,9 @@ and Task 5 deletes it together with its Javadoc.
                     k, k.typeId(), false, false, 0, new BlockPos(k.centerX(), k.centerY(), k.centerZ()), -1));
         }
         if (all.size() > MAX_SECTION_ROWS) {
-            rows.add(Row.plain("... and " + Fmt.count(all.size() - MAX_SECTION_ROWS)
-                    + " more sections (the report and JSON have all " + Fmt.count(all.size()) + ")"));
+            int hidden = all.size() - MAX_SECTION_ROWS;
+            rows.add(Row.plain("... and " + Fmt.count(hidden) + (hidden == 1 ? " more section" : " more sections")
+                    + " (the JSON has all " + Fmt.count(all.size()) + ")"));
         }
         if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.sections(env)));
         return rows;
@@ -1522,7 +1546,7 @@ and Task 5 deletes it together with its Javadoc.
 Add the constant beside `HISTOGRAM_EDGES_MS`:
 
 ```java
-    /** Spec addendum §P4.C2: the Sections tab is capped; the report and JSON are not. */
+    /** Spec addendum §P4.C2: the Sections tab is capped; the JSON has every section, the report only its top 20. */
     static final int MAX_SECTION_ROWS = 200;
 ```
 
@@ -1545,8 +1569,9 @@ default order everywhere else, so the screen behaves exactly as it does today. I
         list.setRows(tab, Rows.build(tab, result, environment, tab.sortable() ? ColumnSort.of(sort) : null, false, expanded));
 ```
 
-Without the `tab.sortable()` guard, a sort chosen on Block Entities would carry over to Blocks, where the
-button is hidden.
+Without the `tab.sortable()` guard, a sort chosen on Block Entities would carry over to Flywheel, where a
+`LABEL` sort would reorder the classes while the button is hidden. (Blocks and Sections would ignore it:
+`meshSort` falls back when a `ColumnSort` carries no mesh sort.)
 
 - [ ] **Step 7: Run the whole build**
 
@@ -2238,8 +2263,8 @@ In "Reading a report", add:
 - **Flywheel** visual classes read as simple class names on screen and in the text report; the JSON keeps
   the fully-qualified names. Two classes with the same simple name are both prefixed with their last
   package segment.
-- The **Sections** tab shows the 200 busiest sections and says how many it left out; the text report's top
-  20 and the JSON's complete list are unchanged.
+- The **Sections** tab shows at most 200 sections, the first 200 in whatever order it is sorted, and says
+  how many it left out. The text report still prints its top 20 and the JSON every section.
 ```
 
 Then read the rest of the README for anything this plan made false. Phase 4b's sentence about a highlight left
@@ -2262,7 +2287,8 @@ for a Sections row) and **Teleport** (sends `/tp @s x y z` as chat, keeping the 
 section row so they do not arrive inside stone; if the player lacks permission the server's error is what
 they see). Both are disabled, with a tooltip saying why, once the world the session was taken in is gone. A
 **Copy report** button copies the text report; **Open folder** opens the report directory. The Sections list
-shows the 200 busiest sections and a trailing row saying how many it left out. The ranked and particle column
+shows at most 200 sections, the first 200 in its current order, and a trailing row saying how many it left out
+and that the JSON has them all. The ranked and particle column
 names and cell text are defined once, in `core/RankedTable`, and shared with the text report.
 ```
 
@@ -2296,9 +2322,20 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
 5. Check §P4.C1, §P4.C2, §P4.C3, §P4.C4 and §P4.C5 against the code and correct anything that no longer
    matches. §P4.C5 in particular should not claim the highlight allocates per frame: its corner arrays are
    static scratch space.
-6. **§P4.3** (deferred items), add one: the Blocks table and the Sections cells are still written twice, in
-   `TextReportWriter` and `Rows`, and could move into `core` the way Task 1a moved the ranked ones; only the
-   Sections `avg ms/rb` header differs between the surfaces, by design.
+6. **§P4.3** (deferred items), add three:
+   - The Blocks table and the Sections cells are still written twice, in `TextReportWriter` and `Rows`, and
+     could move into `core` the way Task 1a moved the ranked ones; only the Sections `avg ms/rb` header
+     differs between the surfaces, by design.
+   - `EmptyStates.ranked()` says "(no data: hook not active in this build)", but the block entity and entity
+     hooks are required vanilla mixins, so an empty list in practice means nothing of that kind was drawn.
+     Correcting the sentence changes the report, so it waits for a plan that may.
+   - With Flywheel drawing, the Block Entities tab always starts with its "Flywheel-instanced machines are not
+     timed here" heading, so an otherwise empty tab shows only that heading and never an empty-state sentence
+     (open terrain, or an area whose only block entities Flywheel draws). Fix it together with the sentence
+     above.
+7. **§P4.C2**, correct the example trailing row: the text report prints only its top 20 sections, so the row
+   reads `... and N more sections (the JSON has all M)`, singular at one. Also say that the cap takes the first
+   200 in the tab's current order, which is the 200 most-rebuilt only in the default order.
 
 - [ ] **Step 4: Build**
 
@@ -2350,7 +2387,7 @@ session, the greyed Highlight and Teleport after a disconnect and reconnect, and
    2/3 log — open the Flywheel tab and confirm it reads `(no data: no Flywheel visualization ran; backend
    flywheel:off)`, the same sentence the report prints. Paste both.
 3. **Sections cap (§P4.C2).** After the 30 s flight from 4b's JSON check, open the Sections tab and paste its
-   last row, which should read `... and N more sections (the report and JSON have all M)`.
+   last row, which should read `... and N more sections (the JSON has all M)`.
 4. **Teleport (§P4.C3).** Select a Sections row and press Teleport: you should arrive above ground at that
    section's column, not inside it.
 5. **Highlight (§P4.C5).** Highlight a block entity and a section. Confirm a box in perspective rather than a

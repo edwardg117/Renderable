@@ -108,7 +108,7 @@ public final class ResultsScreen extends Screen {
         colX = layout[0];
         colW = layout[1];
         list.setLayout(colX, colW);
-        list.setRows(tab, Rows.build(tab, result, sort, expanded));
+        list.setRows(tab, Rows.build(tab, result, environment, tab.sortable() ? ColumnSort.of(sort) : null, false, expanded));
         updateButtons();
     }
 

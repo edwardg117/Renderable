@@ -2,6 +2,8 @@ package io.github.edwardg117.renderable.ui.screen;
 
 import io.github.edwardg117.renderable.core.BlockEntityKey;
 import io.github.edwardg117.renderable.core.Bucket;
+import io.github.edwardg117.renderable.core.EmptyStates;
+import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.EntityKey;
 import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.Fmt;
@@ -20,6 +22,7 @@ import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -29,20 +32,38 @@ import java.util.Set;
 public final class Rows {
     private static final long[] HISTOGRAM_EDGES_MS = {8, 16, 33, 50, 100, 250};
 
+    /** Spec addendum §P4.C2: the Sections tab is capped; the JSON has every section, the report only its top 20. */
+    static final int MAX_SECTION_ROWS = 200;
+
     private Rows() {
     }
 
-    public static List<Row> build(Tab tab, SessionResult r, Ranking.Sort sort, Set<String> expanded) {
+    /**
+     * Rows for one tab. {@code sort} is the clicked column, or null for the tab's default order; {@code ascending}
+     * its direction.
+     */
+    public static List<Row> build(Tab tab, SessionResult r, Environment env, ColumnSort sort, boolean ascending,
+                                  Set<String> expanded) {
         return switch (tab) {
             case FRAMES -> frames(r);
             case HITCHES -> hitches(r);
-            case BLOCK_ENTITIES -> ranked(r, ProfileKey.Category.BLOCK_ENTITY, sort, expanded);
-            case ENTITIES -> ranked(r, ProfileKey.Category.ENTITY, sort, expanded);
-            case PARTICLES -> particles(r, sort);
-            case FLYWHEEL -> flywheel(r);
-            case BLOCKS -> blocks(r);
-            case SECTIONS -> sections(r);
+            case BLOCK_ENTITIES -> ranked(r, ProfileKey.Category.BLOCK_ENTITY, sort, ascending, expanded);
+            case ENTITIES -> ranked(r, ProfileKey.Category.ENTITY, sort, ascending, expanded);
+            case PARTICLES -> particles(r, env, sort, ascending);
+            case FLYWHEEL -> flywheel(r, env, sort, ascending);
+            case BLOCKS -> blocks(r, env, sort, ascending);
+            case SECTIONS -> sections(r, env, sort, ascending);
         };
+    }
+
+    /** The ranked sort a clicked column means, or the report's order, by total time, when there is none. */
+    private static Ranking.Sort rankedSort(ColumnSort sort) {
+        return sort == null || sort.ranked() == null ? Ranking.Sort.TOTAL : sort.ranked();
+    }
+
+    /** The mesh sort a clicked column means, or {@code fallback}, the report's order for that table. */
+    private static Ranking.MeshSort meshSort(ColumnSort sort, Ranking.MeshSort fallback) {
+        return sort == null || sort.mesh() == null ? fallback : sort.mesh();
     }
 
     static List<Row> frames(SessionResult r) {
@@ -126,91 +147,121 @@ public final class Rows {
         return rows;
     }
 
-    static List<Row> ranked(SessionResult r, ProfileKey.Category category, Ranking.Sort sort, Set<String> expanded) {
+    static List<Row> ranked(SessionResult r, ProfileKey.Category category, ColumnSort sort, boolean ascending,
+                            Set<String> expanded) {
         int frames = r.frameCount();
         long total = r.stats().totalNanos();
+        Ranking.Sort by = rankedSort(sort);
         List<Row> rows = new ArrayList<>();
         if (category == ProfileKey.Category.BLOCK_ENTITY
                 && (r.bucketTotalNanos(Bucket.FLYWHEEL) > 0 || r.flywheel().total() > 0)) {
             rows.add(Row.heading("Flywheel-instanced machines are not timed here; see the Flywheel tab"));
         }
-        for (RankedEntry t : Ranking.sort(Ranking.byType(r, category), sort)) {
+        for (RankedEntry t : Ranking.sort(Ranking.byType(r, category), by, ascending)) {
             rows.add(new Row(RankedTable.ranked(t.typeId() + "  (" + t.members() + ")", t, frames, total),
                     null, t.typeId(), true, true, 0, null, -1));
             if (expanded.contains(t.typeId())) {
-                for (RankedEntry m : Ranking.sort(Ranking.membersOf(r, category, t.typeId()), sort)) {
+                for (RankedEntry m : Ranking.sort(Ranking.membersOf(r, category, t.typeId()), by, ascending)) {
                     rows.add(new Row(RankedTable.ranked(memberLabel(m.key()), m, frames, total),
                             m.key(), t.typeId(), false, false, 1, posOf(m.key()), entityIdOf(m.key())));
                 }
             }
         }
-        if (rows.isEmpty()) rows.add(Row.plain("(no data)"));
+        if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.ranked()));
         return rows;
     }
 
     /** Spec §5.3 Particles tab: one row per particle class. */
-    static List<Row> particles(SessionResult r, Ranking.Sort sort) {
+    static List<Row> particles(SessionResult r, Environment env, ColumnSort sort, boolean ascending) {
         int frames = r.frameCount();
         long total = r.stats().totalNanos();
         List<Row> rows = new ArrayList<>();
-        for (RankedEntry e : Ranking.sort(Ranking.byKey(r, ProfileKey.Category.PARTICLE), sort)) {
+        for (RankedEntry e : Ranking.sort(Ranking.byKey(r, ProfileKey.Category.PARTICLE), rankedSort(sort), ascending)) {
             rows.add(new Row(RankedTable.particle(e, frames, total),
                     e.key(), e.typeId(), false, false, 0, null, -1));
         }
-        if (rows.isEmpty()) rows.add(Row.plain("(no particles rendered)"));
+        if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.particles(env)));
         return rows;
     }
 
-    /** Spec §5.3 Flywheel tab: the bucket, then the averaged visual counts by class. */
-    static List<Row> flywheel(SessionResult r) {
+    /**
+     * Spec §5.3 Flywheel tab: the bucket, then the averaged visual counts by class. The rows are class names
+     * and averages rather than ranked entries, so the two sortable columns are read directly: LABEL sorts by
+     * class name, anything else by average count (spec addendum §P4.C7).
+     */
+    static List<Row> flywheel(SessionResult r, Environment env, ColumnSort sort, boolean ascending) {
         int frames = r.frameCount();
         long total = r.stats().totalNanos();
         long bucket = r.bucketTotalNanos(Bucket.FLYWHEEL);
         FlywheelStats fw = r.flywheel();
+        String empty = EmptyStates.flywheel(env, fw.samples());
         List<Row> rows = new ArrayList<>();
-        rows.add(new Row(new String[]{"Flywheel bucket",
-                Fmt.us(frames == 0 ? 0 : bucket / 1000.0 / frames) + " us/f",
-                Fmt.pct(total == 0 ? 0 : 100.0 * bucket / total)},
-                null, null, true, false, 0, null, -1));
-        if (fw.samples() == 0) {
-            rows.add(Row.plain("(no Flywheel visualization ran)"));
+        if (bucket > 0 || empty.isEmpty()) {
+            rows.add(new Row(new String[]{"Flywheel bucket",
+                    Fmt.us(frames == 0 ? 0 : bucket / 1000.0 / frames) + " us/f",
+                    Fmt.pct(total == 0 ? 0 : 100.0 * bucket / total)},
+                    null, null, true, false, 0, null, -1));
+        }
+        if (!empty.isEmpty()) {
+            rows.add(Row.plain(empty));
             return rows;
         }
         rows.add(new Row(new String[]{"Visuals, average over " + fw.samples() + " samples",
                 Fmt.num(fw.total()), ""},
                 null, null, true, false, 0, null, -1));
-        for (Map.Entry<String, Double> e : fw.byAverageDesc()) {
-            String k = e.getKey();
-            String label = k.substring(k.lastIndexOf('.') + 1);
-            rows.add(new Row(new String[]{label, Fmt.num(e.getValue()), ""},
+
+        List<Map.Entry<String, Double>> ordered = new ArrayList<>(fw.byAverageDesc());
+        boolean byName = sort != null && sort.ranked() == Ranking.Sort.LABEL;
+        Comparator<Map.Entry<String, Double>> by = byName
+                ? Comparator.comparing(e -> shortName(e.getKey()))
+                : Comparator.comparingDouble(Map.Entry::getValue);
+        ordered.sort(ascending ? by : by.reversed());
+
+        for (Map.Entry<String, Double> e : ordered) {
+            rows.add(new Row(new String[]{shortName(e.getKey()), Fmt.num(e.getValue()), ""},
                     null, null, false, false, 1, null, -1));
         }
         return rows;
     }
 
-    /** Spec §5.3 Blocks tab: one row per block, by mesh time per second; the same order as the report. */
-    static List<Row> blocks(SessionResult r) {
+    /** Task 5 replaces this with {@code FlywheelStats.displayNames()}, which the report will share. */
+    private static String shortName(String className) {
+        return className.substring(className.lastIndexOf('.') + 1);
+    }
+
+    /** Spec §5.3 Blocks tab: one row per block, by mesh time per second unless a header was clicked. */
+    static List<Row> blocks(SessionResult r, Environment env, ColumnSort sort, boolean ascending) {
         double seconds = r.stats().durationSeconds();
         List<Row> rows = new ArrayList<>();
-        for (MeshEntry e : Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME)) {
+        for (MeshEntry e : Ranking.mesh(r, ProfileKey.Category.BLOCK, meshSort(sort, Ranking.MeshSort.TIME), ascending)) {
             rows.add(new Row(new String[]{e.key().label(), Fmt.num(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls())},
                     e.key(), e.key().typeId(), false, false, 0, null, -1));
         }
-        if (rows.isEmpty()) rows.add(Row.plain("(no data: Sodium mesh hooks did not run)"));
+        if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.blocks(env)));
         return rows;
     }
 
-    /** Spec §5.3 Sections tab: one row per rebuilt section, by rebuild count; the row's position is the section centre. */
-    static List<Row> sections(SessionResult r) {
+    /**
+     * Spec §5.3 Sections tab: one row per rebuilt section; the row's position is the section centre. A
+     * 30 s flight can rebuild a thousand sections, so the list is capped and says how many it left out
+     * (spec addendum §P4.C2); the JSON carries every one, the text report only its top 20.
+     */
+    static List<Row> sections(SessionResult r, Environment env, ColumnSort sort, boolean ascending) {
         double seconds = r.stats().durationSeconds();
+        List<MeshEntry> all = Ranking.mesh(r, ProfileKey.Category.SECTION, meshSort(sort, Ranking.MeshSort.CALLS), ascending);
         List<Row> rows = new ArrayList<>();
-        for (MeshEntry e : Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS)) {
+        for (MeshEntry e : all.subList(0, Math.min(MAX_SECTION_ROWS, all.size()))) {
             SectionKey k = (SectionKey) e.key();
             rows.add(new Row(new String[]{k.label(), Fmt.count(e.calls()), Fmt.num(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
                     Fmt.ms2(e.calls() == 0 ? 0 : e.nanos() / e.calls())},
                     k, k.typeId(), false, false, 0, new BlockPos(k.centerX(), k.centerY(), k.centerZ()), -1));
         }
-        if (rows.isEmpty()) rows.add(Row.plain("(no data: Sodium mesh hooks did not run)"));
+        if (all.size() > MAX_SECTION_ROWS) {
+            int hidden = all.size() - MAX_SECTION_ROWS;
+            rows.add(Row.plain("... and " + Fmt.count(hidden) + (hidden == 1 ? " more section" : " more sections")
+                    + " (the JSON has all " + Fmt.count(all.size()) + ")"));
+        }
+        if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.sections(env)));
         return rows;
     }
 
