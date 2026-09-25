@@ -24,7 +24,8 @@ time**, and what caused each hitch.
    its column is rounded to a whole number, and shows as `###` only if it still does not fit; widen the window
    or lower the GUI scale to read it. **Highlight** draws a wireframe box around the selected block, or around
    the whole 16-block section for a Sections row, for ten seconds and through walls. **Teleport** from a
-   Sections row keeps your height, raised until you fit in that column, so it never leaves you inside a hill.
+   Sections row keeps your height, raised until you fit in that column if the game has it loaded, so a
+   loaded hill does not swallow you; a column it has not loaded keeps your height as it is.
    Highlight and Teleport are greyed out once you leave the world or dimension the session was taken in, and
    hovering over them says so.
 

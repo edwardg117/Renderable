@@ -312,12 +312,14 @@ whole number and, if it still does not fit, drawn as `#`s; it is never cut short
 individual rows have **Highlight** (draw a wireframe box at the position for 10 s, the whole 16-block section
 for a Sections row) and **Teleport** (sends `/tp @s x y z` as chat; for a section row, at the player's own
 height raised to the first height at which the player fits in that column, so they do not arrive inside
-terrain; if the player lacks permission the server's error is what they see). Both are disabled, with a
+loaded terrain, and at the player's own height where the client has not loaded that column; if the player
+lacks permission the server's error is what they see). Both are disabled, with a
 tooltip saying why, once the player leaves the world or dimension the session was taken in. A
 **Copy report** button copies the text report; **Open folder** opens the report directory. The Sections list
 shows at most 200 sections, the first 200 in its current order, and a trailing row saying how many it left out
-and that the JSON has them all. The ranked and particle column names and cell text are defined once, in
-`core/RankedTable`, and shared with the text report.
+and that the JSON has them all. The ranked and particle cell text is defined once, in `core/RankedTable`, and
+shared with the text report; the screen writes its column names out in `Tab`, and `TabTest` holds them equal
+to `RankedTable`'s.
 
 ### 5.4 In-world overlay
 

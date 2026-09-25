@@ -577,7 +577,8 @@ once per rendered frame. None of that cost, nor the once-a-second Flywheel visua
    every measured frame in order to measure approximately zero — the opposite of this item's point. The
    only overlay work that can overlap a session is a ten-second highlight left over from a previous one —
    now the wireframe box §P4.C5 built, whose corner and clip arrays are static scratch space reused every
-   frame, so it allocates nothing — which the README records rather than measures. Naming the overlay in the
+   frame, so Renderable's own code allocates nothing per frame — which the README records rather than
+   measures. Naming the overlay in the
    report line while not measuring it would be a false claim, so the line names what it measures.
 
 **Alternatives rejected.**
@@ -780,7 +781,9 @@ entity and section labels already carry theirs. The README's claim becomes true 
 
 This is belt and braces rather than a live defect — `FrameEvents.onLevelUnload` discards a running session
 when the client level goes away, so a session cannot span two dimensions — but the *result* outlives the
-session, and entity ids are reused across dimensions.
+session. Entity ids are not reused within a server run (every `Entity` takes a fresh one from a static
+counter), so what the stamp guards against is an entity that keeps its id through a portal, such as another
+player, being labelled in a dimension it was not measured in.
 
 **Alternatives rejected.**
 
@@ -790,8 +793,9 @@ session, and entity ids are reused across dimensions.
 
 **User-visible change.** Overlay only.
 
-**Acceptance check (C4).** Run a session with entities in view, go through a portal, confirm no entity
-labels are drawn, and confirm they return on the way back.
+**Acceptance check (C4).** Run a session with entities in view, go through a portal, and confirm no entity
+labels are drawn there. On the way back, block entity and section labels return; an entity's label returns
+only if that entity stayed loaded, because a mob whose chunk unloaded comes back with a new id.
 
 ## P4.C5 The highlight is a bounding rectangle, not a box
 
@@ -811,7 +815,8 @@ shaders. Two refinements the rectangle could not have:
 
 Each edge is a quad handed to the GPU rather than pixel runs rasterised on the CPU, so an edge that runs off
 screen costs the same as one that does not: the GPU's own rasteriser clips it for free. The corner and clip
-arrays are static scratch space reused every frame, so drawing the box allocates nothing — which matters
+arrays are static scratch space reused every frame, so Renderable's own code allocates nothing to draw the
+box (vanilla builds one buffer for the single flush) — which matters
 because a highlight can outlive the session it came from and keep drawing while the next one samples
 (§P4.B3).
 
@@ -839,7 +844,7 @@ perspective, visible through walls, with the section's box enclosing sixteen blo
 | 2 | Flywheel visual classes are simple names on screen, fully qualified in the report and JSON | Screen **and** report print the simple name; JSON keeps the fully-qualified name as the machine record. When two classes in one session share a simple name, both are prefixed with their last package segment (`press.PressVisual`, `mixer.PressVisual`); if that still leaves two alike (`a.x.PressVisual`, `b.x.PressVisual`), both are shown in full |
 | 3 | `PEAK` is in the Sort cycle on Particles, which has no peak column | Resolved by P4.C7: the cycle is replaced by header clicks, and a tab can only sort by a column it shows |
 | 4 | `RowList.Entry.render` truncates left-aligned cells with `plainSubstrByWidth` but draws right-aligned cells untruncated, so a long number runs into its neighbour | A right-aligned number too wide for its column may reach three of the four blank pixels before it; beyond that its decimals are rounded away, and only if it still does not fit is it drawn as `#`s, as a spreadsheet does. It is never truncated like text, because a truncated number reads as a different one (`125,539` cut to `125,5`). The threshold is not the column's own width, because at 1920x1080 on the Auto GUI scale that plain threshold hid real values the old code drew legibly |
-| 5 | The ranked and particle column names and cell expressions were written twice, in `TextReportWriter` and `Rows` | Both are now defined once in `core/RankedTable`; `TabTest` asserts the screen's ranked and particle headers equal it |
+| 5 | The ranked and particle column names and cell expressions were written twice, in `TextReportWriter` and `Rows` | The cell text is now defined once, in `core/RankedTable`, which both call, and the report takes its headers from there; the screen writes its column names out in `Tab`, beside their widths and sorts, and `TabTest` asserts they equal `RankedTable`'s |
 
 **User-visible change.** Screen for 1, 3 and 4; text report for 2, and the screen too whenever two classes
 collide. JSON unchanged.
@@ -911,7 +916,7 @@ sort alphabetically. On Frames, clicking a header does nothing.
 | Item | Design |
 | --- | --- |
 | Hook names are string literals in `TextReportWriter` (`"PARTICLE_RENDER"`, `"SODIUM_MESH"`, `"FLYWHEEL"`) | Move `Hook` from `hooks` to `core` — it is a bare enum with no imports — and have the writers use `Hook.SODIUM_MESH.name()`. `hooks` keeps a re-export-free import. A `HookNamesTest` then guards anything still stringly-typed by round-tripping every name the writers emit through `Hook.valueOf` |
-| `Tab.Columns.layout` has no test | `TabTest` (moved into plan 4c, which changes `Tab`): headers, weights, `rightAlign` and `sortKeys` are the same length on every tab; `layout(w)` returns two arrays of that length; every width is at least 8; offsets are strictly increasing; the last column ends within `w`; and every non-`NONE` sort key is one a tab's rows can actually supply |
+| `Tab.Columns.layout` has no test | `TabTest` (moved into plan 4c, which changes `Tab`). Plan 4c made a tab's columns a list of `Column(name, weight, rightAlign, sort)` records, so the parallel-array lengths this row first proposed checking cannot differ. The test pins every tab's columns in full (name, weight, alignment, sort, and the column it opens on); checks that `layout(w)` keeps its padding after every column and ends within `w` at the GUI widths players use; that every width is at least 8 and offsets strictly increase; that every sort is one the tab's rows can supply; that the ranked and particle names equal `RankedTable`'s; and `fitNumber` against the vanilla font's glyph widths |
 | `KeysTest.coreHasNoMinecraftImports` covers `core` only | Extend it to `report`, exempting `EnvironmentCollector`, which §8 names as the one Minecraft-aware class there. Moved into plan 4b, which is what makes `ReportFiles` pass it |
 | `ProfileKey.Category.VISUAL` is never constructed | Delete it. Flywheel visuals are counted in `FlywheelStats`, not keyed, exactly as §3.4 says |
 | `"absent"` appears as a literal in three files | Replaced by `Environment.ABSENT` (P4.B6 #5) |
@@ -1056,3 +1061,11 @@ implements each:
 - **The highlight is not dimension-scoped.** Unlike labels, a highlight carries no dimension: one set just
   before a portal trip keeps drawing, for the rest of its ten seconds, at the same coordinates in the new
   dimension.
+- **Reopening the results screen resets its view.** Highlight and Teleport close the screen, and every reopen
+  builds a new one on the Frames tab with default sorts and collapsed groups, so working down a sorted list
+  means re-selecting the tab and re-sorting after each Highlight. The view state could live in
+  `ProfilerController` and be cleared when a new result arrives.
+- **Name sorts are case-sensitive and textual.** A qualified Flywheel name such as `mixer.PressVisual` sorts
+  after every capitalised class name, and section labels sort as text (`-1`, `-10`, `-2`). A case-insensitive
+  comparison for the name sort itself, not the tie-break, would fix the first without changing the report,
+  which never sorts by name.

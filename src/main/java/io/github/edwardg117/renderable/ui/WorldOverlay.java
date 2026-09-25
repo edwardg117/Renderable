@@ -235,8 +235,8 @@ public final class WorldOverlay {
 
     /**
      * Scratch space for {@link #drawHighlight}, reused every frame; render thread only, like {@link #SCRATCH}.
-     * A highlight can outlive the session it came from and keep drawing while the next one samples, so it
-     * allocates nothing per frame.
+     * A highlight can outlive the session it came from and keep drawing while the next one samples, so
+     * Renderable's own code allocates nothing per frame.
      */
     private static final float[] CLIP_X = new float[8];
     private static final float[] CLIP_Y = new float[8];
@@ -256,7 +256,8 @@ public final class WorldOverlay {
      * addendum §P4.C5). An edge that crosses the camera's near plane is clipped at that plane, so a box the
      * camera stands inside still shows its edges. Each edge is drawn as one two-pixel-wide quad, and the
      * whole box is one flush. A wholly visible cube that projects smaller than {@link #MIN_HIGHLIGHT} falls
-     * back to a small square instead, so a distant block stays findable. Allocates nothing per frame.
+     * back to a small square instead, so a distant block stays findable. Renderable's own code allocates
+     * nothing per frame.
      */
     private static void drawHighlight(GuiGraphics g, Vec3 cam, int guiW, int guiH) {
         BlockPos p = highlight;

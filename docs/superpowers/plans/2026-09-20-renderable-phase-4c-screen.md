@@ -79,7 +79,8 @@ docs/acceptance/phase-4b-4c.md                                Create (Task 8)
 ```
 
 **Expected test totals**, starting from 108 with 4a and 4b in: 112 after Task 1, 114 after Task 1a, 120 after
-Task 2, 122 after Task 3, 122 after Task 4, 124 after Task 5, 124 at the end. Every task ends with
+Task 2, 122 after Task 3, 122 after Task 4, 124 after Task 5, 124 after Task 7, and 127 after the final
+review's fixes. Every task ends with
 `./gradlew build` green.
 
 ---
@@ -2539,6 +2540,31 @@ docs: README and spec for phase 4c
 
 ---
 
+### Final review (2026-09-25)
+
+After Task 7, one reviewer read the whole branch (`cbbf3a1..9067be4`) for what per-task reviews miss. Verdict:
+ready for acceptance; the JSON byte-identical to 4b's over 88 session and environment pairs, the text report
+different only in the Flywheel name column, and every cross-task path traced correct. Its minor findings
+fixed before acceptance, in one commit:
+
+- **The header-click rules moved into `ui/screen/SortState`**, pure Java, with `SortStateTest` (three tests,
+  127 in all). `ResultsScreen`'s two `EnumMap`s and its `sortIndex`/`ascending`/`activeSort` helpers from
+  Task 4 are gone; `mouseClicked` calls `sorts.click(tab, column)`. Nothing tested the first-click direction
+  before, and the plan's first draft had it wrong; the test fails if a name column starts Z to A.
+- **`RowList.reselect` scrolls the reselected row into view** (`ensureVisible`), so after a re-sort the row
+  Highlight and Teleport act on is on screen. A group toggle still keeps its scroll position, because
+  `onRowClicked` restores it after the rebuild.
+- **The Flywheel bucket row's unit moved into its label** (`Flywheel bucket (us/f)`): with `us/f` in the number
+  cell, a bucket of about 100 us/f or more showed as `#`s at the Auto GUI scale on 1440p.
+- Documentation that claimed too much was corrected: Teleport keeps the player's height where the client has
+  not loaded the column; "allocates nothing" is true of Renderable's own code, not of vanilla's one buffer per
+  flush; the ranked cell text is defined once but the screen's column names are a copy `TabTest` holds equal;
+  entity ids are not reused across dimensions; §P4.D1 describes `TabTest` as built. Task 8's check 6 no
+  longer expects a mob's label to return after a portal trip (its chunk reloads it with a new id), and check
+  7 looks at the Flywheel tab at the Auto scale too.
+- Deferred, in §P4.3: the results screen resets its tab and sorts when reopened, and name sorts are
+  case-sensitive and textual.
+
 ### Task 8: In-pack acceptance for 4b and 4c together (human step)
 
 **Files:**
@@ -2577,13 +2603,17 @@ session, the greyed Highlight and Teleport after a disconnect and reconnect, and
    against no highlight: it should be within noise.
 6. **Labels (§P4.C4).** Run this after checks 4 and 5: any dimension change greys Highlight and Teleport until
    the next session (a deferred limitation). After a session with entities in view, go through a portal: no
-   entity labels. Come back: they return.
+   entity labels there. Come back: block entity and section labels return; an entity's label returns only if
+   that entity stayed loaded, because a mob whose chunk unloaded comes back with a new id. That is by design,
+   not a failure.
 7. **Header parity and narrow columns (§P4.C6).** The Sections tab's last header reads `avg ms/rb`; the
    Flywheel tab and the report's Flywheel table both read `SingleAxisRotatingVisual`. At GUI scale 3, where
    every column is wide, nothing overflows, so also switch the GUI scale to **Auto** (6 at 2560x1440, a 426-px
    GUI, the same as 1440p and 4K players get by default) and open Block Entities: four-digit decimals such as
    `1501.5` read rounded (`1502`), no number overlaps its neighbour, none is shown cut short, and anything that
-   cannot fit even rounded shows as `#`s. Say whether the tab is still usable at that scale.
+   cannot fit even rounded shows as `#`s. Also open the Flywheel tab at that scale: its bucket row's number
+   reads in full, because the unit is in the row's label. Say whether the tabs are still usable at that
+   scale.
 8. **The gc f note.** After a session with at least one collection, the Frames tab shows the `gc f` note
    under its `GC` row.
 9. **The tooltip.** During 4b's reconnect check, hover over the greyed Highlight: it reads "You have left the

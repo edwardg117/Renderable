@@ -38,6 +38,7 @@ public final class RowList extends ObjectSelectionList<RowList.Entry> {
         for (Entry e : children()) {
             if (r.key().equals(e.row.key())) {
                 setSelected(e);
+                ensureVisible(e);
                 return true;
             }
         }

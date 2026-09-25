@@ -197,8 +197,8 @@ public final class Rows {
         String empty = EmptyStates.flywheel(env, fw.samples());
         List<Row> rows = new ArrayList<>();
         if (bucket > 0 || empty.isEmpty()) {
-            rows.add(new Row(new String[]{"Flywheel bucket",
-                    Fmt.us(frames == 0 ? 0 : bucket / 1000.0 / frames) + " us/f",
+            rows.add(new Row(new String[]{"Flywheel bucket (us/f)",
+                    Fmt.us(frames == 0 ? 0 : bucket / 1000.0 / frames),
                     Fmt.pct(total == 0 ? 0 : 100.0 * bucket / total)},
                     null, null, true, false, 0, null, -1));
         }

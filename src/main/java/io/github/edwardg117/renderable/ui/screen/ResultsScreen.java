@@ -19,7 +19,6 @@ import net.minecraft.world.entity.Pose;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -39,9 +38,7 @@ public final class ResultsScreen extends Screen {
     private final Environment environment;
 
     private Tab tab = Tab.FRAMES;
-    /** The clicked column per tab, and its direction. Each tab opens on its own default column, descending. */
-    private final EnumMap<Tab, Integer> sortColumn = new EnumMap<>(Tab.class);
-    private final EnumMap<Tab, Boolean> sortAscending = new EnumMap<>(Tab.class);
+    private final SortState sorts = new SortState();
     private final Set<String> expanded = new HashSet<>();
     private Row selected;
 
@@ -110,22 +107,9 @@ public final class ResultsScreen extends Screen {
         colX = layout[0];
         colW = layout[1];
         list.setLayout(colX, colW);
-        list.setRows(tab, Rows.build(tab, result, environment, activeSort(), ascending(), expanded));
+        list.setRows(tab, Rows.build(tab, result, environment, sorts.sort(tab), sorts.ascending(tab), expanded));
         if (selected != null && !list.reselect(selected)) selected = null;
         updateButtons();
-    }
-
-    /** The column this tab is sorted by: the last one clicked, or the one the tab opens on. */
-    private int sortIndex() {
-        return sortColumn.getOrDefault(tab, tab.columns().defaultSortColumn());
-    }
-
-    private boolean ascending() {
-        return sortAscending.getOrDefault(tab, Boolean.FALSE);
-    }
-
-    private ColumnSort activeSort() {
-        return tab.columns().get(sortIndex()).sort();
     }
 
     boolean isExpanded(String typeId) {
@@ -144,27 +128,14 @@ public final class ResultsScreen extends Screen {
         updateButtons();
     }
 
-    /**
-     * A click in the header band sorts by that column. The active column flips direction; a new column starts
-     * in its natural direction, which is A to Z for a name and largest first for a number (spec §5.3).
-     * Columns that are not sortable ignore it, and the click falls through to the widgets (see {@link ColumnSort}).
-     */
+    /** A click in the header band sorts by that column; see {@link SortState#click}. */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0 && mouseY >= HEADER_Y - 2 && mouseY < HEADER_Y + font.lineHeight) {
             int clicked = columnAt(mouseX);
-            if (clicked >= 0) {
-                ColumnSort s = tab.columns().get(clicked).sort();
-                if (s.sortable()) {
-                    if (clicked == sortIndex()) {
-                        sortAscending.put(tab, !ascending());
-                    } else {
-                        sortColumn.put(tab, clicked);
-                        sortAscending.put(tab, s.ascendingFirst());
-                    }
-                    rebuild();
-                    return true;
-                }
+            if (clicked >= 0 && sorts.click(tab, clicked)) {
+                rebuild();
+                return true;
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
@@ -255,11 +226,11 @@ public final class ResultsScreen extends Screen {
 
         int left = list.getRowLeft();
         Tab.Columns columns = tab.columns();
-        int active = sortIndex();
+        int active = sorts.column(tab);
         for (int i = 0; i < columns.size() && i < colX.length; i++) {
             Tab.Column column = columns.get(i);
             boolean sortable = column.sort().sortable();
-            String arrow = i == active && sortable ? (ascending() ? " ^" : " v") : "";
+            String arrow = i == active && sortable ? (sorts.ascending(tab) ? " ^" : " v") : "";
             // Truncate the name, never the arrow: the arrow is the only sign of how the list is sorted.
             String h = font.plainSubstrByWidth(column.name(), Math.max(0, colW[i] - font.width(arrow))) + arrow;
             int colour = !sortable ? 0xA0A0A0 : i == active ? 0xFFFFFF : 0xC0C0C0;
