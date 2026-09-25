@@ -10,25 +10,34 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md` §P4.C (all of it), plus §P4.D1's `TabTest`, which lives here because this plan changes `Tab`. Base spec §5.3, §5.4, §6.1.
 
-**Repository:** `H:\repos\Renderable`, branch `main`. Commits are YubiKey-signed: the orchestrator commits after telling the user to touch the key. **Subagents stage and report; they do not commit.**
+**Repository:** `H:\repos\Renderable`, branch `phase-4c-screen`, created from `phase-4b-robustness` at `cbbf3a1`. Commits are YubiKey-signed: the orchestrator commits after telling the user to touch the key. **Subagents stage and report; they do not commit.**
 
-**Ordering:** This plan assumes **plan 4a is on `main`** (`v0.4.0`), which is where the `gc f` columns come from. It is independent of 4b and 4d and may run before or after either.
+**Ordering:** Written assuming only plan 4a was on `main`; **executed from 2026-09-25 on top of plan 4b**, which the user chose so that 4b's and 4c's in-pack acceptance can run as one session (Task 8). Every "if 4b has run" branch below takes the 4b side, and the steps that applied only without 4b are gone. `main` stays at the accepted 4a state until the combined acceptance passes; then 4b and 4c merge together.
 
-**Shared additions this plan may need** (plan 4b introduces them too; each plan says "skip if present"): `Environment.ABSENT`, `Environment.has(String)` and `Environment.value(String)`. Task 3 adds them if they are not there yet.
+**Revised on 2026-09-25**, before execution, against the code as 4b left it. Tasks 1a, 2, 3 and 4 were rewritten: Task 1a had no code; Tasks 2 and 3 each claimed a state the build cannot be in (a scoped `--tests` run still compiles the whole source set, so an uncompilable tree runs no tests at all); Task 2 would have opened the ranked tabs in a different order from the report; and Task 4's header clicks would have sorted names Z to A on the first click. Each rewritten task says what changed and why.
 
 **Verified facts you can rely on:**
 
-- `Tab` and `Tab.Columns` are pure Java: the file imports nothing, so a JUnit test can exercise `layout(int)` directly. `Ranking`, `RankedEntry`, `MeshEntry` and `FlywheelStats` are likewise Minecraft-free.
-- `Rows` imports `net.minecraft.core.BlockPos` and `WorldOverlay` imports the client renderer, so neither is unit-testable; their proof is the dev client launch in Tasks 4 and 6 and the in-pack checks in Task 8.
-- `RowList.Entry.render` truncates left-aligned cells with `font.plainSubstrByWidth(cell, colW[i])` but draws right-aligned cells with a bare `g.drawString(font, cell, ...)`, so a long number overlaps its neighbour. Confirmed by reading the method on `1ec32c3`.
+- `Tab` and `Tab.Columns` are pure Java: `Tab.java` imports only `core.Ranking` and `java.util`, so a JUnit test can exercise it directly. `Ranking`, `RankedEntry`, `MeshEntry` and `FlywheelStats` are likewise Minecraft-free.
+- `Rows` imports `net.minecraft.core.BlockPos` and `WorldOverlay` imports the client renderer, so neither is unit-testable; their proof is the in-pack checks in Task 8.
+- `RowList.Entry.render` truncates left-aligned cells with `font.plainSubstrByWidth(cell, colW[i])` but draws right-aligned cells with a bare `g.drawString(font, cell, ...)`, so a long number overlaps its neighbour. Re-read on `cbbf3a1`.
+- The ranked and particle column names and cell expressions are written twice, term for term, in `TextReportWriter.appendRanked`/`appendParticles` and in `Rows.cells`/`Rows.particles`. Re-read on `cbbf3a1`.
 - `ResultsScreen.teleportToSelected` sends `tp @s x (y+1) z` from `selected.pos()`, and `Rows.sections` sets that position to `new BlockPos(k.centerX(), k.centerY(), k.centerZ())` — the section's centre block, which is solid for any section below the surface.
 - `WorldOverlay.setResult` builds entity labels with `dimension = null`, and `drawLabels` treats null as "draw in any dimension". The README claims labels are dimension-scoped.
 - `WorldOverlay.drawHighlight` returns early when **any** of the eight corners has `w <= 0.001f`, so standing inside a highlighted section draws nothing at all.
 - `FlywheelStats` is `record FlywheelStats(int samples, double avgBlockEntities, double avgEntities, double avgEffects, Map<String, Double> avgByClass)` with `total()` and `byAverageDesc()`. `Rows.flywheel` shortens class names with `k.substring(k.lastIndexOf('.') + 1)`; `TextReportWriter.appendFlywheel` prints `e.getKey()` in full.
+- `Tooltip.create(Component)` and `AbstractWidget.setTooltip(@Nullable Tooltip)` exist in the pinned NeoForge 21.1.220 jar (javap on `build/moddev/artifacts/neoforge-21.1.220.jar`), and `AbstractWidget.render` refreshes the tooltip from a hover test that does not look at `active` (sources jar), so a disabled button shows its tooltip. Vanilla's `TitleScreen` does exactly that for its disabled Multiplayer button.
 - The phase 3 acceptance log recorded 1052 distinct sections rebuilt in one 30 s flight, which is what the Sections tab renders one row each for.
-- The suite is **86 tests** after plan 4a.
+- The suite is **108 tests** after plans 4a and 4b.
 
-**Deviations from the spec addendum recorded in this plan:** the Flywheel tab's two sortable columns reuse `Ranking.Sort.LABEL` (class name) and `Ranking.Sort.TOTAL` (average count) rather than getting an enum of their own, because those rows are `Map.Entry<String, Double>` and two orderings do not justify a third sort type. `Rows.flywheel` documents the interpretation and `TabTest` pins it.
+**Deviations from the spec addendum recorded in this plan.** Task 7 amends the addendum for each.
+
+- The Flywheel tab's two sortable columns reuse `Ranking.Sort.LABEL` (class name) and `Ranking.Sort.TOTAL` (average count) rather than getting an enum of their own, because those rows are `Map.Entry<String, Double>` and two orderings do not justify a third sort type. `Rows.flywheel` documents the interpretation and `TabTest` pins it.
+- `Tab.Columns` becomes a list of `Column` records instead of gaining a fourth parallel array (Task 2).
+- Each tab opens in the text report's order, and a name column's first click sorts A to Z (Tasks 2 and 4).
+- The Blocks and Sections name columns sort by `MeshSort.LABEL` directly, instead of carrying `Ranking.Sort.LABEL` for `Rows` to translate (Task 2).
+- A number too wide for its column is drawn as `#`s instead of being truncated like text (Task 2).
+- The ranked and particle column names and cells move into `core/RankedTable`, which both surfaces call (Task 1a).
 
 ---
 
@@ -38,30 +47,35 @@
 README.md                                                     Modify (Task 7)
 docs/superpowers/specs/2026-09-19-renderable-fps-profiler-design.md
                                                               Modify: §5.3, §5.4 (Task 7)
+docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md
+                                                              Modify: §P4.B3, §P4.C6, §P4.C7 (Task 7)
 src/main/java/io/github/edwardg117/renderable/
-  core/Ranking.java                                           Modify: Sort.SHADOW/GC_FRAMES/LABEL, ascending, MeshSort
-  core/EmptyStates.java                                       Create
-  core/Environment.java                                       Modify: ABSENT/has/value if 4b has not run
-  core/FlywheelStats.java                                     Modify: displayNames()
-  report/TextReportWriter.java                                Modify: EmptyStates, Flywheel display names
-  ui/screen/ColumnSort.java                                   Create
-  ui/screen/Tab.java                                          Modify: sorts per column, Sections header
-  ui/screen/Rows.java                                         Modify: Environment, sorting, section cap, Flywheel names
-  ui/screen/RowList.java                                      Modify: truncate right-aligned cells
-  ui/screen/ResultsScreen.java                                Modify: header clicks, arrows, teleport Y, no Sort button
-  ui/WorldOverlay.java                                        Modify: entity dimension, wireframe highlight
-  ProfilerController.java                                     Modify: remember the session dimension
+  core/Ranking.java                                           Modify: new sorts, ascending (Task 1); Sort.next() goes (Task 4)
+  core/RankedTable.java                                       Create (Task 1a)
+  core/EmptyStates.java                                       Create (Task 3)
+  core/FlywheelStats.java                                     Modify: displayNames() (Task 5)
+  report/Table.java                                           Modify: nameThenNumbers (Task 1a)
+  report/TextReportWriter.java                                Modify: RankedTable, EmptyStates, Flywheel display names
+  ui/screen/ColumnSort.java                                   Create (Task 2)
+  ui/screen/Tab.java                                          Modify: Column records, default order (Task 2); sortable() goes (Task 4)
+  ui/screen/Rows.java                                         Modify: RankedTable, gc f note, Environment, sorting, section cap, Flywheel names
+  ui/screen/RowList.java                                      Modify: Column records, #s for numbers that do not fit (Task 2)
+  ui/screen/ResultsScreen.java                                Modify: header clicks, arrows, teleport Y, tooltip, no Sort button
+  ui/WorldOverlay.java                                        Modify: entity dimension, wireframe highlight (Task 6)
+  ProfilerController.java                                     Modify: remember the session dimension (Task 6)
 src/test/java/io/github/edwardg117/renderable/
-  core/RankingTest.java                                       Modify: new sorts
-  core/EmptyStatesTest.java                                   Create
-  core/FlywheelStatsTest.java                                 Modify: display names
-  report/TextReportWriterTest.java                            Modify: Flywheel simple names
-  ui/screen/TabTest.java                                      Create
-docs/acceptance/phase-4c.md                                   Create (Task 8)
+  core/RankingTest.java                                       Modify: new sorts (Task 1); next() assertions go (Task 4)
+  core/RankedTableTest.java                                   Create (Task 1a)
+  core/EmptyStatesTest.java                                   Create (Task 3)
+  core/FlywheelStatsTest.java                                 Modify: display names (Task 5)
+  report/TextReportWriterTest.java                            Modify: Flywheel simple names (Task 5)
+  ui/screen/TabTest.java                                      Create (Task 2)
+docs/acceptance/phase-4b-4c.md                                Create (Task 8)
 ```
 
-**Expected test totals**, assuming 4a is on `main` and neither 4b nor 4d has run: 86 at the start, 88 after
-Task 1, 91 after Task 2, 93 after Task 3, 93 after Task 4, 95 after Task 5, 95 at the end.
+**Expected test totals**, starting from 108 with 4a and 4b in: 110 after Task 1, 111 after Task 1a, 114 after
+Task 2, 116 after Task 3, 116 after Task 4, 118 after Task 5, 118 at the end. Every task ends with
+`./gradlew build` green.
 
 ---
 
@@ -144,10 +158,7 @@ Expected: compilation failure — `cannot find symbol: variable LABEL`, `SHADOW`
 Replace the two enums and the two sorting methods. The enums first:
 
 ```java
-    /**
-     * A sortable column of a ranked table (spec §5.3). {@code next()} is kept because the config-free
-     * default ordering still starts from {@link #TOTAL}; the screen picks a column directly.
-     */
+    /** A column a ranked table can be sorted by (spec §5.3). */
     public enum Sort {
         TOTAL, RENDER, TICK, PEAK, VERTICES, CALLS, SHADOW, GC_FRAMES, LABEL;
 
@@ -161,10 +172,10 @@ Replace the two enums and the two sorting methods. The enums first:
     public enum MeshSort { TIME, CALLS, PER_CALL, AVG, LABEL }
 ```
 
-`Sort.LABEL` is new and `next()` now cycles through nine values. The only surviving caller of `next()` is
-`RankingTest.sortModesReorder`, which asserts `Sort.TOTAL.next() == Sort.RENDER` and
-`Sort.CALLS.next() == Sort.TOTAL` — the second is no longer true once `SHADOW` follows `CALLS`. Change that
-assertion to:
+`next()` now cycles through nine values. Its callers are the Sort button in `ResultsScreen`, which Task 4
+removes together with `next()` itself, and `RankingTest.sortModesReorder`, which asserts
+`Sort.TOTAL.next() == Sort.RENDER` and `Sort.CALLS.next() == Sort.TOTAL` — the second is no longer true once
+`SHADOW` follows `CALLS`. Until Task 4 deletes them, change that assertion to:
 
 ```java
         assertEquals(Ranking.Sort.RENDER, Ranking.Sort.TOTAL.next());
@@ -246,7 +257,7 @@ is unchanged.
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **88 tests**.
+Expected: `BUILD SUCCESSFUL`, **110 tests**.
 
 - [ ] **Step 5: Stage and report**
 
@@ -263,56 +274,279 @@ feat(core): sort ranked and mesh rows by any column, in either direction
 
 ---
 
-### Task 1a: Reshape `Columns`, and stop writing the ranked cells twice
+### Task 1a: One definition of the ranked and particle columns, for the report and the screen
 
 **Files:**
-- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Tab.java`
-- Create: `src/main/java/io/github/edwardg117/renderable/core/Columns.java`
+- Create: `src/main/java/io/github/edwardg117/renderable/core/RankedTable.java`
+- Create: `src/test/java/io/github/edwardg117/renderable/core/RankedTableTest.java`
+- Modify: `src/main/java/io/github/edwardg117/renderable/report/Table.java`
 - Modify: `src/main/java/io/github/edwardg117/renderable/report/TextReportWriter.java`
 - Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Rows.java`
 
-Added after phase 4a, from the code-quality review of its Task 7. **Do this before Task 2**, because Task 2
-adds a fourth parallel array to `Tab.Columns` and Task 4 rewrites the same cell-building lines — doing it
-after means doing it twice.
+Added after phase 4a from the code-quality review of its Task 7, and rewritten on 2026-09-25 when this plan
+was stacked on 4b: the first draft was prose with no code. **Do this before Task 2.**
 
-Two problems, one move:
+The ranked (block entity, entity) and particle **column names and cell expressions are written twice**, term
+for term: in `TextReportWriter.appendRanked`/`appendParticles` and in `Rows.cells`/`Rows.particles`. Nothing
+enforces that they agree; today they do only because a reviewer read both files side by side, and phase 4a
+had to add `gc f` to both by hand, in lockstep. This task moves the names and the cell text into one `core`
+class that both surfaces call. That is not a new dependency direction: `ui` and `report` both already depend
+on `core`, and `core` already carries presentation code by precedent (`Fmt` is entirely formatting;
+`Splits.frame`/`average` produce report strings).
 
-1. `Tab.Columns` is three hand-aligned parallel arrays across seven constants. Phase 4a had to extend three
-   of them in lockstep twice, and a mismatch is silent: `RowList.render` iterates
-   `i < row.cells().length && i < colX.length`, so a short row truncates rather than throwing. Task 2 makes
-   it four arrays. Replace them with a `record Column(String name, int weight, boolean rightAlign,
-   ColumnSort sort)` and make `Columns` a list of those, so miscounting becomes impossible rather than
-   merely checked. `layout(int)` reads more simply from a list, and the compact-constructor invariant phase
-   4a added stops being necessary.
-2. The ranked and particle **column names and cell expressions are written twice**, term for term, in
-   `TextReportWriter` and in `Rows`. Nothing enforces that they agree; today they do only because a reviewer
-   read both files side by side. Move the shared part — the column names and a
-   `String[] cells(RankedEntry, int frames, long total)` — into `core`. That is not a new dependency
-   direction: `ui` and `report` both already depend on `core`, and `core` already carries presentation code
-   by precedent, since `Fmt` is entirely formatting and `Splits.frame`/`average` produce report strings.
+What stays where it is: the screen's column weights, alignment and sorting (Task 2), the report's `TOP`
+truncation, and both surfaces' Blocks, Sections and Flywheel tables. Those genuinely differ — the Sections
+header is `avg ms/rb` on screen and `avg ms/rebuild` in the report by design (§P4.C6 #1).
 
-What stays where it is: pixel weights, alignment, `TextReportWriter`'s `TOP` truncation and its mesh note,
-and this plan's per-column sorting. Those genuinely differ between the two surfaces.
+Two changes from the first draft of this task:
 
-Once the cell builders live in `core` they are testable, which is the point: `TabTest` in Task 2 can then
-assert that each tab's column count equals the length of the array its builder returns for a real
-`RankedEntry`, turning the thing phase 4a had to verify by reading into a test.
+- The class is `RankedTable`, not `Columns`: `Tab.Columns` already exists, and two `Columns` types one
+  import apart would be misread.
+- The other half of the first draft — turning `Tab.Columns`' parallel arrays into a list of records — moved
+  into Task 2, which rewrites `Tab.java` anyway and creates the `ColumnSort` type the record needs. Doing it
+  here would mean writing every column twice.
 
-Also add, while these files are open: the results screen's Frames tab has no equivalent of the report's
-note explaining what `gc f` means, which phase 4a added to the text report only. Put the same sentence
-beside the Frames tab's `GC` row, so the two surfaces are as consistent in their explanations as they now
-are in their numbers.
+Also, while these files are open: the results screen's Frames tab has no equivalent of the note explaining
+`gc f` that phase 4a added to the text report. The sentence moves into `RankedTable`, and the Frames tab
+prints it under its `GC` row when there was a collection, exactly as the report does under its `GC:` line.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/test/java/io/github/edwardg117/renderable/core/RankedTableTest.java`:
+
+```java
+package io.github.edwardg117.renderable.core;
+
+import org.junit.jupiter.api.Test;
+
+import static io.github.edwardg117.renderable.core.TestSessions.PRESS;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class RankedTableTest {
+
+    @Test
+    void everyRowHasOneCellPerHeaderWithTheNameFirst() {
+        SessionResult p3 = TestSessions.phase3();
+        int frames = p3.frameCount();
+        long total = p3.stats().totalNanos();
+
+        RankedEntry press = Ranking.byKey(p3, ProfileKey.Category.BLOCK_ENTITY).get(0);
+        assertEquals(PRESS, press.key());
+        String[] ranked = RankedTable.ranked("row name", press, frames, total);
+        assertEquals(RankedTable.RANKED.size(), ranked.length);
+        assertEquals("row name", ranked[0], "the caller names the row: the screen and the report label rows differently");
+        assertEquals("100.0", ranked[RankedTable.RANKED.indexOf("verts/f")], "2000 vertices over 20 frames");
+
+        RankedEntry flame = Ranking.byKey(p3, ProfileKey.Category.PARTICLE).get(0);
+        String[] particle = RankedTable.particle(flame, frames, total);
+        assertEquals(RankedTable.PARTICLE.size(), particle.length);
+        assertEquals(flame.label(), particle[0]);
+        assertEquals("3.0", particle[RankedTable.PARTICLE.indexOf("avg live")], "three flame renders a frame");
+    }
+}
+```
+
+The fixture facts it relies on: in `TestSessions.phase3()` the press is the costliest block entity and emits
+100 vertices on each of 20 frames; the flame renders three times a frame, and `calls` counts render calls
+only, so its average live count is 3.0.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+```bash
+./gradlew test --tests 'io.github.edwardg117.renderable.core.RankedTableTest' --no-daemon
+```
+
+Expected: compilation failure, `cannot find symbol: class RankedTable`.
+
+- [ ] **Step 3: Write `RankedTable`**
+
+`src/main/java/io/github/edwardg117/renderable/core/RankedTable.java`:
+
+```java
+package io.github.edwardg117.renderable.core;
+
+import java.util.List;
+
+/**
+ * The columns of the ranked tables (block entities, entities) and of the particle table, written once so the
+ * text report and the results screen cannot disagree about what a column is called or what goes in it. Widths,
+ * truncation and sorting stay with each surface; only the names and the cell text live here. The first cell is
+ * always the row's name; every other cell is a number.
+ */
+public final class RankedTable {
+
+    /** Headers of the block entity and entity tables. */
+    public static final List<String> RANKED = List.of(
+            "name", "render us/f", "tick us/f", "share", "peak ms", "gc f", "shadow", "verts/f", "calls");
+
+    /** Headers of the particle table: no peak or shadow of interest, and the average live count instead. */
+    public static final List<String> PARTICLE = List.of(
+            "class", "render us/f", "tick us/f", "share", "avg live", "verts/f", "gc f");
+
+    /** Explains the gc f column and a "-" peak. The report prints it under its GC line, the screen under its GC row. */
+    public static final String GC_COLUMN_NOTE =
+            "(gc f counts frames a pause could account for; those are left out of peak ms, and \"-\" means none was clean)";
+
+    private RankedTable() {
+    }
+
+    /** One row of a ranked table. The caller supplies the name, because the two surfaces label rows differently. */
+    public static String[] ranked(String name, RankedEntry e, int frames, long total) {
+        return new String[]{
+                name,
+                Fmt.us(e.renderUsPerFrame(frames)),
+                Fmt.us(e.tickUsPerFrame(frames)),
+                Fmt.pct(e.sharePercent(total)),
+                Fmt.peakMs(e.maxFrameNanos(), e.gcFrames()),
+                Fmt.count(e.gcFrames()),
+                Fmt.pct(e.shadowPercent()),
+                Fmt.num(e.verticesPerFrame(frames)),
+                Fmt.count(e.calls())};
+    }
+
+    /** One row of the particle table. */
+    public static String[] particle(RankedEntry e, int frames, long total) {
+        return new String[]{
+                e.label(),
+                Fmt.us(e.renderUsPerFrame(frames)),
+                Fmt.us(e.tickUsPerFrame(frames)),
+                Fmt.pct(e.sharePercent(total)),
+                Fmt.num(e.callsPerFrame(frames)),
+                Fmt.num(e.verticesPerFrame(frames)),
+                Fmt.count(e.gcFrames())};
+    }
+}
+```
+
+`RANKED` and `PARTICLE` are `List.of`, not arrays: a `public static final String[]` can be written to by any
+caller.
+
+- [ ] **Step 4: The report uses it**
+
+In `src/main/java/io/github/edwardg117/renderable/report/Table.java`, add below the constructor:
+
+```java
+    /** A table whose first column is a left-aligned name and whose other columns are right-aligned numbers. */
+    static Table nameThenNumbers(List<String> headers) {
+        boolean[] right = new boolean[headers.size()];
+        for (int i = 1; i < right.length; i++) right[i] = true;
+        return new Table(headers.toArray(String[]::new), right);
+    }
+```
+
+In `TextReportWriter.java`, add `import io.github.edwardg117.renderable.core.RankedTable;`, and make the
+report's note the shared sentence with the report's indentation, so the existing tests that look for
+`TextReportWriter.GC_COLUMN_NOTE` keep passing unchanged:
+
+```java
+    /** Printed under the GC line so every table's gc f column and its "-" peaks explain themselves. */
+    static final String GC_COLUMN_NOTE = "  " + RankedTable.GC_COLUMN_NOTE;
+```
+
+In `appendRanked`, replace the `Table t = new Table(...)` statement and the loop below it with:
+
+```java
+        Table t = Table.nameThenNumbers(RankedTable.RANKED);
+        for (RankedEntry e : entries.subList(0, Math.min(TOP, entries.size()))) {
+            t.row((Object[]) RankedTable.ranked(e.label(), e, frames, total));
+        }
+```
+
+In `appendParticles`, the same:
+
+```java
+        Table t = Table.nameThenNumbers(RankedTable.PARTICLE);
+        for (RankedEntry e : entries.subList(0, Math.min(TOP, entries.size()))) {
+            t.row((Object[]) RankedTable.particle(e, frames, total));
+        }
+```
+
+The `(Object[])` cast passes the array as `row`'s varargs array itself, which is what `row` wants; without it
+javac warns about an inexact varargs argument. `Table.row` already throws when the cell count and the header
+count differ, so a future mismatch fails the first report test that prints a row.
+
+The report's text must come out byte for byte as before. Every existing `TextReportWriterTest` assertion is
+that check, and none of them changes.
+
+- [ ] **Step 5: The screen uses it**
+
+In `src/main/java/io/github/edwardg117/renderable/ui/screen/Rows.java`, add
+`import io.github.edwardg117.renderable.core.RankedTable;`, then:
+
+1. In `ranked(...)`, both `cells(...)` calls become `RankedTable.ranked(...)` with the same arguments.
+2. Delete `static String[] cells(String name, RankedEntry e, int frames, long total)`; nothing else calls it.
+3. In `particles(...)`, replace the seven-element `new String[]{...}` with `RankedTable.particle(e, frames, total)`:
+
+```java
+        for (RankedEntry e : Ranking.sort(Ranking.byKey(r, ProfileKey.Category.PARTICLE), sort)) {
+            rows.add(new Row(RankedTable.particle(e, frames, total),
+                    e.key(), e.typeId(), false, false, 0, null, -1));
+        }
+```
+
+4. In `frames(...)`, immediately after the `GC` row, add the note. A one-cell row spans the whole row width
+   (`RowList.Entry.render` draws single-cell rows across every column), which is what a sentence needs:
+
+```java
+        rows.add(Row.plain("GC", st.gcCount() + " collections, " + st.gcMillis() + " ms paused"));
+        if (st.gcCount() > 0) rows.add(Row.plain(RankedTable.GC_COLUMN_NOTE));
+```
+
+- [ ] **Step 6: Run the whole build**
+
+```bash
+./gradlew build --no-daemon
+```
+
+Expected: `BUILD SUCCESSFUL`, **111 tests**.
+
+- [ ] **Step 7: Stage and report**
+
+```bash
+git add src/main/java src/test/java
+git status --short
+```
+
+Commit message for the orchestrator:
+
+```
+feat(ui): the Frames tab explains gc f; the report and the screen share one definition of the ranked columns
+```
 
 ---
 
-### Task 2: Columns declare what they sort by
+### Task 2: Columns are records that declare what they sort by
 
 **Files:**
 - Create: `src/main/java/io/github/edwardg117/renderable/ui/screen/ColumnSort.java`
-- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Tab.java`
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Tab.java` (replace)
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/RowList.java`
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/ResultsScreen.java` (the header loop only)
 - Create: `src/test/java/io/github/edwardg117/renderable/ui/screen/TabTest.java`
 
-Spec addendum §P4.C7 and §P4.C6 #1, plus §P4.D1's `TabTest`.
+Spec addendum §P4.C7, §P4.C6 #1 and #4, plus §P4.D1's `TabTest`. Rewritten on 2026-09-25; four decisions
+differ from the first draft and from the addendum's wording, and Task 7 amends the addendum to match:
+
+1. **`Tab.Columns` becomes a list of `Column(name, weight, rightAlign, sort)` records**, not three parallel
+   arrays plus a fourth. A mismatch between parallel arrays was silent — `RowList.render` iterates
+   `i < row.cells().length && i < colX.length`, so a short array truncates a row rather than throwing — and
+   phase 4a had to extend three of them in lockstep twice. With records, miscounting cannot be written.
+2. **Each tab opens in the order the text report prints**, not on "the first sortable column after the
+   name". The first draft's rule would have opened the ranked tabs on `render us/f`, while the report and
+   today's screen rank by render plus tick time; an entity that is cheap to render but expensive to tick
+   (the player, at 498 us a tick in the 4a acceptance run) would silently move. Each `Columns` constant names
+   the sort it opens by, and `TabTest` pins those to the report's orderings.
+3. **The Blocks and Sections name columns sort by `MeshSort.LABEL`** directly, instead of carrying
+   `Ranking.Sort.LABEL` for `Rows` to translate. The column says what it means, and no tab carries both kinds
+   of sort.
+4. **A number too wide for its column is drawn as `#`s**, as a spreadsheet does, instead of being truncated
+   like text as §P4.C6 #4 said. A truncated number reads as a different, smaller one: `4900.0` cut to `490`
+   is wrong by a factor of ten, which is worse in a profiler than the overlap it replaces. This fix lived in
+   Task 4 in the first draft; it moves here because this task already rewrites the same loop in `RowList`.
+
+The tree compiles and the suite passes at the end of this task. The first draft said the tree would not
+compile until Task 4; that was wrong about why, and an uncompilable tree cannot run a scoped test either —
+Gradle compiles the whole source set before `--tests` filters anything.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -321,35 +555,28 @@ Create `src/test/java/io/github/edwardg117/renderable/ui/screen/TabTest.java`:
 ```java
 package io.github.edwardg117.renderable.ui.screen;
 
+import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.Ranking;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class TabTest {
 
     @Test
-    void everyTabsColumnArraysAreTheSameLength() {
-        for (Tab t : Tab.values()) {
-            Tab.Columns c = t.columns();
-            int n = c.headers().length;
-            assertTrue(n > 0, t + " has no columns");
-            assertEquals(n, c.weights().length, t + " weights");
-            assertEquals(n, c.rightAlign().length, t + " rightAlign");
-            assertEquals(n, c.sorts().length, t + " sorts");
-            for (int w : c.weights()) assertTrue(w > 0, t + " has a non-positive weight");
-            assertFalse(c.rightAlign()[0], t + "'s first column is the name and is left-aligned");
-        }
-    }
-
-    @Test
     void layoutFitsTheRowAndNeverOverlaps() {
         for (Tab t : Tab.values()) {
+            Tab.Columns c = t.columns();
+            assertTrue(c.size() > 0, t + " has no columns");
+            assertFalse(c.get(0).rightAlign(), t + "'s first column is the name and is left-aligned");
+            for (Tab.Column col : c.all()) assertTrue(col.weight() > 0, t + " has a non-positive weight");
             for (int rowWidth : new int[]{120, 320, 854, 1920}) {
-                int[][] layout = t.columns().layout(rowWidth);
+                int[][] layout = c.layout(rowWidth);
                 int[] x = layout[0];
                 int[] w = layout[1];
-                assertEquals(t.columns().headers().length, x.length, t.toString());
+                assertEquals(c.size(), x.length, t.toString());
                 assertEquals(x.length, w.length, t.toString());
                 assertEquals(0, x[0], t + " starts at zero");
                 for (int i = 0; i < x.length; i++) {
@@ -365,29 +592,65 @@ class TabTest {
     void sortableColumnsMatchTheKindOfRowsTheTabHolds() {
         // Frames and Hitches are a narrative, not a table: nothing on them sorts.
         for (Tab t : new Tab[]{Tab.FRAMES, Tab.HITCHES}) {
-            for (ColumnSort s : t.columns().sorts()) assertFalse(s.sortable(), t + " must not sort");
+            for (Tab.Column col : t.columns().all()) assertFalse(col.sort().sortable(), t + " must not sort");
         }
-        // The six data tabs each have at least two sortable columns, and their first column sorts by label.
-        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.FLYWHEEL, Tab.BLOCKS, Tab.SECTIONS}) {
-            long sortable = java.util.Arrays.stream(t.columns().sorts()).filter(ColumnSort::sortable).count();
-            assertTrue(sortable >= 2, t + " has only " + sortable + " sortable columns");
-            assertEquals(Ranking.Sort.LABEL, t.columns().sorts()[0].ranked(), t + "'s name column sorts by label");
-        }
-        // Ranked tabs carry ranked sorts; mesh tabs carry mesh sorts. Nothing carries both.
+        // Ranked rows carry ranked sorts only. The Flywheel tab reuses two of them for its class names and
+        // average counts (spec addendum §P4.C7).
         for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.FLYWHEEL}) {
-            for (ColumnSort s : t.columns().sorts()) assertNull(s.mesh(), t + " must not carry a mesh sort");
+            assertEquals(ColumnSort.of(Ranking.Sort.LABEL), t.columns().get(0).sort(), t + "'s name column sorts by label");
+            for (Tab.Column col : t.columns().all()) assertNull(col.sort().mesh(), t + " must not carry a mesh sort");
         }
+        // Mesh rows carry mesh sorts only.
         for (Tab t : new Tab[]{Tab.BLOCKS, Tab.SECTIONS}) {
-            for (ColumnSort s : t.columns().sorts()) {
-                if (s.sortable() && s.ranked() != null) {
-                    assertEquals(Ranking.Sort.LABEL, s.ranked(), t + " may only use LABEL from the ranked sorts");
-                }
+            assertEquals(ColumnSort.of(Ranking.MeshSort.LABEL), t.columns().get(0).sort(), t + "'s name column sorts by label");
+            for (Tab.Column col : t.columns().all()) assertNull(col.sort().ranked(), t + " must not carry a ranked sort");
+        }
+        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.FLYWHEEL, Tab.BLOCKS, Tab.SECTIONS}) {
+            long sortable = t.columns().all().stream().filter(col -> col.sort().sortable()).count();
+            assertTrue(sortable >= 2, t + " has only " + sortable + " sortable columns");
+        }
+        assertEquals(ColumnSort.of(Ranking.Sort.VERTICES), Tab.BLOCK_ENTITIES.columns().get(7).sort(), "verts/f");
+        assertEquals(ColumnSort.of(Ranking.MeshSort.AVG), Tab.SECTIONS.columns().get(4).sort(), "avg ms/rb");
+        assertEquals("avg ms/rb", Tab.SECTIONS.columns().get(4).name(), "the report calls it avg ms/rebuild");
+
+        // A name reads A to Z on its first click; a number reads largest first.
+        assertTrue(ColumnSort.of(Ranking.Sort.LABEL).ascendingFirst());
+        assertTrue(ColumnSort.of(Ranking.MeshSort.LABEL).ascendingFirst());
+        assertFalse(ColumnSort.of(Ranking.Sort.VERTICES).ascendingFirst());
+        assertFalse(ColumnSort.of(Ranking.MeshSort.TIME).ascendingFirst());
+    }
+
+    @Test
+    void theRankedTabsShowTheReportsColumnsAndEveryTabOpensInTheReportsOrder() {
+        // The names are written out in Tab so each column reads as one line; this is what stops them drifting
+        // from the report's.
+        assertEquals(RankedTable.RANKED, names(Tab.BLOCK_ENTITIES));
+        assertEquals(RankedTable.RANKED, names(Tab.ENTITIES));
+        assertEquals(RankedTable.PARTICLE, names(Tab.PARTICLES));
+        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES}) {
+            for (int i = 1; i < t.columns().size(); i++) {
+                assertTrue(t.columns().get(i).rightAlign(), t + " column " + i + " is a number");
             }
         }
-        assertEquals(Ranking.Sort.VERTICES, Tab.BLOCK_ENTITIES.columns().sorts()[7].ranked(), "verts/f");
-        assertEquals(Ranking.MeshSort.AVG, Tab.SECTIONS.columns().sorts()[4].mesh(), "avg ms/rb");
-        assertEquals("avg ms/rb", Tab.SECTIONS.columns().headers()[4], "the report calls it avg ms/rebuild");
-        assertEquals(1, Tab.BLOCK_ENTITIES.columns().defaultSortColumn(), "render us/f is the default order");
+
+        // Ranking.byType and byKey rank by TOTAL, the Blocks table by mesh time, the Sections table by
+        // rebuilds, and the Flywheel table by average count. A tab must open in that order.
+        assertEquals(ColumnSort.of(Ranking.Sort.TOTAL), opening(Tab.BLOCK_ENTITIES));
+        assertEquals("share", Tab.BLOCK_ENTITIES.columns().get(Tab.BLOCK_ENTITIES.columns().defaultSortColumn()).name());
+        assertEquals(ColumnSort.of(Ranking.Sort.TOTAL), opening(Tab.ENTITIES));
+        assertEquals(ColumnSort.of(Ranking.Sort.TOTAL), opening(Tab.PARTICLES));
+        assertEquals(ColumnSort.of(Ranking.Sort.TOTAL), opening(Tab.FLYWHEEL));
+        assertEquals(ColumnSort.of(Ranking.MeshSort.TIME), opening(Tab.BLOCKS));
+        assertEquals(ColumnSort.of(Ranking.MeshSort.CALLS), opening(Tab.SECTIONS));
+        assertEquals(1, Tab.SECTIONS.columns().defaultSortColumn(), "rebuilds, not rebuilds/s, which sorts the same way");
+    }
+
+    private static List<String> names(Tab t) {
+        return t.columns().all().stream().map(Tab.Column::name).toList();
+    }
+
+    private static ColumnSort opening(Tab t) {
+        return t.columns().get(t.columns().defaultSortColumn()).sort();
     }
 }
 ```
@@ -398,8 +661,7 @@ class TabTest {
 ./gradlew test --tests 'io.github.edwardg117.renderable.ui.screen.TabTest' --no-daemon
 ```
 
-Expected: compilation failure, `cannot find symbol: class ColumnSort`, `method sorts()`,
-`method defaultSortColumn()`.
+Expected: compilation failure, `cannot find symbol: class ColumnSort`, `class Column`, `method all()`.
 
 - [ ] **Step 3: Write `ColumnSort`**
 
@@ -411,9 +673,9 @@ package io.github.edwardg117.renderable.ui.screen;
 import io.github.edwardg117.renderable.core.Ranking;
 
 /**
- * What clicking a column header sorts by (spec §5.3). A tab's rows are either ranked entries or mesh
- * entries, so at most one of the two is set; {@link #NONE} marks a column that is not sortable, which is
- * every column of the Frames and Hitches tabs.
+ * What clicking a column header sorts by (spec §5.3). A tab's rows are either ranked entries or mesh entries,
+ * so at most one of the two is set; {@link #NONE} marks a column that is not sortable, which is every column
+ * of the Frames and Hitches tabs.
  *
  * <p>The Flywheel tab's rows are neither: they are class names and average counts. It reuses
  * {@link Ranking.Sort#LABEL} for the class column and {@link Ranking.Sort#TOTAL} for the count, which
@@ -435,17 +697,25 @@ public record ColumnSort(Ranking.Sort ranked, Ranking.MeshSort mesh) {
     public boolean sortable() {
         return ranked != null || mesh != null;
     }
+
+    /** True for a name column, which reads A to Z on its first click; a number reads largest first. */
+    public boolean ascendingFirst() {
+        return ranked == Ranking.Sort.LABEL || mesh == Ranking.MeshSort.LABEL;
+    }
 }
 ```
 
-- [ ] **Step 4: Give every column its sort**
+- [ ] **Step 4: Replace `Tab.java`**
 
-Replace `Tab.java` entirely:
+`Tab.sortable()` keeps its current meaning — the tabs the Sort button applies to — because the Sort button
+still exists until Task 4, which deletes both.
 
 ```java
 package io.github.edwardg117.renderable.ui.screen;
 
 import io.github.edwardg117.renderable.core.Ranking;
+
+import java.util.List;
 
 /** Tabs of the results screen and the column layout each one uses. Eight tabs, four per row on the screen. */
 public enum Tab {
@@ -474,103 +744,108 @@ public enum Tab {
         return columns;
     }
 
-    /** True when a click on a column header reorders this tab's rows (spec §5.3). */
+    /** True for tabs whose rows are ranked entries the Sort button can reorder. */
     public boolean sortable() {
-        for (ColumnSort s : columns.sorts()) {
-            if (s.sortable()) return true;
-        }
-        return false;
+        return this == BLOCK_ENTITIES || this == ENTITIES || this == PARTICLES;
     }
 
     /**
-     * Column headers, relative weights, alignment, and what each column sorts by. {@link #layout(int)}
-     * turns weights into pixel offsets. Kept as a nested class so enum constants can reference the
-     * constants without a forward-reference error.
+     * One column: its header, its share of the row width, whether it holds a right-aligned number, and what
+     * clicking its header sorts by.
      */
-    public record Columns(String[] headers, int[] weights, boolean[] rightAlign, ColumnSort[] sorts) {
+    public record Column(String name, int weight, boolean rightAlign, ColumnSort sort) {
+    }
+
+    /**
+     * A tab's columns and the one it opens sorted by. {@link #layout(int)} turns weights into pixel offsets.
+     * Kept as a nested class so enum constants can reference the constants without a forward-reference error.
+     */
+    public record Columns(List<Column> all, int defaultSortColumn) {
+        public Columns {
+            all = List.copyOf(all);
+            if (all.isEmpty()) throw new IllegalArgumentException("a tab needs at least one column");
+            if (defaultSortColumn < 0 || defaultSortColumn >= all.size()) {
+                throw new IllegalArgumentException("defaultSortColumn " + defaultSortColumn + " is not a column");
+            }
+        }
+
+        /** Declared before the constants below, which read it while the class initialises. */
         private static final ColumnSort N = ColumnSort.NONE;
 
-        static final Columns METRIC_VALUE = new Columns(
-                new String[]{"metric", "value"},
-                new int[]{2, 3},
-                new boolean[]{false, false},
-                new ColumnSort[]{N, N});
-        static final Columns HITCH = new Columns(
-                new String[]{"frame", "total ms", "split"},
-                new int[]{2, 1, 7},
-                new boolean[]{false, true, false},
-                new ColumnSort[]{N, N, N});
-        static final Columns RANKED = new Columns(
-                new String[]{"name", "render us/f", "tick us/f", "share", "peak ms", "gc f", "shadow", "verts/f", "calls"},
-                new int[]{5, 1, 1, 1, 1, 1, 1, 1, 1},
-                new boolean[]{false, true, true, true, true, true, true, true, true},
-                new ColumnSort[]{
-                        ColumnSort.of(Ranking.Sort.LABEL),
-                        ColumnSort.of(Ranking.Sort.RENDER),
-                        ColumnSort.of(Ranking.Sort.TICK),
-                        ColumnSort.of(Ranking.Sort.TOTAL),
-                        ColumnSort.of(Ranking.Sort.PEAK),
-                        ColumnSort.of(Ranking.Sort.GC_FRAMES),
-                        ColumnSort.of(Ranking.Sort.SHADOW),
-                        ColumnSort.of(Ranking.Sort.VERTICES),
-                        ColumnSort.of(Ranking.Sort.CALLS)});
-        static final Columns PARTICLE = new Columns(
-                new String[]{"class", "render us/f", "tick us/f", "share", "avg live", "verts/f", "gc f"},
-                new int[]{5, 1, 1, 1, 1, 1, 1},
-                new boolean[]{false, true, true, true, true, true, true},
-                new ColumnSort[]{
-                        ColumnSort.of(Ranking.Sort.LABEL),
-                        ColumnSort.of(Ranking.Sort.RENDER),
-                        ColumnSort.of(Ranking.Sort.TICK),
-                        ColumnSort.of(Ranking.Sort.TOTAL),
-                        ColumnSort.of(Ranking.Sort.CALLS),
-                        ColumnSort.of(Ranking.Sort.VERTICES),
-                        ColumnSort.of(Ranking.Sort.GC_FRAMES)});
-        static final Columns FLYWHEEL = new Columns(
-                new String[]{"visual class", "avg count", "share"},
-                new int[]{6, 1, 1},
-                new boolean[]{false, true, true},
-                new ColumnSort[]{
-                        ColumnSort.of(Ranking.Sort.LABEL),
-                        ColumnSort.of(Ranking.Sort.TOTAL),
-                        N});
-        static final Columns BLOCK = new Columns(
-                new String[]{"block", "mesh ms/s", "us/call", "calls"},
-                new int[]{8, 2, 2, 2},
-                new boolean[]{false, true, true, true},
-                new ColumnSort[]{
-                        ColumnSort.of(Ranking.Sort.LABEL),
-                        ColumnSort.of(Ranking.MeshSort.TIME),
-                        ColumnSort.of(Ranking.MeshSort.PER_CALL),
-                        ColumnSort.of(Ranking.MeshSort.CALLS)});
-        static final Columns SECTION = new Columns(
-                new String[]{"section", "rebuilds", "rebuilds/s", "mesh ms", "avg ms/rb"},
-                new int[]{6, 2, 2, 2, 3},
-                new boolean[]{false, true, true, true, true},
-                new ColumnSort[]{
-                        ColumnSort.of(Ranking.Sort.LABEL),
-                        ColumnSort.of(Ranking.MeshSort.CALLS),
-                        ColumnSort.of(Ranking.MeshSort.CALLS),
-                        ColumnSort.of(Ranking.MeshSort.TIME),
-                        ColumnSort.of(Ranking.MeshSort.AVG)});
+        static final Columns METRIC_VALUE = of(N,
+                left("metric", 2, N),
+                left("value", 3, N));
+        static final Columns HITCH = of(N,
+                left("frame", 2, N),
+                right("total ms", 1, N),
+                left("split", 7, N));
+        static final Columns RANKED = of(ColumnSort.of(Ranking.Sort.TOTAL),
+                left("name", 5, ColumnSort.of(Ranking.Sort.LABEL)),
+                right("render us/f", 1, ColumnSort.of(Ranking.Sort.RENDER)),
+                right("tick us/f", 1, ColumnSort.of(Ranking.Sort.TICK)),
+                right("share", 1, ColumnSort.of(Ranking.Sort.TOTAL)),
+                right("peak ms", 1, ColumnSort.of(Ranking.Sort.PEAK)),
+                right("gc f", 1, ColumnSort.of(Ranking.Sort.GC_FRAMES)),
+                right("shadow", 1, ColumnSort.of(Ranking.Sort.SHADOW)),
+                right("verts/f", 1, ColumnSort.of(Ranking.Sort.VERTICES)),
+                right("calls", 1, ColumnSort.of(Ranking.Sort.CALLS)));
+        static final Columns PARTICLE = of(ColumnSort.of(Ranking.Sort.TOTAL),
+                left("class", 5, ColumnSort.of(Ranking.Sort.LABEL)),
+                right("render us/f", 1, ColumnSort.of(Ranking.Sort.RENDER)),
+                right("tick us/f", 1, ColumnSort.of(Ranking.Sort.TICK)),
+                right("share", 1, ColumnSort.of(Ranking.Sort.TOTAL)),
+                right("avg live", 1, ColumnSort.of(Ranking.Sort.CALLS)),
+                right("verts/f", 1, ColumnSort.of(Ranking.Sort.VERTICES)),
+                right("gc f", 1, ColumnSort.of(Ranking.Sort.GC_FRAMES)));
+        static final Columns FLYWHEEL = of(ColumnSort.of(Ranking.Sort.TOTAL),
+                left("visual class", 6, ColumnSort.of(Ranking.Sort.LABEL)),
+                right("avg count", 1, ColumnSort.of(Ranking.Sort.TOTAL)),
+                right("share", 1, N));
+        static final Columns BLOCK = of(ColumnSort.of(Ranking.MeshSort.TIME),
+                left("block", 8, ColumnSort.of(Ranking.MeshSort.LABEL)),
+                right("mesh ms/s", 2, ColumnSort.of(Ranking.MeshSort.TIME)),
+                right("us/call", 2, ColumnSort.of(Ranking.MeshSort.PER_CALL)),
+                right("calls", 2, ColumnSort.of(Ranking.MeshSort.CALLS)));
+        static final Columns SECTION = of(ColumnSort.of(Ranking.MeshSort.CALLS),
+                left("section", 6, ColumnSort.of(Ranking.MeshSort.LABEL)),
+                right("rebuilds", 2, ColumnSort.of(Ranking.MeshSort.CALLS)),
+                right("rebuilds/s", 2, ColumnSort.of(Ranking.MeshSort.CALLS)),
+                right("mesh ms", 2, ColumnSort.of(Ranking.MeshSort.TIME)),
+                right("avg ms/rb", 3, ColumnSort.of(Ranking.MeshSort.AVG)));
 
-        /** The column a tab opens sorted by: the first sortable one after the name. */
-        public int defaultSortColumn() {
-            for (int i = 1; i < sorts.length; i++) {
-                if (sorts[i].sortable()) return i;
+        /** Columns that open sorted by the first column whose sort is {@code opensBy}. */
+        private static Columns of(ColumnSort opensBy, Column... columns) {
+            for (int i = 0; i < columns.length; i++) {
+                if (columns[i].sort().equals(opensBy)) return new Columns(List.of(columns), i);
             }
-            return 0;
+            throw new IllegalArgumentException("no column sorts by " + opensBy);
+        }
+
+        private static Column left(String name, int weight, ColumnSort sort) {
+            return new Column(name, weight, false, sort);
+        }
+
+        private static Column right(String name, int weight, ColumnSort sort) {
+            return new Column(name, weight, true, sort);
+        }
+
+        public int size() {
+            return all.size();
+        }
+
+        public Column get(int i) {
+            return all.get(i);
         }
 
         /** Returns {x offsets, widths} for a row of the given pixel width. Each column keeps 4 px of padding. */
         public int[][] layout(int rowWidth) {
             int total = 0;
-            for (int w : weights) total += w;
-            int[] x = new int[headers.length];
-            int[] w = new int[headers.length];
+            for (Column c : all) total += c.weight();
+            int[] x = new int[all.size()];
+            int[] w = new int[all.size()];
             int cursor = 0;
-            for (int i = 0; i < headers.length; i++) {
-                int px = rowWidth * weights[i] / total;
+            for (int i = 0; i < all.size(); i++) {
+                int px = rowWidth * all.get(i).weight() / total;
                 x[i] = cursor;
                 w[i] = Math.max(8, px - 4);
                 cursor += px;
@@ -581,23 +856,77 @@ public enum Tab {
 }
 ```
 
-`Blocks` maps `LABEL` onto a mesh table deliberately: `Rows.blocks` turns a `ranked() == LABEL` into
-`MeshSort.LABEL`, which is what `TabTest` asserts is the only ranked sort those tabs may carry.
+`Sections` opens on `rebuilds` rather than `rebuilds/s`, because `of` takes the first column whose sort
+matches, and both sort by `MeshSort.CALLS`. The Sections header `avg ms` becomes `avg ms/rb` with its weight
+raised from 2 to 3 (§P4.C6 #1); the report keeps `avg ms/rebuild`.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+The names of the ranked and particle columns are written out here rather than read from `RankedTable` by
+index, so each column is one line a reader can check; `TabTest` asserts they equal `RankedTable`'s.
 
-```bash
-./gradlew test --tests 'io.github.edwardg117.renderable.ui.screen.TabTest' --no-daemon
+- [ ] **Step 5: `RowList` reads the records, and draws a number that does not fit as `#`s**
+
+In `RowList.Entry.render`, replace `boolean[] right = tab.columns().rightAlign();` with
+`Tab.Columns columns = tab.columns();`, and replace the cell loop with:
+
+```java
+            for (int i = 1; i < row.cells().length && i < colX.length && i < columns.size(); i++) {
+                int cx = left + 4 + colX[i];
+                if (columns.get(i).rightAlign()) {
+                    String cell = fitNumber(font, row.cells()[i], colW[i]);
+                    g.drawString(font, cell, cx + colW[i] - font.width(cell), top + 2, color, false);
+                } else {
+                    g.drawString(font, font.plainSubstrByWidth(row.cells()[i], colW[i]), cx, top + 2, color, false);
+                }
+            }
 ```
 
-Expected: `TabTest` green. The full suite does **not** compile yet, because `ResultsScreen` and `Rows` still
-call `Tab.sortable()` on the old contract and `Rows.build` has the old signature — Tasks 3 and 4 fix that.
-Run the scoped command above, not the whole suite.
+and add to `RowList` (the outer class), after `getScrollbarPosition`:
 
-If `layoutFitsTheRowAndNeverOverlaps` fails at `rowWidth = 120` because a column does not advance, the
-weights are too uneven for a narrow screen: that is a real finding, not a test to relax. Report it.
+```java
+    /**
+     * A right-aligned number too wide for its column is drawn as #s, as a spreadsheet does, instead of being cut
+     * short like text: a truncated number reads as a different, smaller one (spec addendum §P4.C6 #4).
+     */
+    static String fitNumber(Font font, String cell, int width) {
+        if (font.width(cell) <= width) return cell;
+        return "#".repeat(Math.max(1, width / font.width("#")));
+    }
+```
 
-- [ ] **Step 6: Stage and report**
+- [ ] **Step 6: `ResultsScreen` draws its headers from the records**
+
+The header loop at the end of `render` is the only other reader of the old arrays. Replace it (from
+`int left = list.getRowLeft();` to the end of the `for` loop) with:
+
+```java
+        int left = list.getRowLeft();
+        Tab.Columns columns = tab.columns();
+        for (int i = 0; i < columns.size() && i < colX.length; i++) {
+            Tab.Column column = columns.get(i);
+            int cx = left + 4 + colX[i];
+            String h = font.plainSubstrByWidth(column.name(), colW[i]);
+            if (column.rightAlign()) {
+                g.drawString(font, h, cx + colW[i] - font.width(h), HEADER_Y, 0xA0A0A0, false);
+            } else {
+                g.drawString(font, h, cx, HEADER_Y, 0xA0A0A0, false);
+            }
+        }
+```
+
+Task 4 adds the sort arrow to this loop.
+
+- [ ] **Step 7: Run the whole build**
+
+```bash
+./gradlew build --no-daemon
+```
+
+Expected: `BUILD SUCCESSFUL`, **114 tests**.
+
+If `layoutFitsTheRowAndNeverOverlaps` fails at `rowWidth = 120` because a column does not advance, the weights
+are too uneven for a narrow screen: that is a real finding, not a test to relax. Report it.
+
+- [ ] **Step 8: Stage and report**
 
 ```bash
 git add src/main/java/io/github/edwardg117/renderable/ui/screen src/test/java/io/github/edwardg117/renderable/ui
@@ -607,7 +936,7 @@ git status --short
 Commit message for the orchestrator:
 
 ```
-feat(ui): columns declare what they sort by; test the tab layout invariants
+feat(ui): columns are records that declare what they sort by; a number too wide for its column shows as #s
 ```
 
 ---
@@ -616,64 +945,19 @@ feat(ui): columns declare what they sort by; test the tab layout invariants
 
 **Files:**
 - Create: `src/main/java/io/github/edwardg117/renderable/core/EmptyStates.java`
-- Modify: `src/main/java/io/github/edwardg117/renderable/core/Environment.java` (only if plan 4b has not run)
 - Modify: `src/main/java/io/github/edwardg117/renderable/report/TextReportWriter.java`
 - Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Rows.java`
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/ResultsScreen.java` (one line)
 - Create: `src/test/java/io/github/edwardg117/renderable/core/EmptyStatesTest.java`
 
 Spec addendum §P4.C1 and §P4.C2. `TextReportWriter` can say `(no data: Flywheel is not installed)` and
 `(no data: no Flywheel visualization ran; backend flywheel:off)`; `Rows` has no `Environment` and says
 neither.
 
-- [ ] **Step 1: Add the `Environment` helpers if they are missing**
+Plan 4b has run, so `Environment` already has `ABSENT`, `has(String)` and `value(String)`, and
+`TextReportWriter.appendFlywheel` already uses them. The first draft's step to add them is gone.
 
-Open `src/main/java/io/github/edwardg117/renderable/core/Environment.java`. **If it already has `ABSENT`,
-`has` and `value` (plan 4b added them), skip this step.** Otherwise replace the file with:
-
-```java
-package io.github.edwardg117.renderable.core;
-
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
-/**
- * Plain environment description for reports (spec §6.1 item 2). Built by the Minecraft-aware collector in
- * {@code report}; the core only carries it. Entries keep insertion order, which is the order the text
- * report prints them in.
- */
-public record Environment(Map<String, String> entries, List<String> hooksApplied) {
-
-    /** The value the collector writes for a mod or feature that is not installed. */
-    public static final String ABSENT = "absent";
-
-    /**
-     * Copies both collections so the record is really immutable. The entries copy is a
-     * {@link LinkedHashMap}, not {@code Map.copyOf}, because {@code Map.copyOf} does not keep order.
-     */
-    public static Environment of(Map<String, String> entries, List<String> hooksApplied) {
-        return new Environment(Collections.unmodifiableMap(new LinkedHashMap<>(entries)), List.copyOf(hooksApplied));
-    }
-
-    public static Environment empty() {
-        return new Environment(Map.of(), List.of());
-    }
-
-    /** True when {@code key} was collected and is not {@link #ABSENT}. */
-    public boolean has(String key) {
-        String v = entries.get(key);
-        return v != null && !ABSENT.equals(v);
-    }
-
-    /** The collected value for {@code key}, or {@link #ABSENT} when it was not collected. */
-    public String value(String key) {
-        return entries.getOrDefault(key, ABSENT);
-    }
-}
-```
-
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 Create `src/test/java/io/github/edwardg117/renderable/core/EmptyStatesTest.java`:
 
@@ -722,7 +1006,7 @@ class EmptyStatesTest {
 }
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
+- [ ] **Step 2: Run it to verify it fails**
 
 ```bash
 ./gradlew test --tests 'io.github.edwardg117.renderable.core.EmptyStatesTest' --no-daemon
@@ -730,7 +1014,7 @@ class EmptyStatesTest {
 
 Expected: compilation failure, `cannot find symbol: class EmptyStates`.
 
-- [ ] **Step 4: Write `EmptyStates`**
+- [ ] **Step 3: Write `EmptyStates`**
 
 `src/main/java/io/github/edwardg117/renderable/core/EmptyStates.java`:
 
@@ -777,17 +1061,20 @@ public final class EmptyStates {
      * is {@code FlywheelStats.samples()}.
      */
     public static String flywheel(Environment env, int samples) {
-        String backend = env.value("flywheelBackend");
-        if (Environment.ABSENT.equals(backend)) return "(no data: Flywheel is not installed)";
-        if (samples == 0) return "(no data: no Flywheel visualization ran; backend " + backend + ")";
+        if (!env.has("flywheelBackend")) return "(no data: Flywheel is not installed)";
+        if (samples == 0) return "(no data: no Flywheel visualization ran; backend " + env.value("flywheelBackend") + ")";
         return "";
     }
 }
 ```
 
-- [ ] **Step 5: Use it in `TextReportWriter`**
+`flywheel` tests `has`, not `value(...) == ABSENT`, so it makes exactly the decision the report makes today.
 
-The strings are unchanged, so no report test changes. In `appendRanked`:
+- [ ] **Step 4: Use it in `TextReportWriter`**
+
+The strings are unchanged, so no report test changes. Add `import io.github.edwardg117.renderable.core.EmptyStates;`.
+
+In `appendRanked`:
 
 ```java
         if (entries.isEmpty()) {
@@ -823,7 +1110,8 @@ In `appendSections`:
         }
 ```
 
-In `appendFlywheel`, replace the first block:
+In `appendFlywheel`, replace everything from `sb.append("Flywheel\n");` down to and including the
+`if (fw.samples() == 0) { ... }` block with:
 
 ```java
         sb.append("Flywheel\n");
@@ -836,18 +1124,16 @@ In `appendFlywheel`, replace the first block:
         String backend = env.value("flywheelBackend");
 ```
 
-and delete the now-unused `meshNoData` private method and the local `FlywheelStats fw = r.flywheel();`
-further down. Add `import io.github.edwardg117.renderable.core.EmptyStates;`.
+Delete the now-unused private `meshNoData`. The old mesh code appended `'\n'` after a `meshNoData(...)` string
+that already ended in `\n`; the replacements append `"\n\n"` for the same result.
 
-The old code appended `'\n'` after the no-data line via `sb.append(meshNoData(...)).append('\n')`, where
-`meshNoData` already ended in `\n`; the replacements above append `"\n\n"` for the same result.
+- [ ] **Step 5: Thread the environment and the sort through `Rows`, and cap the Sections tab**
 
-- [ ] **Step 6: Thread the environment and the sort through `Rows`, and cap the Sections tab**
-
-Replace `Rows.build` and the five list builders it dispatches to. `Rows` keeps everything else.
+Replace `Rows.build` and the five list builders it dispatches to. `Rows` keeps everything else, including
+`frames`, `hitches` and the helpers.
 
 ```java
-    /** Rows for one tab. {@code sort} is the clicked column; {@code ascending} its direction. */
+    /** Rows for one tab. {@code sort} is the clicked column, or null for the tab's default order; {@code ascending} its direction. */
     public static List<Row> build(Tab tab, SessionResult r, Environment env, ColumnSort sort, boolean ascending,
                                   Set<String> expanded) {
         return switch (tab) {
@@ -862,16 +1148,14 @@ Replace `Rows.build` and the five list builders it dispatches to. `Rows` keeps e
         };
     }
 
-    /** The ranked sort a clicked column means, falling back to the default order. */
+    /** The ranked sort a clicked column means, or the report's order, by total time, when there is none. */
     private static Ranking.Sort rankedSort(ColumnSort sort) {
         return sort == null || sort.ranked() == null ? Ranking.Sort.TOTAL : sort.ranked();
     }
 
-    /** The mesh sort a clicked column means. A LABEL click on a mesh tab sorts the mesh rows by label. */
+    /** The mesh sort a clicked column means, or {@code fallback}, the report's order for that table. */
     private static Ranking.MeshSort meshSort(ColumnSort sort, Ranking.MeshSort fallback) {
-        if (sort == null) return fallback;
-        if (sort.mesh() != null) return sort.mesh();
-        return sort.ranked() == Ranking.Sort.LABEL ? Ranking.MeshSort.LABEL : fallback;
+        return sort == null || sort.mesh() == null ? fallback : sort.mesh();
     }
 ```
 
@@ -889,11 +1173,11 @@ Replace `Rows.build` and the five list builders it dispatches to. `Rows` keeps e
             rows.add(Row.heading("Flywheel-instanced machines are not timed here; see the Flywheel tab"));
         }
         for (RankedEntry t : Ranking.sort(Ranking.byType(r, category), by, ascending)) {
-            rows.add(new Row(cells(t.typeId() + "  (" + t.members() + ")", t, frames, total),
+            rows.add(new Row(RankedTable.ranked(t.typeId() + "  (" + t.members() + ")", t, frames, total),
                     null, t.typeId(), true, true, 0, null, -1));
             if (expanded.contains(t.typeId())) {
                 for (RankedEntry m : Ranking.sort(Ranking.membersOf(r, category, t.typeId()), by, ascending)) {
-                    rows.add(new Row(cells(memberLabel(m.key()), m, frames, total),
+                    rows.add(new Row(RankedTable.ranked(memberLabel(m.key()), m, frames, total),
                             m.key(), t.typeId(), false, false, 1, posOf(m.key()), entityIdOf(m.key())));
                 }
             }
@@ -912,14 +1196,7 @@ Replace `Rows.build` and the five list builders it dispatches to. `Rows` keeps e
         long total = r.stats().totalNanos();
         List<Row> rows = new ArrayList<>();
         for (RankedEntry e : Ranking.sort(Ranking.byKey(r, ProfileKey.Category.PARTICLE), rankedSort(sort), ascending)) {
-            rows.add(new Row(new String[]{
-                    e.label(),
-                    Fmt.us(e.renderUsPerFrame(frames)),
-                    Fmt.us(e.tickUsPerFrame(frames)),
-                    Fmt.pct(e.sharePercent(total)),
-                    Fmt.num(e.callsPerFrame(frames)),
-                    Fmt.num(e.verticesPerFrame(frames)),
-                    Fmt.count(e.gcFrames())},
+            rows.add(new Row(RankedTable.particle(e, frames, total),
                     e.key(), e.typeId(), false, false, 0, null, -1));
         }
         if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.particles(env)));
@@ -975,7 +1252,8 @@ Replace `Rows.build` and the five list builders it dispatches to. `Rows` keeps e
 ```
 
 `shortName` is deliberately temporary: Task 5 adds `FlywheelStats.displayNames()` and replaces both call
-sites, so the screen and the report cannot disagree. It exists here only so this task compiles on its own.
+sites, so the screen and the report cannot disagree. It exists here only so this task compiles on its own,
+and Task 5 deletes it together with its Javadoc.
 
 `blocks` and `sections`, the second with the cap:
 
@@ -1031,14 +1309,27 @@ import io.github.edwardg117.renderable.core.Environment;
 import java.util.Comparator;
 ```
 
-- [ ] **Step 7: Run the scoped tests**
+- [ ] **Step 6: Keep `ResultsScreen` compiling**
 
-```bash
-./gradlew test --tests 'io.github.edwardg117.renderable.core.*' --tests 'io.github.edwardg117.renderable.report.*' --no-daemon
+`Rows.build` has a new signature and `ResultsScreen.rebuild()` is its only caller. Until Task 4 replaces the
+Sort button with header clicks, pass the button's ranked sort through on the tabs it applies to, and the
+default order everywhere else, so the screen behaves exactly as it does today. In `rebuild()`, replace the
+`list.setRows(...)` line with:
+
+```java
+        list.setRows(tab, Rows.build(tab, result, environment, tab.sortable() ? ColumnSort.of(sort) : null, false, expanded));
 ```
 
-Expected: green. `ResultsScreen` still calls the old `Rows.build`, so `compileJava` fails — Task 4 fixes it.
-Do not run the whole build yet.
+Without the `tab.sortable()` guard, a sort chosen on Block Entities would carry over to Blocks, where the
+button is hidden.
+
+- [ ] **Step 7: Run the whole build**
+
+```bash
+./gradlew build --no-daemon
+```
+
+Expected: `BUILD SUCCESSFUL`, **116 tests**.
 
 - [ ] **Step 8: Stage and report**
 
@@ -1055,39 +1346,18 @@ feat(ui): the tabs use the report's empty-state sentences and cap the Sections l
 
 ---
 
-Carried in from phase 4b's review of its Task 5, since this task is already rewriting the buttons: **a
-disabled Highlight or Teleport button now gives no reason.** Phase 4b greys them out for a second,
-unrelated cause — the result's world is gone — and `ResultsScreen` has no tooltip anywhere to distinguish
-that from "nothing is selected". It is the same shape as the unexplained `gc f` column phase 4a had to fix
-with a note. Adding the file's first tooltip was not worth it inside 4b's small diff; here, where the button
-row is being touched anyway, it is. A tooltip reading "the world this session was taken in is gone" on the
-disabled state is enough.
-
-### Task 4: Click a header to sort; teleport somewhere a player can stand; truncate right-aligned cells
+### Task 4: Click a header to sort; teleport somewhere a player can stand; say why a button is disabled
 
 **Files:**
 - Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/ResultsScreen.java`
-- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/RowList.java`
+- Modify: `src/main/java/io/github/edwardg117/renderable/ui/screen/Tab.java` (delete `sortable()`)
+- Modify: `src/main/java/io/github/edwardg117/renderable/core/Ranking.java` (delete `Sort.next()`)
+- Modify: `src/test/java/io/github/edwardg117/renderable/core/RankingTest.java` (two assertions)
 
-Spec addendum §P4.C3, §P4.C6 #3 and #4, §P4.C7.
+Spec addendum §P4.C3 and §P4.C7, plus one item carried in from phase 4b's review of its Task 5 (Step 4).
+Right-aligned truncation, which the first draft put here, moved to Task 2.
 
-- [ ] **Step 1: Truncate right-aligned cells in `RowList`**
-
-In `RowList.Entry.render`, replace the cell loop:
-
-```java
-            for (int i = 1; i < row.cells().length && i < colX.length; i++) {
-                String cell = font.plainSubstrByWidth(row.cells()[i], colW[i]);
-                int cx = left + 4 + colX[i];
-                if (right[i]) {
-                    g.drawString(font, cell, cx + colW[i] - font.width(cell), top + 2, color, false);
-                } else {
-                    g.drawString(font, cell, cx, top + 2, color, false);
-                }
-            }
-```
-
-- [ ] **Step 2: Rewrite the sorting half of `ResultsScreen`**
+- [ ] **Step 1: Replace the Sort button with header clicks**
 
 Replace the field block, from `private Tab tab = Tab.FRAMES;` down to `private Row selected;`, with:
 
@@ -1102,17 +1372,16 @@ Replace the field block, from `private Tab tab = Tab.FRAMES;` down to `private R
 
 Delete the `private Button sortButton;` field.
 
-In `init()`, delete the whole `sortButton = Button.builder(...)` block and its `addRenderableWidget`, and
+In `init()`, delete the whole `sortButton = Button.builder(...)` statement and its `addRenderableWidget`, and
 widen the tab row now that nothing sits to its right:
 
 ```java
         int tabPitch = Math.min(88, (width - 8) / TABS_PER_ROW);   // 4 px margin each side
 ```
 
-Then give the five bottom buttons the room the Sort button used to take — the existing arithmetic already
-divides `(width - 24) / 5`, so leave it alone.
+The five bottom buttons already divide `(width - 24) / 5`; leave that arithmetic alone.
 
-Replace `rebuild()`:
+Replace `rebuild()`, and add the three helpers after it:
 
 ```java
     private void rebuild() {
@@ -1124,7 +1393,7 @@ Replace `rebuild()`:
         updateButtons();
     }
 
-    /** The column this tab is sorted by, defaulting to its first sortable column. */
+    /** The column this tab is sorted by: the last one clicked, or the one the tab opens on. */
     private int sortIndex() {
         return sortColumn.computeIfAbsent(tab, t -> t.columns().defaultSortColumn());
     }
@@ -1134,59 +1403,37 @@ Replace `rebuild()`:
     }
 
     private ColumnSort activeSort() {
-        ColumnSort[] sorts = tab.columns().sorts();
-        int i = sortIndex();
-        return i >= 0 && i < sorts.length ? sorts[i] : ColumnSort.NONE;
+        return tab.columns().get(sortIndex()).sort();
     }
 ```
 
 Delete `sortLabel()`.
 
-Replace `updateButtons()`. Only the `sortButton.visible` line goes; everything else stays. **If plan 4b has
-not run**, the method becomes:
-
-```java
-    private void updateButtons() {
-        boolean hasPos = selected != null && selected.pos() != null;
-        boolean hasEntity = selected != null && selected.entityId() >= 0;
-        highlightButton.active = hasPos;
-        teleportButton.active = hasPos || hasEntity;
-    }
-```
-
-**If plan 4b has run**, it added a stale-world guard that must be kept:
-
-```java
-    private void updateButtons() {
-        boolean worldGone = ProfilerController.get().resultWorldGone();
-        boolean hasPos = selected != null && selected.pos() != null;
-        boolean hasEntity = selected != null && selected.entityId() >= 0;
-        highlightButton.active = hasPos && !worldGone;
-        teleportButton.active = (hasPos || hasEntity) && !worldGone;
-    }
-```
-
-Add the click handler, after `onRowClicked`:
+Add the click handler after `onRowClicked`:
 
 ```java
     /**
-     * A click in the header band sorts by that column: a new column sorts descending, the active column
-     * flips direction (spec §5.3). Columns whose {@link ColumnSort} is {@link ColumnSort#NONE} ignore it,
-     * which is every column of the Frames and Hitches tabs.
+     * A click in the header band sorts by that column. The active column flips direction; a new column starts
+     * in its natural direction, which is A to Z for a name and largest first for a number (spec §5.3).
+     * Columns whose {@link ColumnSort} is {@link ColumnSort#NONE} ignore it, which is every column of the
+     * Frames and Hitches tabs.
      */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0 && mouseY >= HEADER_Y - 2 && mouseY < HEADER_Y + font.lineHeight) {
             int clicked = columnAt(mouseX);
-            if (clicked >= 0 && tab.columns().sorts()[clicked].sortable()) {
-                if (clicked == sortIndex()) {
-                    sortAscending.put(tab, !ascending());
-                } else {
-                    sortColumn.put(tab, clicked);
-                    sortAscending.put(tab, Boolean.FALSE);
+            if (clicked >= 0) {
+                ColumnSort s = tab.columns().get(clicked).sort();
+                if (s.sortable()) {
+                    if (clicked == sortIndex()) {
+                        sortAscending.put(tab, !ascending());
+                    } else {
+                        sortColumn.put(tab, clicked);
+                        sortAscending.put(tab, s.ascendingFirst());
+                    }
+                    rebuild();
+                    return true;
                 }
-                rebuild();
-                return true;
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
@@ -1195,6 +1442,7 @@ Add the click handler, after `onRowClicked`:
     /** The column index under a screen x, or -1 outside the row. */
     private int columnAt(double mouseX) {
         int left = list.getRowLeft() + 4;
+        if (mouseX < left || mouseX >= left + list.getRowWidth()) return -1;
         for (int i = colX.length - 1; i >= 0; i--) {
             if (mouseX >= left + colX[i]) return i;
         }
@@ -1202,22 +1450,21 @@ Add the click handler, after `onRowClicked`:
     }
 ```
 
-Replace the header-drawing loop in `render` so the active column carries an arrow:
+Replace the header loop in `render` (the one Task 2 wrote) so the active column carries an arrow:
 
 ```java
         int left = list.getRowLeft();
-        String[] headers = tab.columns().headers();
-        boolean[] right = tab.columns().rightAlign();
-        ColumnSort[] sorts = tab.columns().sorts();
+        Tab.Columns columns = tab.columns();
         int active = sortIndex();
-        for (int i = 0; i < headers.length && i < colX.length; i++) {
-            String label = headers[i];
-            if (i == active && sorts[i].sortable()) label = label + (ascending() ? " ^" : " v");
+        for (int i = 0; i < columns.size() && i < colX.length; i++) {
+            Tab.Column column = columns.get(i);
+            boolean sortable = column.sort().sortable();
+            String arrow = i == active && sortable ? (ascending() ? " ^" : " v") : "";
+            // Truncate the name, never the arrow: the arrow is the only sign of how the list is sorted.
+            String h = font.plainSubstrByWidth(column.name(), Math.max(0, colW[i] - font.width(arrow))) + arrow;
+            int colour = !sortable ? 0xA0A0A0 : i == active ? 0xFFFFFF : 0xC0C0C0;
             int cx = left + 4 + colX[i];
-            String h = font.plainSubstrByWidth(label, colW[i]);
-            int colour = sorts[i].sortable() ? 0xC0C0C0 : 0xA0A0A0;
-            if (i == active && sorts[i].sortable()) colour = 0xFFFFFF;
-            if (right[i]) {
+            if (column.rightAlign()) {
                 g.drawString(font, h, cx + colW[i] - font.width(h), HEADER_Y, colour, false);
             } else {
                 g.drawString(font, h, cx, HEADER_Y, colour, false);
@@ -1225,8 +1472,23 @@ Replace the header-drawing loop in `render` so the active column carries an arro
         }
 ```
 
-Add the imports `java.util.EnumMap` and, if it is not already there, `java.util.Set`. Delete
-`import io.github.edwardg117.renderable.core.Ranking;` if nothing else in the file uses it.
+Add the imports `java.util.EnumMap` and `net.minecraft.client.gui.components.Tooltip` (Step 4 uses it).
+Delete `import io.github.edwardg117.renderable.core.Ranking;` once nothing in the file uses it.
+
+- [ ] **Step 2: Delete what the Sort button leaves behind**
+
+- `Tab.sortable()` has no caller once Step 1 is done. Delete it.
+- `Ranking.Sort.next()` has no caller outside `RankingTest`. Delete it, and delete the two `next()`
+  assertions at the end of `RankingTest.sortModesReorder`; the test keeps its three sorting assertions, so
+  the test count does not change.
+
+Confirm nothing else calls either:
+
+```bash
+grep -rn "sortable()\|\.next()" src/main/java src/test/java
+```
+
+Expected: only `ColumnSort.sortable()` and its callers, and no `Sort.next()`.
 
 - [ ] **Step 3: Teleport somewhere a player can stand**
 
@@ -1259,41 +1521,64 @@ Replace `teleportToSelected`:
     }
 ```
 
-- [ ] **Step 4: Build, then look at the screen**
+- [ ] **Step 4: Say why Highlight and Teleport are disabled**
+
+Carried in from phase 4b's review of its Task 5, since this task is already rewriting the button row. Phase
+4b greys out Highlight and Teleport for a second, unrelated cause — the result's world is gone — and nothing
+on the screen distinguishes that from "nothing is selected". It is the same shape as the unexplained `gc f`
+column phase 4a had to fix with a note.
+
+Verified against the pinned jar (`build/moddev/artifacts/neoforge-21.1.220.jar` with javap, and the sources
+jar): `Tooltip.create(Component)` exists; `AbstractWidget.setTooltip(@Nullable Tooltip)` exists and `null`
+clears it; and `AbstractWidget.render` computes the hover state and refreshes the tooltip without looking at
+`active`, so a disabled button shows its tooltip. Vanilla relies on that: `TitleScreen` gives its disabled
+Multiplayer button a tooltip explaining why.
+
+Add the field beside the others:
+
+```java
+    /** Shown on Highlight and Teleport while they are disabled because the session's world is gone. */
+    private final Tooltip worldGoneTooltip = Tooltip.create(Component.literal("The world this session was taken in is gone"));
+```
+
+and replace `updateButtons()`, which keeps 4b's stale-world guard and drops the `sortButton` line:
+
+```java
+    private void updateButtons() {
+        boolean worldGone = ProfilerController.get().resultWorldGone();
+        boolean hasPos = selected != null && selected.pos() != null;
+        boolean hasEntity = selected != null && selected.entityId() >= 0;
+        highlightButton.active = hasPos && !worldGone;
+        teleportButton.active = (hasPos || hasEntity) && !worldGone;
+        Tooltip why = worldGone ? worldGoneTooltip : null;
+        highlightButton.setTooltip(why);
+        teleportButton.setTooltip(why);
+    }
+```
+
+- [ ] **Step 5: Run the whole build**
 
 ```bash
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **93 tests**.
+Expected: `BUILD SUCCESSFUL`, **116 tests**.
+
+Nothing in this task is unit-testable: `ResultsScreen` is a Minecraft `Screen`. The by-eye checks the first
+draft put here — the arrow, the clicks, the narrow window, the teleport, the tooltip — are in Task 8, where a
+person runs them in the pack in one session. Do not launch a client for this task.
+
+- [ ] **Step 6: Stage and report**
 
 ```bash
-./gradlew runClient -PquickPlay="New World" --no-daemon
-```
-
-In the world run `/renderable start 5`, let the results screen open, and check by eye:
-
-- there is no **Sort** button;
-- on Block Entities, `render us/f` carries a white `v`; clicking `calls` moves the arrow there and reorders;
-  clicking `calls` again turns the arrow into `^` and reverses the order; clicking `name` sorts
-  alphabetically;
-- on Frames and Hitches, clicking any header does nothing;
-- resize the window very narrow: right-aligned numbers truncate instead of overlapping;
-- the Sections tab's last header reads `avg ms/rb`.
-
-Stop the client with the filter in Task 6, Step 5.
-
-- [ ] **Step 5: Stage and report**
-
-```bash
-git add src/main/java/io/github/edwardg117/renderable/ui
+git add src/main/java src/test/java
 git status --short
 ```
 
 Commit message for the orchestrator:
 
 ```
-feat(ui): click a column header to sort; teleport above ground from a section row; truncate right-aligned cells
+feat(ui): click a column header to sort; teleport above ground from a section row; say why a button is disabled
 ```
 
 ---
@@ -1442,7 +1727,7 @@ two cannot drift:
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **95 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
+Expected: `BUILD SUCCESSFUL`, **118 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
 keys `a`, `b`, `c`, whose simple names are themselves, so it is unaffected.
 
 - [ ] **Step 6: Stage and report**
@@ -1523,44 +1808,9 @@ In `WorldOverlay.java`, change the signature and the entity loop:
     }
 ```
 
-The trailing `enabled = RenderableConfig.OVERLAY_ENABLED.get();` line is gone from `setResult` either way.
-**If plan 4b has not run**, that line was the only thing reading the config, so take 4b's lazy accessor with
-it or `overlayEnabled = false` would stop being honoured — replace the field and the three accessors:
-
-```java
-    /** Null until first read, then whatever the config said or the user last chose. */
-    private static Boolean enabled;
-```
-
-```java
-    /**
-     * Whether labels are drawn. Read from the config on first use, not at every session end, so
-     * {@code /renderable overlay off} survives the next session (spec addendum §P4.B6).
-     */
-    public static boolean isEnabled() {
-        Boolean e = enabled;
-        if (e == null) {
-            e = RenderableConfig.OVERLAY_ENABLED.get();
-            enabled = e;
-        }
-        return e;
-    }
-
-    public static void setEnabled(boolean on) {
-        enabled = on;
-    }
-
-    public static void toggle() {
-        setEnabled(!isEnabled());
-    }
-```
-
-and replace the two raw reads of the field: in `onRenderLevelStage`,
-`boolean wantLabels = enabled && !labels.isEmpty();` becomes
-`boolean wantLabels = isEnabled() && !labels.isEmpty();`, and in `render`,
-`if (enabled && !labels.isEmpty()) {` becomes `if (isEnabled() && !labels.isEmpty()) {`.
-
-**If plan 4b has run**, it already did all of that; leave it alone.
+Plan 4b already removed the trailing `enabled = RenderableConfig.OVERLAY_ENABLED.get();` line from
+`setResult` and made the flag lazy; leave both alone. Check for any other caller of the old one-argument
+`setResult` with `grep -rn "setResult(" src/main/java`; `ProfilerController.finish` should be the only one.
 
 Update the `Label` record's Javadoc, which still describes the old behaviour:
 
@@ -1577,6 +1827,15 @@ Update the `Label` record's Javadoc, which still describes the old behaviour:
 Replace `drawHighlight` and add the two helpers below it:
 
 ```java
+    /**
+     * Scratch space for {@link #drawHighlight}, reused every frame; render thread only, like {@link #SCRATCH}.
+     * A highlight can outlive the session it came from and keep drawing while the next one samples, so it
+     * allocates nothing per frame.
+     */
+    private static final float[] CORNER_X = new float[8];
+    private static final float[] CORNER_Y = new float[8];
+    private static final boolean[] CORNER_VISIBLE = new boolean[8];
+
     /** The twelve edges of a cube, as pairs of corner indices differing in one bit. */
     private static final int[] EDGES = {
             0, 1, 0, 2, 0, 4, 1, 3, 1, 5, 2, 3,
@@ -1595,9 +1854,9 @@ Replace `drawHighlight` and add the two helpers below it:
             highlight = null;
             return;
         }
-        float[] sx = new float[8];
-        float[] sy = new float[8];
-        boolean[] ok = new boolean[8];
+        float[] sx = CORNER_X;
+        float[] sy = CORNER_Y;
+        boolean[] ok = CORNER_VISIBLE;
         float minX = Float.MAX_VALUE;
         float minY = Float.MAX_VALUE;
         float maxX = -Float.MAX_VALUE;
@@ -1608,8 +1867,8 @@ Replace `drawHighlight` and add the two helpers below it:
             double z = p.getZ() + ((i & 4) == 0 ? -0.01 : highlightSize + 0.01);
             SCRATCH.set((float) (x - cam.x), (float) (y - cam.y), (float) (z - cam.z), 1.0f).mul(VIEW_PROJECTION);
             float w = SCRATCH.w();
-            if (w <= 0.001f) continue;                       // behind the camera; the edges using it are skipped
-            ok[i] = true;
+            ok[i] = w > 0.001f;                               // reset every frame: the arrays are reused
+            if (!ok[i]) continue;                             // behind the camera; the edges using it are skipped
             sx[i] = (SCRATCH.x() / w + 1.0f) * 0.5f * guiW;
             sy[i] = (1.0f - SCRATCH.y() / w) * 0.5f * guiH;
             minX = Math.min(minX, sx[i]);
@@ -1697,35 +1956,15 @@ Replace `drawHighlight` and add the two helpers below it:
     }
 ```
 
-- [ ] **Step 4: Build and look at it**
+- [ ] **Step 4: Run the whole build**
 
 ```bash
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 95 tests.
-
-```bash
-./gradlew runClient -PquickPlay="New World" --no-daemon
-```
-
-Place a chest, run `/renderable start 5`, open the results screen, select the chest's position row on Block
-Entities and press **Highlight**. Expect a box in perspective around the block, visible through walls, whose
-edges stay drawn when you walk so close that a corner goes behind you. Walk far away: the box shrinks to the
-8-pixel square. Then go through a Nether portal and confirm no entity labels are drawn there, and that they
-return on the way back.
-
-Stop the client:
-
-```powershell
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*fml.modFolders=renderable%%H:\repos\Renderable\build*' } | Select-Object ProcessId, CommandLine
-```
-
-Confirm every row is this repository's dev client, then:
-
-```powershell
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*fml.modFolders=renderable%%H:\repos\Renderable\build*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-```
+Expected: `BUILD SUCCESSFUL`, 118 tests. Nothing here is unit-testable, and the first draft's dev-client look
+(the box in perspective, the corner behind the camera, the distant 8-pixel square, the portal) is in Task 8,
+where a person runs it in the pack. Do not launch a client for this task.
 
 - [ ] **Step 5: Stage and report**
 
@@ -1747,6 +1986,10 @@ feat(ui): dimension-scoped entity labels and a wireframe highlight box
 **Files:**
 - Modify: `README.md`
 - Modify: `docs/superpowers/specs/2026-09-19-renderable-fps-profiler-design.md`
+- Modify: `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`
+
+Where the code and the text below disagree, the code is right: read what each sentence describes before
+writing it, and report a disagreement rather than papering over it.
 
 - [ ] **Step 1: Update `README.md`**
 
@@ -1754,10 +1997,13 @@ In "Using it", item 3, the sentence "Labels are shown only in the dimension they
 true for entities as well and needs no change. Add a new item 4:
 
 ```markdown
-4. On the results screen, click a column header to sort by it; click it again to reverse. The active column
-   carries `v` (descending) or `^` (ascending). Frames and Hitches have a fixed order. **Highlight** draws a
-   wireframe box around the selected block, or around the whole 16-block section for a Sections row, for ten
-   seconds and through walls.
+4. On the results screen, click a column header to sort by it; click it again to reverse. Each list opens in
+   the same order as the text report, the active column carries `v` (descending) or `^` (ascending), and a
+   name column sorts A to Z on its first click. Frames and Hitches have a fixed order. A number too wide for
+   its column shows as `###`; widen the window to read it. **Highlight** draws a wireframe box around the
+   selected block, or around the whole 16-block section for a Sections row, for ten seconds and through
+   walls. Highlight and Teleport are greyed out once the world the session was taken in is gone, and hovering
+   over them says so.
 ```
 
 In "Reading a report", add:
@@ -1770,35 +2016,64 @@ In "Reading a report", add:
   20 and the JSON's complete list are unchanged.
 ```
 
-- [ ] **Step 2: Apply the spec amendments**
+Then read the rest of the README for anything this plan made false. Phase 4b's sentence about a highlight left
+over from an earlier session is still true.
+
+- [ ] **Step 2: Amend the base spec**
 
 In `docs/superpowers/specs/2026-09-19-renderable-fps-profiler-design.md`:
 
 1. **§5.3**, replace the paragraph beginning "Every list sorts by any numeric column" with:
 
 ```markdown
-The Block Entities, Entities, Particles, Blocks, Sections and Flywheel lists sort by any numeric column:
-clicking a column header sorts by it descending, clicking the active header reverses it, and the active
-header carries an arrow. The Frames and Hitches tabs have a fixed order. Position and individual rows have
-**Highlight** (draw a wireframe box at the position for 10 s, the whole 16-block section for a Sections row)
-and **Teleport** (sends `/tp @s x y z` as chat, keeping the player's current Y for a section row so they do
-not arrive inside stone; if the player lacks permission the server's error is what they see). A **Copy
-report** button copies the text report; **Open folder** opens the report directory. The Sections list shows
-the 200 busiest sections and a trailing row saying how many it left out.
+The Block Entities, Entities, Particles, Blocks, Sections and Flywheel lists sort by any column. Each opens in
+the order the text report uses; clicking a column header sorts by it (largest first for a number, A to Z for a
+name), clicking the active header reverses it, and the active header carries an arrow. The Frames and Hitches
+tabs have a fixed order. A number too wide for its column is drawn as `#`s rather than cut short. Position and
+individual rows have **Highlight** (draw a wireframe box at the position for 10 s, the whole 16-block section
+for a Sections row) and **Teleport** (sends `/tp @s x y z` as chat, keeping the player's current Y for a
+section row so they do not arrive inside stone; if the player lacks permission the server's error is what
+they see). Both are disabled, with a tooltip saying why, once the world the session was taken in is gone. A
+**Copy report** button copies the text report; **Open folder** opens the report directory. The Sections list
+shows the 200 busiest sections and a trailing row saying how many it left out. The ranked and particle column
+names and cell text are defined once, in `core/RankedTable`, and shared with the text report.
 ```
 
 2. **§5.4**, in the first paragraph, replace "Floating text labels" with "Floating text labels, each drawn
    only in the dimension the session ran in,".
 
-- [ ] **Step 3: Build**
+- [ ] **Step 3: Amend the addendum**
+
+In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
+
+1. **§P4.B3**, in the paragraph on why the overlay is not measured, the leftover highlight is described as
+   "today two nested screen-space outlines around the block's projected corners, not the wireframe §P4.C5
+   proposes". That is no longer true; it is now the wireframe box of §P4.C5. Say so.
+2. **§P4.C6 #4**, replace the resolution with: a right-aligned number too wide for its column is drawn as
+   `#`s, as a spreadsheet does, because truncating it like text makes it read as a different, smaller number
+   (`4900.0` cut to `490`).
+3. **§P4.C7**, the bullet beginning "`Tab.Columns` gains a `ColumnSort[] sorts`": the columns are now a list
+   of `Column(name, weight, rightAlign, sort)` records, so parallel arrays cannot drift; keep the paragraph's
+   reasoning for a record over the two existing enums. Add to the design: each tab opens in the text report's
+   order (`TabTest` pins each to the report's ordering); a new column's first click is A to Z for a name and
+   largest first for a number; the Blocks and Sections name columns carry `MeshSort.LABEL`. Amend the
+   acceptance check's "Click `name` and the rows sort alphabetically" only if it no longer matches.
+4. **§P4.C6**, add a row: the ranked and particle column names and cell expressions were written twice, in
+   `TextReportWriter` and `Rows`; they are now defined once in `core/RankedTable`, and `TabTest` asserts that
+   the screen's ranked and particle headers equal it.
+5. Check §P4.C1, §P4.C2, §P4.C3, §P4.C4 and §P4.C5 against the code and correct anything that no longer
+   matches. §P4.C5 in particular should not claim the highlight allocates per frame: its corner arrays are
+   static scratch space.
+
+- [ ] **Step 4: Build**
 
 ```bash
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 95 tests.
+Expected: `BUILD SUCCESSFUL`, 118 tests.
 
-- [ ] **Step 4: Stage and report**
+- [ ] **Step 5: Stage and report**
 
 ```bash
 git add README.md docs/superpowers/specs
@@ -1813,51 +2088,73 @@ docs: README and spec for phase 4c
 
 ---
 
-### Task 8: In-pack acceptance (human step)
+### Task 8: In-pack acceptance for 4b and 4c together (human step)
 
 **Files:**
-- Create: `docs/acceptance/phase-4c.md`
+- Create: `docs/acceptance/phase-4b-4c.md`
 
-The user runs this in the real Gears & Frontiers instance with the jar built from this plan's tip. The
-orchestrator writes the log, has it reviewed, and commits it.
+The user chose on 2026-09-25 to run plan 4b's Task 7 and this task in one session, in the real Gears &
+Frontiers instance, with the jar built from this branch's tip (`renderable-0.4.1.jar`; 4b bumped the version so
+these reports cannot be mistaken for 4a's). The session also picks up **phase 4a's Check 7**, the look at the
+results screen that was never run. The orchestrator writes one log from what comes back, has it reviewed, and
+commits it; it replaces the `phase-4b.md` that 4b's plan names.
 
-1. **Sorting (§P4.C7).** Run a 30 s session at the base. On Block Entities, click `verts/f`: rows reorder by
-   vertices with a white `v` on that header. Click again: `^` and the reverse order. Click `name`:
-   alphabetical. Repeat one click each on Entities, Particles, Blocks, Sections and Flywheel. Confirm
-   clicking a header on Frames and Hitches does nothing. Say whether the arrow is legible at GUI scale 3.
+**Plan 4b's checks**, exactly as its Task 7 lists them: two back-to-back 30 s sessions at the base (the second
+is the only coverage of the stale-accumulator check), the JSON's size and validity after a 30 s flight, the
+self-time line in both sessions, the `reportFolder = "../escaped"` fallback, the overlay toggle surviving a
+session, the greyed Highlight and Teleport after a disconnect and reconnect, and a clean `latest.log`.
+
+**This plan's checks**, in the same client:
+
+1. **Sorting (§P4.C7).** Open Block Entities: the rows are in the text report's order and `share` carries a
+   white `v`. Click `verts/f`: rows reorder by vertices, largest first, and the `v` moves there. Click it
+   again: `^` and the reverse order. Click `name`: A to Z, with `^`. Repeat one click each on Entities,
+   Particles, Blocks, Sections and Flywheel. Clicking a header on Frames or Hitches does nothing. Say whether
+   the arrow is legible at GUI scale 3.
 2. **Empty states (§P4.C1).** With shaders on — which turned the Flywheel backend off in run 2 of the phase
    2/3 log — open the Flywheel tab and confirm it reads `(no data: no Flywheel visualization ran; backend
    flywheel:off)`, the same sentence the report prints. Paste both.
-3. **Sections cap (§P4.C2).** Fly into unloaded terrain for 30 s, then open the Sections tab and paste its
+3. **Sections cap (§P4.C2).** After the 30 s flight from 4b's JSON check, open the Sections tab and paste its
    last row, which should read `... and N more sections (the report and JSON have all M)`.
 4. **Teleport (§P4.C3).** Select a Sections row and press Teleport: you should arrive above ground at that
    section's column, not inside it.
-5. **Highlight (§P4.C5).** Highlight a block entity and a section. Confirm a box in perspective rather than
-   a flat rectangle, visible through walls, and that standing inside the highlighted section still draws the
-   edges that are in front of you.
+5. **Highlight (§P4.C5).** Highlight a block entity and a section. Confirm a box in perspective rather than a
+   flat rectangle, visible through walls; that standing inside the highlighted section still draws the edges
+   in front of you; and that from far away it shrinks to a small square rather than vanishing.
 6. **Labels (§P4.C4).** After a session with entities in view, go through a portal: no entity labels. Come
    back: they return.
-7. **Header parity (§P4.C6).** Sections tab's last header reads `avg ms/rb`; the Flywheel tab and the
-   report's Flywheel table both read `SingleAxisRotatingVisual`; at GUI scale 3 with a narrow window, no
-   right-aligned number overlaps its neighbour.
+7. **Header parity and a narrow window (§P4.C6).** The Sections tab's last header reads `avg ms/rb`; the
+   Flywheel tab and the report's Flywheel table both read `SingleAxisRotatingVisual`. With a narrow window at
+   GUI scale 3, a number too wide for its column shows as `###`: no number overlaps its neighbour, and none is
+   shown cut short.
+8. **The gc f note.** After a session with at least one collection, the Frames tab shows the `gc f` note
+   under its `GC` row.
+9. **The tooltip.** During 4b's reconnect check, hover over the greyed Highlight: it reads "The world this
+   session was taken in is gone".
+
+**Phase 4a's Check 7:** the ranked tabs show nine columns ending `peak ms | gc f | shadow | verts/f | calls`,
+the Particles tab seven ending `verts/f | gc f`, and the `Renderable overhead` row names both counts. Say
+whether all of it reads at GUI scale 3.
 
 Then the orchestrator:
 
 ```bash
-git add docs/acceptance/phase-4c.md
-git commit -m "docs: phase 4c acceptance log"
+git add docs/acceptance/phase-4b-4c.md
+git commit -m "docs: phase 4b and 4c acceptance log"
 ```
 
 ---
 
 ## Notes for the orchestrator
 
-- Tasks 1, 2, 3 and 5 are JUnit; Tasks 4 and 6 need a dev client launch and a human eye.
-- Task 2 leaves the tree **not compiling** on purpose; Tasks 3 and 4 close it. Do not hand Task 2 to a
-  subagent that has been told to run the full build.
+- Tasks 1, 1a, 2, 3 and 5 add JUnit tests. Tasks 4 and 6 are Minecraft-side with nothing to unit-test, and
+  their by-eye checks are all in Task 8. No task launches a client.
+- Every task ends with `./gradlew build` green. The first draft had Tasks 2 and 3 leave the tree
+  uncompilable; the 2026-09-25 revision removed that.
 - **Reviewer checklist per task:** `core` and `report` free of Minecraft imports; the empty-state sentences
   written once, in `EmptyStates`, and identical in the screen and the report; `Rows.build`'s five call
-  paths all passing the environment; no per-frame allocation added to `WorldOverlay.render` beyond the three
-  small arrays in `drawHighlight`, which only run while a highlight is live.
+  paths all passing the environment; the ranked and particle names and cells coming only from `RankedTable`;
+  no per-frame allocation added to `WorldOverlay.render` (`drawHighlight`'s corner arrays are static scratch
+  space).
 - If a reviewer proposes amending §5.3 to match the old cycling button rather than implementing header
   clicks, point at §P4.C7's rejected alternatives: the decision is the user's and it is recorded.
