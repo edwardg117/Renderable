@@ -10,6 +10,7 @@ import io.github.edwardg117.renderable.core.FrameStats;
 import io.github.edwardg117.renderable.core.MeshEntry;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
+import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
@@ -54,6 +55,9 @@ public final class Rows {
         rows.add(Row.plain("Hitch threshold", Fmt.ms(r.hitchThresholdNanos()) + " ms"));
         rows.add(Row.plain("Hitches", r.hitches().size() + " (" + Fmt.pct(r.hitchSharePercent()) + " of time)"));
         rows.add(Row.plain("GC", st.gcCount() + " collections, " + st.gcMillis() + " ms paused"));
+        if (st.gcCount() > 0) {
+            for (String line : RankedTable.GC_COLUMN_NOTE_LINES) rows.add(Row.plain(line));
+        }
         rows.add(Row.plain("Renderable overhead", String.format(Locale.ROOT, "%.2f ms over %s timed calls and %s vertex calls",
                 r.overheadEstimateMs(), Fmt.count(r.timedCalls()), Fmt.count(r.vertexCalls()))));
         if (r.selfNanos() > 0) {
@@ -131,11 +135,11 @@ public final class Rows {
             rows.add(Row.heading("Flywheel-instanced machines are not timed here; see the Flywheel tab"));
         }
         for (RankedEntry t : Ranking.sort(Ranking.byType(r, category), sort)) {
-            rows.add(new Row(cells(t.typeId() + "  (" + t.members() + ")", t, frames, total),
+            rows.add(new Row(RankedTable.ranked(t.typeId() + "  (" + t.members() + ")", t, frames, total),
                     null, t.typeId(), true, true, 0, null, -1));
             if (expanded.contains(t.typeId())) {
                 for (RankedEntry m : Ranking.sort(Ranking.membersOf(r, category, t.typeId()), sort)) {
-                    rows.add(new Row(cells(memberLabel(m.key()), m, frames, total),
+                    rows.add(new Row(RankedTable.ranked(memberLabel(m.key()), m, frames, total),
                             m.key(), t.typeId(), false, false, 1, posOf(m.key()), entityIdOf(m.key())));
                 }
             }
@@ -150,14 +154,7 @@ public final class Rows {
         long total = r.stats().totalNanos();
         List<Row> rows = new ArrayList<>();
         for (RankedEntry e : Ranking.sort(Ranking.byKey(r, ProfileKey.Category.PARTICLE), sort)) {
-            rows.add(new Row(new String[]{
-                    e.label(),
-                    Fmt.us(e.renderUsPerFrame(frames)),
-                    Fmt.us(e.tickUsPerFrame(frames)),
-                    Fmt.pct(e.sharePercent(total)),
-                    Fmt.num(e.callsPerFrame(frames)),
-                    Fmt.num(e.verticesPerFrame(frames)),
-                    Fmt.count(e.gcFrames())},
+            rows.add(new Row(RankedTable.particle(e, frames, total),
                     e.key(), e.typeId(), false, false, 0, null, -1));
         }
         if (rows.isEmpty()) rows.add(Row.plain("(no particles rendered)"));
@@ -215,19 +212,6 @@ public final class Rows {
         }
         if (rows.isEmpty()) rows.add(Row.plain("(no data: Sodium mesh hooks did not run)"));
         return rows;
-    }
-
-    static String[] cells(String name, RankedEntry e, int frames, long total) {
-        return new String[]{
-                name,
-                Fmt.us(e.renderUsPerFrame(frames)),
-                Fmt.us(e.tickUsPerFrame(frames)),
-                Fmt.pct(e.sharePercent(total)),
-                Fmt.peakMs(e.maxFrameNanos(), e.gcFrames()),
-                Fmt.count(e.gcFrames()),
-                Fmt.pct(e.shadowPercent()),
-                Fmt.num(e.verticesPerFrame(frames)),
-                Fmt.count(e.calls())};
     }
 
     static String memberLabel(ProfileKey k) {

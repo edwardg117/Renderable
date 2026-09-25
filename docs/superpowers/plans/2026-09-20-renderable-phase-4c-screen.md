@@ -76,8 +76,8 @@ src/test/java/io/github/edwardg117/renderable/
 docs/acceptance/phase-4b-4c.md                                Create (Task 8)
 ```
 
-**Expected test totals**, starting from 108 with 4a and 4b in: 112 after Task 1, 113 after Task 1a, 116 after
-Task 2, 118 after Task 3, 118 after Task 4, 120 after Task 5, 120 at the end. Every task ends with
+**Expected test totals**, starting from 108 with 4a and 4b in: 112 after Task 1, 114 after Task 1a, 117 after
+Task 2, 119 after Task 3, 119 after Task 4, 121 after Task 5, 121 at the end. Every task ends with
 `./gradlew build` green.
 
 ---
@@ -368,8 +368,11 @@ on `core`, and `core` already carries presentation code by precedent (`Fmt` is e
 `Splits.frame`/`average` produce report strings).
 
 What stays where it is: the screen's column weights, alignment and sorting (Task 2), the report's `TOP`
-truncation, and both surfaces' Blocks, Sections and Flywheel tables. Those genuinely differ — the Sections
-header is `avg ms/rb` on screen and `avg ms/rebuild` in the report by design (§P4.C6 #1).
+truncation, and both surfaces' Blocks, Sections and Flywheel tables. Only the Flywheel table and one Sections
+header (`avg ms/rb` on screen, `avg ms/rebuild` in the report, by design, §P4.C6 #1) genuinely differ; the
+Blocks table and the Sections cells are identical on both surfaces and are still written twice. Moving them
+into a `core` class the way this task moves the ranked ones is a sound follow-up, deliberately left out of
+this plan to keep its scope; Task 7 adds it to the addendum's deferred list (§P4.3).
 
 Two changes from the first draft of this task:
 
@@ -383,6 +386,15 @@ Also, while these files are open: the results screen's Frames tab has no equival
 `gc f` that phase 4a added to the text report. The sentence moves into `RankedTable`, and the Frames tab
 prints it under its `GC` row when there was a collection, exactly as the report does under its `GC:` line.
 
+Two corrections from this task's review on 2026-09-25, which the code below already carries:
+
+- **The screen's `gc f` note is two rows, not one.** The sentence is 559 px wide in the vanilla font, and at
+  the default (Auto) GUI scale the GUI is 426 to 480 px wide, so a one-row note lost its explanation of `-`.
+  `RankedTable` holds it as two lines that fit (244 px and 311 px); the report prints them joined, which is
+  the sentence it has always printed.
+- **The test pins every cell under its header.** The first version checked lengths and two cells, and six
+  deliberate swaps of cells or headers passed it.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `src/test/java/io/github/edwardg117/renderable/core/RankedTableTest.java`:
@@ -392,36 +404,53 @@ package io.github.edwardg117.renderable.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static io.github.edwardg117.renderable.core.TestSessions.PRESS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class RankedTableTest {
 
     @Test
-    void everyRowHasOneCellPerHeaderWithTheNameFirst() {
+    void everyCellSitsUnderItsHeader() {
         SessionResult p3 = TestSessions.phase3();
         int frames = p3.frameCount();
         long total = p3.stats().totalNanos();
 
         RankedEntry press = Ranking.byKey(p3, ProfileKey.Category.BLOCK_ENTITY).get(0);
         assertEquals(PRESS, press.key());
-        String[] ranked = RankedTable.ranked("row name", press, frames, total);
-        assertEquals(RankedTable.RANKED.size(), ranked.length);
-        assertEquals("row name", ranked[0], "the caller names the row: the screen and the report label rows differently");
-        assertEquals("100.0", ranked[RankedTable.RANKED.indexOf("verts/f")], "2000 vertices over 20 frames");
+        assertEquals(List.of("name=row name", "render us/f=4900.0", "tick us/f=400.0", "share=27.6%", "peak ms=60.40",
+                        "gc f=0", "shadow=0.0%", "verts/f=100.0", "calls=20"),
+                pairs(RankedTable.RANKED, RankedTable.ranked("row name", press, frames, total)));
 
         RankedEntry flame = Ranking.byKey(p3, ProfileKey.Category.PARTICLE).get(0);
-        String[] particle = RankedTable.particle(flame, frames, total);
-        assertEquals(RankedTable.PARTICLE.size(), particle.length);
-        assertEquals(flame.label(), particle[0]);
-        assertEquals("3.0", particle[RankedTable.PARTICLE.indexOf("avg live")], "three flame renders a frame");
+        assertEquals(List.of("class=FlameParticle", "render us/f=300.0", "tick us/f=100.0", "share=2.1%",
+                        "avg live=3.0", "verts/f=0.0", "gc f=0"),
+                pairs(RankedTable.PARTICLE, RankedTable.particle(flame, frames, total)));
+    }
+
+    @Test
+    void theGcNoteSplitsIntoScreenLinesThatJoinIntoTheReportsSentence() {
+        // The report has always printed this sentence; splitting it for the screen must not change it.
+        assertEquals("(gc f counts frames a pause could account for; those are left out of peak ms, and \"-\" means none was clean)",
+                RankedTable.GC_COLUMN_NOTE);
+        assertEquals(2, RankedTable.GC_COLUMN_NOTE_LINES.size());
+    }
+
+    private static List<String> pairs(List<String> headers, String[] cells) {
+        assertEquals(headers.size(), cells.length, "one cell per header");
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < cells.length; i++) out.add(headers.get(i) + "=" + cells[i]);
+        return out;
     }
 }
 ```
 
 The fixture facts it relies on: in `TestSessions.phase3()` the press is the costliest block entity and emits
 100 vertices on each of 20 frames; the flame renders three times a frame, and `calls` counts render calls
-only, so its average live count is 3.0.
+only, so its average live count is 3.0. Every value within each row differs from the others, so a swap of two
+cells or two headers fails the test.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -441,10 +470,11 @@ package io.github.edwardg117.renderable.core;
 import java.util.List;
 
 /**
- * The columns of the ranked tables (block entities, entities) and of the particle table, written once so the
- * text report and the results screen cannot disagree about what a column is called or what goes in it. Widths,
- * truncation and sorting stay with each surface; only the names and the cell text live here. The first cell is
- * always the row's name; every other cell is a number.
+ * The columns of the ranked tables (block entities, entities) and of the particle table: their names and the
+ * text of each cell, written once for the text report and the results screen. The report takes its headers
+ * from here; the screen writes its headers out in {@code Tab}, beside their widths and sorts. Widths,
+ * truncation and sorting stay with each surface. The first cell is the row's name and the rest are numbers,
+ * except that a peak with no clean frame reads "-" (see {@link Fmt#peakMs}).
  */
 public final class RankedTable {
 
@@ -456,9 +486,16 @@ public final class RankedTable {
     public static final List<String> PARTICLE = List.of(
             "class", "render us/f", "tick us/f", "share", "avg live", "verts/f", "gc f");
 
-    /** Explains the gc f column and a "-" peak. The report prints it under its GC line, the screen under its GC row. */
-    public static final String GC_COLUMN_NOTE =
-            "(gc f counts frames a pause could account for; those are left out of peak ms, and \"-\" means none was clean)";
+    /**
+     * Explains the gc f column and a "-" peak, as two lines so each fits the results screen at the default GUI
+     * scale. The screen prints them under its GC row; the report prints {@link #GC_COLUMN_NOTE}.
+     */
+    public static final List<String> GC_COLUMN_NOTE_LINES = List.of(
+            "(gc f counts frames a pause could account for;",
+            "those are left out of peak ms, and \"-\" means none was clean)");
+
+    /** The note as one line, which the report prints under its GC line. */
+    public static final String GC_COLUMN_NOTE = String.join(" ", GC_COLUMN_NOTE_LINES);
 
     private RankedTable() {
     }
@@ -557,12 +594,15 @@ In `src/main/java/io/github/edwardg117/renderable/ui/screen/Rows.java`, add
         }
 ```
 
-4. In `frames(...)`, immediately after the `GC` row, add the note. A one-cell row spans the whole row width
-   (`RowList.Entry.render` draws single-cell rows across every column), which is what a sentence needs:
+4. In `frames(...)`, immediately after the `GC` row, add the note, one row per line. A one-cell row spans the
+   whole row width (`RowList.Entry.render` draws single-cell rows across every column), and each line fits at
+   the default GUI scale:
 
 ```java
         rows.add(Row.plain("GC", st.gcCount() + " collections, " + st.gcMillis() + " ms paused"));
-        if (st.gcCount() > 0) rows.add(Row.plain(RankedTable.GC_COLUMN_NOTE));
+        if (st.gcCount() > 0) {
+            for (String line : RankedTable.GC_COLUMN_NOTE_LINES) rows.add(Row.plain(line));
+        }
 ```
 
 - [ ] **Step 6: Run the whole build**
@@ -571,7 +611,7 @@ In `src/main/java/io/github/edwardg117/renderable/ui/screen/Rows.java`, add
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **113 tests**.
+Expected: `BUILD SUCCESSFUL`, **114 tests**.
 
 - [ ] **Step 7: Stage and report**
 
@@ -936,6 +976,11 @@ raised from 2 to 3 (§P4.C6 #1); the report keeps `avg ms/rebuild`.
 The names of the ranked and particle columns are written out here rather than read from `RankedTable` by
 index, so each column is one line a reader can check; `TabTest` asserts they equal `RankedTable`'s.
 
+Now that a test ties the two lists together, say so where a reader of `core` will look. In
+`core/RankedTable.java`, the class Javadoc's sentence "the screen writes its headers out in {@code Tab}, beside
+their widths and sorts" becomes "the screen writes its headers out in {@code Tab}, beside their widths and
+sorts, and {@code TabTest} asserts they equal {@link #RANKED} and {@link #PARTICLE}".
+
 - [ ] **Step 5: `RowList` reads the records, and draws a number that does not fit as `#`s**
 
 In `RowList.Entry.render`, replace `boolean[] right = tab.columns().rightAlign();` with
@@ -994,7 +1039,7 @@ Task 4 adds the sort arrow to this loop.
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **116 tests**.
+Expected: `BUILD SUCCESSFUL`, **117 tests**.
 
 If `layoutFitsTheRowAndNeverOverlaps` fails at `rowWidth = 120` because a column does not advance, the weights
 are too uneven for a narrow screen: that is a real finding, not a test to relax. Report it.
@@ -1402,7 +1447,7 @@ button is hidden.
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **118 tests**.
+Expected: `BUILD SUCCESSFUL`, **119 tests**.
 
 - [ ] **Step 8: Stage and report**
 
@@ -1635,7 +1680,7 @@ and replace `updateButtons()`, which keeps 4b's stale-world guard and drops the 
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **118 tests**.
+Expected: `BUILD SUCCESSFUL`, **119 tests**.
 
 Nothing in this task is unit-testable: `ResultsScreen` is a Minecraft `Screen`. The by-eye checks the first
 draft put here — the arrow, the clicks, the narrow window, the teleport, the tooltip — are in Task 8, where a
@@ -1800,7 +1845,7 @@ two cannot drift:
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **120 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
+Expected: `BUILD SUCCESSFUL`, **121 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
 keys `a`, `b`, `c`, whose simple names are themselves, so it is unaffected.
 
 - [ ] **Step 6: Stage and report**
@@ -2035,7 +2080,7 @@ Replace `drawHighlight` and add the two helpers below it:
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 120 tests. Nothing here is unit-testable, and the first draft's dev-client look
+Expected: `BUILD SUCCESSFUL`, 121 tests. Nothing here is unit-testable, and the first draft's dev-client look
 (the box in perspective, the corner behind the camera, the distant 8-pixel square, the portal) is in Task 8,
 where a person runs it in the pack. Do not launch a client for this task.
 
@@ -2140,6 +2185,9 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
 5. Check §P4.C1, §P4.C2, §P4.C3, §P4.C4 and §P4.C5 against the code and correct anything that no longer
    matches. §P4.C5 in particular should not claim the highlight allocates per frame: its corner arrays are
    static scratch space.
+6. **§P4.3** (deferred items), add one: the Blocks table and the Sections cells are still written twice, in
+   `TextReportWriter` and `Rows`, and could move into `core` the way Task 1a moved the ranked ones; only the
+   Sections `avg ms/rb` header differs between the surfaces, by design.
 
 - [ ] **Step 4: Build**
 
@@ -2147,7 +2195,7 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 120 tests.
+Expected: `BUILD SUCCESSFUL`, 121 tests.
 
 - [ ] **Step 5: Stage and report**
 

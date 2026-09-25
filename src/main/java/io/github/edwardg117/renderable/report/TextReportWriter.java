@@ -9,6 +9,7 @@ import io.github.edwardg117.renderable.core.FrameStats;
 import io.github.edwardg117.renderable.core.MeshEntry;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
+import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.Splits;
@@ -30,7 +31,7 @@ public final class TextReportWriter {
     static final String GC_NOTE = "  [gc] marks a contributor at least as large as that frame's GC pause, so most of it may be the pause rather than the code.";
 
     /** Printed under the GC line so every table's gc f column and its "-" peaks explain themselves. */
-    static final String GC_COLUMN_NOTE = "  (gc f counts frames a pause could account for; those are left out of peak ms, and \"-\" means none was clean)";
+    static final String GC_COLUMN_NOTE = "  " + RankedTable.GC_COLUMN_NOTE;
 
     private TextReportWriter() {
     }
@@ -116,19 +117,9 @@ public final class TextReportWriter {
             sb.append("  (no data: hook not active in this build)\n\n");
             return;
         }
-        Table t = new Table(
-                new String[]{"name", "render us/f", "tick us/f", "share", "peak ms", "gc f", "shadow", "verts/f", "calls"},
-                new boolean[]{false, true, true, true, true, true, true, true, true});
+        Table t = Table.nameThenNumbers(RankedTable.RANKED);
         for (RankedEntry e : entries.subList(0, Math.min(TOP, entries.size()))) {
-            t.row(e.label(),
-                    Fmt.us(e.renderUsPerFrame(frames)),
-                    Fmt.us(e.tickUsPerFrame(frames)),
-                    Fmt.pct(e.sharePercent(total)),
-                    Fmt.peakMs(e.maxFrameNanos(), e.gcFrames()),
-                    Fmt.count(e.gcFrames()),
-                    Fmt.pct(e.shadowPercent()),
-                    Fmt.num(e.verticesPerFrame(frames)),
-                    Fmt.count(e.calls()));
+            t.row((Object[]) RankedTable.ranked(e.label(), e, frames, total));
         }
         sb.append(t.render("  ")).append('\n');
     }
@@ -143,17 +134,9 @@ public final class TextReportWriter {
                     : "  (no data: hook not active in this build)\n\n");
             return;
         }
-        Table t = new Table(
-                new String[]{"class", "render us/f", "tick us/f", "share", "avg live", "verts/f", "gc f"},
-                new boolean[]{false, true, true, true, true, true, true});
+        Table t = Table.nameThenNumbers(RankedTable.PARTICLE);
         for (RankedEntry e : entries.subList(0, Math.min(TOP, entries.size()))) {
-            t.row(e.label(),
-                    Fmt.us(e.renderUsPerFrame(frames)),
-                    Fmt.us(e.tickUsPerFrame(frames)),
-                    Fmt.pct(e.sharePercent(total)),
-                    Fmt.num(e.callsPerFrame(frames)),
-                    Fmt.num(e.verticesPerFrame(frames)),
-                    Fmt.count(e.gcFrames()));
+            t.row((Object[]) RankedTable.particle(e, frames, total));
         }
         sb.append(t.render("  ")).append('\n');
     }

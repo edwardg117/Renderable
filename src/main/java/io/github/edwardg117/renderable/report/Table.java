@@ -17,6 +17,13 @@ final class Table {
         this.rightAlign = rightAlign;
     }
 
+    /** A table whose first column is a left-aligned name and whose other columns are right-aligned numbers. */
+    static Table nameThenNumbers(List<String> headers) {
+        boolean[] right = new boolean[headers.size()];
+        for (int i = 1; i < right.length; i++) right[i] = true;
+        return new Table(headers.toArray(String[]::new), right);
+    }
+
     void row(Object... cells) {
         if (cells.length != headers.length) {
             throw new IllegalArgumentException("expected " + headers.length + " cells, got " + cells.length);
