@@ -576,8 +576,8 @@ once per rendered frame. None of that cost, nor the once-a-second Flywheel visua
    reads and a return per frame. Wrapping that in a `beginSelf`/`endSelf` pair would add a clock read to
    every measured frame in order to measure approximately zero — the opposite of this item's point. The
    only overlay work that can overlap a session is a ten-second highlight left over from a previous one —
-   today two nested screen-space outlines around the block's projected corners, not the wireframe §P4.C5
-   proposes — which the README records rather than measures. Naming the overlay in the
+   now the wireframe box §P4.C5 built, whose corner and clip arrays are static scratch space reused every
+   frame, so it allocates nothing — which the README records rather than measures. Naming the overlay in the
    report line while not measuring it would be a false claim, so the line names what it measures.
 
 **Alternatives rejected.**
@@ -705,8 +705,8 @@ are disabled and Copy report still works.
 fired for real. `ui/screen/Rows.build` has no `Environment`, so the same situations all read
 `(no data: Sodium mesh hooks did not run)` or `(no Flywheel visualization ran)`.
 
-**Design.** Thread the `Environment` through: `Rows.build(Tab, SessionResult, Environment, Ranking.Sort,
-Set<String>)`, which `ResultsScreen` already holds. The empty-state sentences move to a new
+**Design.** Thread the `Environment` through: `Rows.build(Tab, SessionResult, Environment, ColumnSort,
+boolean, Set<String>)`, which `ResultsScreen` already holds. The empty-state sentences move to a new
 `core/EmptyStates` class — plain Java, no Minecraft, no Gson — and both `TextReportWriter` and `Rows` call
 it, so the screen and the report can no longer drift. `ui` keeps its dependency direction (`ui -> core`);
 it does not gain one on `report`.
@@ -728,10 +728,13 @@ flywheel:off)`.
 
 **Observed.** `Rows.sections` adds one row per rebuilt section. The phase 3 flight produced 1052.
 
-**Design.** Cap the Sections tab at 200 rows and append one non-selectable row reading
-`... and 852 more sections (the report and JSON have all 1052)`. The Blocks tab is bounded by the number of
-block types in the pack and is left alone. The text report's top-20 truncation and the JSON's completeness
-are unchanged.
+**Design.** Cap the Sections tab at 200 rows and append one plain row reading
+`... and 852 more sections (the JSON has all 1052)` — singular, `... and 1 more section (the JSON has all
+201)`, at exactly one left out. The report is not named in that row: the text report prints only its own top
+20, so it does not have the rest either. The cap takes the first 200 of whatever order the tab is currently
+sorted in, which is the 200 most-rebuilt sections only when the tab is still in its default order. The Blocks
+tab is bounded by the number of block types in the pack and is left alone. The text report's top-20
+truncation and the JSON's completeness are unchanged.
 
 **User-visible change.** Screen only.
 
@@ -743,16 +746,25 @@ and the JSON still contains every section.
 **Observed.** `ResultsScreen.teleportToSelected` sends `tp @s x (y+1) z` using the row's position, which for
 a section row is the section's centre block — solid ground for most sections.
 
-**Design.** Section rows teleport to the section's centre X and Z at the **player's current Y**, which is by
-construction a place the player can stand. Block-entity rows keep `y + 1`. Entity rows are unchanged.
+**Design.** The design changed in review: the player's current Y is only a place they can stand at their own
+column, not necessarily at the section's, so a player on foot walking towards a hill landed inside it under
+the first version of this fix. Section rows now teleport to the section's centre X and Z at the player's own
+Y raised to the first height in that column at which the player's bounding box has no block collision
+(`ResultsScreen.standingY`) — the client does have the collision shapes of loaded chunks, which is what this
+uses. A column the client has not loaded has none to test, so the player's own Y is kept as is. Block-entity
+rows keep `y + 1`. Entity rows are unchanged.
 
 **Alternatives rejected.**
 
 - *The section's top (`y * 16 + 16`).* Still inside terrain for any section below the surface.
-- *A safe-position search.* The client does not have one, and the server would have to run it.
+- *A heightmap lookup for an unloaded column.* `ClientLevel.getHeight` reads an empty chunk and returns the
+  bottom of the world; in the Nether it returns the top of the bedrock roof; and `MOTION_BLOCKING`, the type
+  that would otherwise fit, counts water and leaves as ground. None of the three heightmap types is safe to
+  fall back on, so an unloaded column keeps the player's own Y instead.
 
 **User-visible change.** Screen only. The command sent for a section row becomes
-`tp @s <centreX> <playerY> <centreZ>`.
+`tp @s <centreX> <standingY> <centreZ>`, where `standingY` is the player's own Y raised until their bounding
+box fits.
 
 **Acceptance check (C3).** Teleport from a Sections row and arrive above ground at the section's column.
 
@@ -787,41 +799,53 @@ labels are drawn, and confirm they return on the way back.
 them. Phase 1's log: *"The user notes it is less polished than Observable's marker but acceptable for a
 first pass; a wireframe box drawn in screen space is a phase 2 polish item."* It slipped phases 2 and 3.
 
-**Design.** Project the eight corners as now, then draw the twelve edges as two-pixel Bresenham lines in the
-same GUI layer, so the marker still shows through walls and shaders. Three refinements the rectangle could
-not have:
+**Design.** Project the eight corners as now, then push the twelve edges into the GUI layer's vertex buffer
+as two-pixel-wide quads, one `flush()` for the whole box, so the marker still shows through walls and
+shaders. Two refinements the rectangle could not have:
 
-- An edge with either endpoint behind the camera is skipped, instead of abandoning the whole highlight as
-  the current code does when any corner is behind.
-- When the projected box is smaller than `MIN_HIGHLIGHT` on both axes, the rectangle fallback is drawn, so a
-  distant block stays findable.
-- Lines are clipped to the screen rectangle before rasterising, so an edge that runs off screen costs
-  nothing.
+- An edge that crosses the camera's near plane is clipped there, in clip space, instead of the whole
+  highlight vanishing when any one of the eight corners is behind the camera, which is what the rectangle
+  did; only an edge with both endpoints behind the plane is skipped.
+- When the projected box is smaller than `MIN_HIGHLIGHT` on both axes, a small square is drawn in its place,
+  so a distant block stays findable.
+
+Each edge is a quad handed to the GPU rather than pixel runs rasterised on the CPU, so an edge that runs off
+screen costs the same as one that does not: the GPU's own rasteriser clips it for free. The corner and clip
+arrays are static scratch space reused every frame, so drawing the box allocates nothing — which matters
+because a highlight can outlive the session it came from and keep drawing while the next one samples
+(§P4.B3).
 
 **Alternatives rejected.**
 
 - *Drawing in the world with a depth test off.* This is exactly what phase 1 replaced: Iris's pipeline drew
   it behind blocks.
 - *`GuiGraphics.renderOutline` per face.* Only axis-aligned rectangles; a projected cube's faces are not.
+- *Rasterising each edge on the CPU into runs of `GuiGraphics.fill`, as the first version of this design
+  did.* In 1.21.1 a GUI layer is not drawn managed, so every `fill` flushes: each run was its own draw call
+  carrying about 1 KB of vanilla garbage, up to 1,275 draw calls for one frame of a section highlighted from
+  three blocks away (the old rectangle took 8), and the loop was unbounded for a corner just in front of the
+  camera.
 
 **User-visible change.** Overlay only.
 
 **Acceptance check (C5).** Highlight a block entity and a section from the results screen: a box in
 perspective, visible through walls, with the section's box enclosing sixteen blocks on a side.
 
-## P4.C6 Screen and report disagree in four places
+## P4.C6 Screen and report disagree in five places
 
 | # | Disagreement | Resolution |
 | --- | --- | --- |
 | 1 | Sections tab header `avg ms`; report column `avg ms/rebuild` | Screen header becomes `avg ms/rb` and the column weight rises from 2 to 3; the report keeps `avg ms/rebuild` in full, because plain text has the room |
-| 2 | Flywheel visual classes are simple names on screen, fully qualified in the report and JSON | Screen **and** report print the simple name; JSON keeps the fully-qualified name as the machine record. When two classes in one session share a simple name, both are prefixed with their last package segment (`press.PressVisual`, `mixer.PressVisual`) |
+| 2 | Flywheel visual classes are simple names on screen, fully qualified in the report and JSON | Screen **and** report print the simple name; JSON keeps the fully-qualified name as the machine record. When two classes in one session share a simple name, both are prefixed with their last package segment (`press.PressVisual`, `mixer.PressVisual`); if that still leaves two alike (`a.x.PressVisual`, `b.x.PressVisual`), both are shown in full |
 | 3 | `PEAK` is in the Sort cycle on Particles, which has no peak column | Resolved by P4.C7: the cycle is replaced by header clicks, and a tab can only sort by a column it shows |
-| 4 | `RowList.Entry.render` truncates left-aligned cells with `plainSubstrByWidth` but draws right-aligned cells untruncated, so a long number runs into its neighbour | Truncate right-aligned cells the same way, then right-align the truncated string |
+| 4 | `RowList.Entry.render` truncates left-aligned cells with `plainSubstrByWidth` but draws right-aligned cells untruncated, so a long number runs into its neighbour | A right-aligned number too wide for its column may reach three of the four blank pixels before it; beyond that its decimals are rounded away, and only if it still does not fit is it drawn as `#`s, as a spreadsheet does. It is never truncated like text, because a truncated number reads as a different one (`125,539` cut to `125,5`). The threshold is not the column's own width, because at 1920x1080 on the Auto GUI scale that plain threshold hid real values the old code drew legibly |
+| 5 | The ranked and particle column names and cell expressions were written twice, in `TextReportWriter` and `Rows` | Both are now defined once in `core/RankedTable`; `TabTest` asserts the screen's ranked and particle headers equal it |
 
-**User-visible change.** Screen for 1, 3 and 4; text report for 2. JSON unchanged.
+**User-visible change.** Screen for 1, 3 and 4; text report for 2, and the screen too whenever two classes
+collide. JSON unchanged.
 
-**Acceptance check (C6).** On screen: the Sections header reads `avg ms/rb`; a narrow window truncates
-numbers instead of overlapping them. In the report: Flywheel rows read `SingleAxisRotatingVisual`, and the
+**Acceptance check (C6).** On screen: the Sections header reads `avg ms/rb`; in a narrow column a number is
+rounded, or shown as `#`s, never cut short and never overlapping its neighbour. In the report: Flywheel rows read `SingleAxisRotatingVisual`, and the
 JSON's `flywheel.visualCounts` keys are still fully qualified.
 
 ## P4.C7 §5.3 promises per-column sorting that does not exist
@@ -834,17 +858,23 @@ matches the parenthesis.
 **Design.** Implement the promise. Every tab declares, per column, the sort key that column means — or none
 for columns that are not sortable. Clicking a header sorts by that column descending; clicking the active
 header again reverses it; the active header draws an arrow (`v` for descending, `^` for ascending). The
-Sort button is removed.
+Sort button is removed. (A name column is the exception to "descending" on the first click: it sorts A to Z,
+which is what a reader clicking `name` expects; see the second bullet.)
 
 - `Ranking.Sort` gains `SHADOW`, `GC_FRAMES` and `LABEL`, so the ranked tabs can sort by every column they
-  show; `Ranking.MeshSort` gains `PER_CALL`, `AVG` and `LABEL` for the same reason. Both `Ranking.sort` and
-  `Ranking.mesh` gain an `ascending` overload, and both keep their existing descending form so no writer
-  changes.
-- `Tab.Columns` gains a `ColumnSort[] sorts` alongside `headers`, `weights` and `rightAlign`. `ColumnSort`
-  is a pure-Java record in `ui/screen` holding a nullable `Ranking.Sort` and a nullable `Ranking.MeshSort`,
-  with `ColumnSort.NONE` for a column that does not sort. A record over the two existing enums is preferred
-  to a third, parallel enum of column names: a parallel enum would have to be kept in step with both by
-  hand, and nothing would fail if it drifted.
+  show; `Ranking.MeshSort` gains `PER_CALL` and `LABEL` only — the Sections average column sorts by
+  `PER_CALL`, which for a section is time per rebuild, so an `AVG` column would order rows identically and
+  was dropped. Both `Ranking.sort` and `Ranking.mesh` gain an `ascending` overload, and both keep their
+  existing descending form so no writer changes. Every sort orders rows by what its column displays, not by
+  a raw field behind it: `SHADOW` orders by the shadow share the column prints, not by shadow nanoseconds.
+- A tab's columns are a `List<Column>` of `Column(name, weight, rightAlign, sort)` records, not the parallel
+  `headers`/`weights`/`rightAlign`/`sorts` arrays first proposed, so one column's pieces cannot drift apart
+  from each other. `ColumnSort` is a pure-Java record in `ui/screen` holding a nullable `Ranking.Sort` and a
+  nullable `Ranking.MeshSort`, with `ColumnSort.NONE` for a column that does not sort. A record over the two
+  existing enums is preferred to a third, parallel enum of column names: a parallel enum would have to be
+  kept in step with both by hand, and nothing would fail if it drifted. Each tab opens in the text report's
+  order (`TabTest` pins every tab to it); a new column's first click sorts A to Z for a name and largest
+  first for a number; the Blocks and Sections name columns carry `MeshSort.LABEL`.
 - The Flywheel tab's rows are class names and averages rather than ranked or mesh entries, so its two
   sortable columns reuse `Ranking.Sort.LABEL` (class name) and `Ranking.Sort.TOTAL` (average count), which
   `Rows.flywheel` reads directly. Two orderings do not justify a third sort type; `TabTest` pins the
@@ -859,10 +889,11 @@ Sort button is removed.
 - *Extending the cycling button to all six tabs.* Still not per-column, and a cycle over nine columns is
   worse than the three it replaces.
 
-**Spec amendment.** §5.3's sentence becomes: *"The Block Entities, Entities, Particles, Blocks, Sections and
-Flywheel lists sort by any numeric column: clicking a column header sorts by it descending, clicking the
-active header reverses it, and the active header carries an arrow. The Frames and Hitches tabs have a fixed
-order."*
+**Spec amendment.** §5.3 was rewritten to say what shipped: the Block Entities, Entities, Particles, Blocks
+and Sections lists sort by any column and the Flywheel list by name or average count (its share column is the
+bucket's, not a per-row value); each opens in the text report's order; a click sorts largest first for a
+number and A to Z for a name, a second click reverses it, and the active header carries an arrow; Frames and
+Hitches have a fixed order.
 
 **User-visible change.** Screen only. The Sort button disappears from the button row, which leaves room for
 the five bottom buttons to grow.
@@ -999,3 +1030,29 @@ implements each:
   of every session without Iris shadows, and `Splits.average` already establishes the "omit what is empty"
   precedent in this codebase. Phase 5.
 - **No Modrinth or CurseForge release.** §10 is unchanged.
+- **Blocks and Sections rows are still written twice.** `TextReportWriter` and `Rows` each build the Blocks
+  and Sections cells by hand; they could move into `core` the way `core/RankedTable` now holds the ranked
+  ones. Only the
+  Sections `avg ms/rb` header differs between the two surfaces, by design (P4.C6 #1).
+- **The ranked empty-state sentence blames the wrong thing.** `EmptyStates.ranked()` says `(no data: hook
+  not active in this build)`, but the block entity and entity hooks are required vanilla mixins, so in
+  practice an empty list means nothing of that kind was drawn. Correcting the sentence changes the report,
+  so it waits for a plan that may.
+- **A Flywheel-only area shows no empty-state sentence.** With Flywheel drawing, the Block Entities tab
+  always starts with its "Flywheel-instanced machines are not timed here" heading, so an otherwise empty tab
+  (open terrain, or an area whose only block entities Flywheel draws) shows just that heading and never the
+  sentence above. Fix it together with that item.
+- **The world-gone flag is coarser than it needs to be.** Highlight and Teleport are disabled by any level
+  unload, which includes every dimension change, so after a portal round trip they stay greyed until the
+  next session finishes, even though the player is back where the session was taken. An exact check would
+  compare the selected row's dimension — block entity and section keys carry one; entity rows would use the
+  session dimension `ProfilerController` now records — against the current level's, and keep the blanket
+  flag for logout only.
+- **Labels still cost one flush per draw call.** The label overlay has the same flush-per-call cost the
+  highlight had before P4.C5: each label is a `fill` and a `drawString`, each its own draw call, so 75
+  labels are 150 draws a frame during ordinary play after a session (labels are cleared while sampling, so
+  measurements are unaffected). Drawing them inside `GuiGraphics.drawManaged` would batch them; check the
+  draw order of overlapping labels when doing it.
+- **The highlight is not dimension-scoped.** Unlike labels, a highlight carries no dimension: one set just
+  before a portal trip keeps drawing, for the rest of its ten seconds, at the same coordinates in the new
+  dimension.

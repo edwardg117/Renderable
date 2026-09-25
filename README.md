@@ -18,6 +18,15 @@ time**, and what caused each hitch.
    and stays off until you turn it back on, including across later sessions. Editing `overlayEnabled`
    in `renderable-client.toml` while the game is running does nothing: it is read once per client run,
    and the command is what changes it after that.
+4. On the results screen, click a column header to sort by it; click it again to reverse. Each list opens in
+   the same order as the text report, the active column carries `v` (descending) or `^` (ascending), and a
+   name column sorts A to Z on its first click. Frames and Hitches have a fixed order. A number too wide for
+   its column is rounded to a whole number, and shows as `###` only if it still does not fit; widen the window
+   or lower the GUI scale to read it. **Highlight** draws a wireframe box around the selected block, or around
+   the whole 16-block section for a Sections row, for ten seconds and through walls. **Teleport** from a
+   Sections row keeps your height, raised until you fit in that column, so it never leaves you inside a hill.
+   Highlight and Teleport are greyed out once you leave the world or dimension the session was taken in, and
+   hovering over them says so.
 
 Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `overlay [on|off]`.
 
@@ -37,7 +46,10 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
 - **Particles** are ranked by class. **avg live** is the average number of that class rendered
   per frame; particles culled before rendering are not counted.
 - **Flywheel** shows the instancing bucket and how many visuals of each class were alive, sampled
-  once a second. Machines drawn by Flywheel do not appear in the block entity tables.
+  once a second. Machines drawn by Flywheel do not appear in the block entity tables. Classes read as
+  simple class names on screen and in the text report, while the JSON keeps the fully-qualified names; two
+  classes with the same simple name are both prefixed with their last package segment, and shown in full
+  if that still leaves two alike.
 - **Hooks applied** lists the hooks that have fired at least once since the game started, not
   only during this session.
 - **Renderable's own in-frame work** is measured, not estimated: it is the sampling HUD plus the
@@ -52,6 +64,8 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   places. Cancelled rebuilds are not counted, and a section's time can exceed the sum of its
   blocks when other mods add geometry to the section, and the blocks can exceed the section
   when a rebuild is cancelled part way through.
+- The **Sections** tab shows at most 200 sections, the first 200 in whatever order it is sorted, and says
+  how many it left out. The text report still prints its top 20 and the JSON every section.
 - **verts/f** is the number of vertices a renderer emitted per frame, the proxy for GPU load. It counts
   emitted vertices: glint and outline passes emit the same geometry again, and Iris shaders roughly
   double it through the shadow pass. With Sodium installed the count relies on Sodium's own vertex
