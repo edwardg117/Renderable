@@ -161,8 +161,9 @@ public final class TextReportWriter {
         sb.append(String.format(Locale.ROOT, "  visuals: %.1f block entities, %.1f entities, %.1f effects (average over %d samples)\n",
                 fw.avgBlockEntities(), fw.avgEntities(), fw.avgEffects(), fw.samples()));
         Table t = new Table(new String[]{"visual class", "avg count"}, new boolean[]{false, true});
+        Map<String, String> names = fw.displayNames();
         for (Map.Entry<String, Double> e : fw.byAverageDesc().stream().limit(TOP).toList()) {
-            t.row(e.getKey(), String.format(Locale.ROOT, "%.1f", e.getValue()));
+            t.row(names.get(e.getKey()), String.format(Locale.ROOT, "%.1f", e.getValue()));
         }
         sb.append(t.render("  ")).append('\n');
     }

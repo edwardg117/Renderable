@@ -112,8 +112,10 @@ class TextReportWriterTest {
 
         assertTrue(s.contains("Flywheel\n  bucket 1.20 ms/frame (6.3% of frame time), backend flywheel:instancing\n"
                 + "  visuals: 120.0 block entities, 10.0 entities, 0.0 effects (average over 3 samples)\n"), s);
-        assertTrue(s.contains("\n  " + TestSessions.PRESS_VISUAL), s);
-        int row = s.indexOf(TestSessions.PRESS_VISUAL);
+        // The table prints the simple class name, as the screen does; the JSON keeps the fully qualified one.
+        assertTrue(s.contains("\n  PressVisual "), s);
+        assertFalse(s.contains(TestSessions.PRESS_VISUAL), s);
+        int row = s.indexOf("\n  PressVisual ") + 1;
         assertTrue(s.substring(row, s.indexOf('\n', row)).endsWith("120.0"), s);
     }
 
@@ -265,5 +267,25 @@ class TextReportWriterTest {
         assertTrue(TextReportWriter.write(some, env, "0.4.0").contains(
                 "  Renderable's own in-frame work (HUD and Flywheel sampling): 12.40 ms measured, inside other render.\n"),
                 TextReportWriter.write(some, env, "0.4.0"));
+    }
+
+    @Test
+    void theReportPrintsFlywheelClassesTheWayTheScreenDoes() {
+        SessionResult withFw = withFlywheel(TestSessions.sample(), new FlywheelStats(3, 120, 10, 0,
+                Map.of("com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual", 449.5,
+                        "com.simibubi.create.content.logistics.funnel.FunnelVisual", 201.8,
+                        "com.simibubi.create.content.kinetics.press.PressVisual", 12.0,
+                        "com.example.other.mixer.PressVisual", 3.0)), 0);
+        LinkedHashMap<String, String> m = new LinkedHashMap<>();
+        m.put("flywheel", "1.0.6");
+        m.put("flywheelBackend", "flywheel:indirect");
+        String s = TextReportWriter.write(withFw, Environment.of(m, List.of("FLYWHEEL")), "0.4.0");
+
+        assertTrue(s.contains("\n  SingleAxisRotatingVisual "), s);
+        assertTrue(s.contains("\n  FunnelVisual "), s);
+        assertFalse(s.contains("com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual"),
+                "the fully qualified name belongs in the JSON, not the text table: " + s);
+        assertTrue(s.contains("\n  press.PressVisual "), s);
+        assertTrue(s.contains("\n  mixer.PressVisual "), s);
     }
 }

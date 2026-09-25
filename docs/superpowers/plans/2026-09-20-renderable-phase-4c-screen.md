@@ -1908,9 +1908,13 @@ feat(ui): click a column header to sort; teleport above ground from a section ro
 - Modify: `src/main/java/io/github/edwardg117/renderable/core/FlywheelStats.java`
 - Modify: `src/main/java/io/github/edwardg117/renderable/report/TextReportWriter.java`
 - Test: `src/test/java/io/github/edwardg117/renderable/core/FlywheelStatsTest.java` (append)
-- Test: `src/test/java/io/github/edwardg117/renderable/report/TextReportWriterTest.java` (append)
+- Test: `src/test/java/io/github/edwardg117/renderable/report/TextReportWriterTest.java` (append, and amend
+  `phase2Sections`)
 
-Spec addendum §P4.C6 #2. The screen shows `SingleAxisRotatingVisual`; the report and JSON show
+Spec addendum §P4.C6 #2. This task's review on 2026-09-25 found that classes sharing both the simple name and
+the last package segment (`a.x.PressVisual`, `b.x.PressVisual`) would still read the same, so they fall back
+to the full name; and that no test tied the report to `displayNames()` or reached two branches of
+`qualifiedName`. The code below carries all three fixes; Task 7 amends §P4.C6 #2 for the first. The screen shows `SingleAxisRotatingVisual`; the report and JSON show
 `com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual`. The screen and report align on the
 simple name; the JSON keeps the fully-qualified one as the machine record.
 
@@ -1938,6 +1942,18 @@ Append inside `FlywheelStatsTest`:
         assertEquals("NoPackage", new FlywheelStats(1, 0, 0, 0, Map.of("NoPackage", 1.0))
                 .displayNames().get("NoPackage"), "a class with no package keeps its name");
         assertTrue(FlywheelStats.none().displayNames().isEmpty());
+
+        Map<String, String> edges = new FlywheelStats(1, 0, 0, 0, Map.of(
+                "PressVisual", 3.0, "x.PressVisual", 2.0, "com.example.y.PressVisual", 1.0)).displayNames();
+        assertEquals("PressVisual", edges.get("PressVisual"), "a colliding class with no package has no segment to add");
+        assertEquals("x.PressVisual", edges.get("x.PressVisual"), "a one-segment package is already its qualified name");
+        assertEquals("y.PressVisual", edges.get("com.example.y.PressVisual"));
+
+        Map<String, String> deep = new FlywheelStats(1, 0, 0, 0, Map.of(
+                "a.x.PressVisual", 2.0, "b.x.PressVisual", 1.0, "c.z.PressVisual", 0.5)).displayNames();
+        assertEquals("a.x.PressVisual", deep.get("a.x.PressVisual"), "one segment is not enough, so the full name");
+        assertEquals("b.x.PressVisual", deep.get("b.x.PressVisual"));
+        assertEquals("z.PressVisual", deep.get("c.z.PressVisual"), "its segment is unique, so one is enough");
     }
 ```
 
@@ -1948,7 +1964,9 @@ Append inside `TextReportWriterTest`:
     void theReportPrintsFlywheelClassesTheWayTheScreenDoes() {
         SessionResult withFw = withFlywheel(TestSessions.sample(), new FlywheelStats(3, 120, 10, 0,
                 Map.of("com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual", 449.5,
-                        "com.simibubi.create.content.logistics.funnel.FunnelVisual", 201.8)), 0);
+                        "com.simibubi.create.content.logistics.funnel.FunnelVisual", 201.8,
+                        "com.simibubi.create.content.kinetics.press.PressVisual", 12.0,
+                        "com.example.other.mixer.PressVisual", 3.0)), 0);
         LinkedHashMap<String, String> m = new LinkedHashMap<>();
         m.put("flywheel", "1.0.6");
         m.put("flywheelBackend", "flywheel:indirect");
@@ -1958,6 +1976,8 @@ Append inside `TextReportWriterTest`:
         assertTrue(s.contains("\n  FunnelVisual "), s);
         assertFalse(s.contains("com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual"),
                 "the fully qualified name belongs in the JSON, not the text table: " + s);
+        assertTrue(s.contains("\n  press.PressVisual "), s);
+        assertTrue(s.contains("\n  mixer.PressVisual "), s);
     }
 ```
 
@@ -1977,17 +1997,23 @@ Append inside the record body, and add `import java.util.HashMap;` and `import j
     /**
      * Display names for the visual classes, in {@link #byAverageDesc()} order: the simple class name, or the
      * last package segment plus the simple name when two classes in this session would otherwise read the
-     * same (spec addendum §P4.C6). The screen and the text report both use these; the JSON keeps the
-     * fully-qualified names, which are the machine record.
+     * same, or the full name when that still leaves two alike (spec addendum §P4.C6). The screen and the
+     * text report both use these; the JSON keeps the fully-qualified names, which are the machine record.
      */
     public Map<String, String> displayNames() {
-        Map<String, Integer> byShort = new HashMap<>();
-        for (String fqn : avgByClass.keySet()) byShort.merge(simpleName(fqn), 1, Integer::sum);
+        Map<String, Integer> bySimple = new HashMap<>();
+        Map<String, Integer> byQualified = new HashMap<>();
+        for (String fqn : avgByClass.keySet()) {
+            bySimple.merge(simpleName(fqn), 1, Integer::sum);
+            byQualified.merge(qualifiedName(fqn), 1, Integer::sum);
+        }
         LinkedHashMap<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<String, Double> e : byAverageDesc()) {
             String fqn = e.getKey();
             String simple = simpleName(fqn);
-            out.put(fqn, byShort.get(simple) > 1 ? qualifiedName(fqn) : simple);
+            String qualified = qualifiedName(fqn);
+            // One package segment tells most collisions apart; when it does not, only the full name can.
+            out.put(fqn, bySimple.get(simple) == 1 ? simple : byQualified.get(qualified) == 1 ? qualified : fqn);
         }
         return out;
     }
@@ -2024,7 +2050,7 @@ two cannot drift:
 ```java
         Map<String, String> names = fw.displayNames();
         List<Map.Entry<String, Double>> ordered = new ArrayList<>(fw.byAverageDesc());
-        boolean byName = sort != null && sort.ranked() == Ranking.Sort.LABEL;
+        boolean byName = sort.ranked() == Ranking.Sort.LABEL;
         Comparator<Map.Entry<String, Double>> by = byName
                 ? Comparator.comparing(e -> names.get(e.getKey()))
                 : Comparator.comparingDouble(Map.Entry::getValue);
@@ -2038,7 +2064,7 @@ two cannot drift:
     }
 ```
 
-(and delete the `private static String shortName(String className)` method below it).
+(and delete the `private static String shortName(String className)` method below it, with its Javadoc).
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -2048,6 +2074,26 @@ two cannot drift:
 
 Expected: `BUILD SUCCESSFUL`, **124 tests**. `flywheelHookMissingLineAndVisualOrder` uses the single-letter
 keys `a`, `b`, `c`, whose simple names are themselves, so it is unaffected.
+
+**`phase2Sections` is affected, and the first version of this plan missed it.** It asserts that the report's
+Flywheel table contains `TestSessions.PRESS_VISUAL`, the fully qualified name, which is exactly what this task
+changes; the implementer stopped rather than edit it unasked. Replace its last three lines:
+
+```java
+        assertTrue(s.contains("\n  " + TestSessions.PRESS_VISUAL), s);
+        int row = s.indexOf(TestSessions.PRESS_VISUAL);
+        assertTrue(s.substring(row, s.indexOf('\n', row)).endsWith("120.0"), s);
+```
+
+with:
+
+```java
+        // The table prints the simple class name, as the screen does; the JSON keeps the fully qualified one.
+        assertTrue(s.contains("\n  PressVisual "), s);
+        assertFalse(s.contains(TestSessions.PRESS_VISUAL), s);
+        int row = s.indexOf("\n  PressVisual ") + 1;
+        assertTrue(s.substring(row, s.indexOf('\n', row)).endsWith("120.0"), s);
+```
 
 - [ ] **Step 6: Stage and report**
 
@@ -2332,7 +2378,7 @@ In "Reading a report", add:
 ```markdown
 - **Flywheel** visual classes read as simple class names on screen and in the text report; the JSON keeps
   the fully-qualified names. Two classes with the same simple name are both prefixed with their last
-  package segment.
+  package segment, and shown in full if that still leaves two alike.
 - The **Sections** tab shows at most 200 sections, the first 200 in whatever order it is sorted, and says
   how many it left out. The text report still prints its top 20 and the JSON every section.
 ```
@@ -2387,13 +2433,16 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
    `PER_CALL`, which for a section is per rebuild, so an `AVG` would order rows identically), and every sort
    orders rows by what its column displays — `SHADOW` by the shadow share, not by shadow nanoseconds. Amend
    the acceptance check's "Click `name` and the rows sort alphabetically" only if it no longer matches.
-4. **§P4.C6**, add a row: the ranked and particle column names and cell expressions were written twice, in
+4. **§P4.C6 #2**, add the fallback: when the last package segment still leaves two classes alike
+   (`a.x.PressVisual`, `b.x.PressVisual`), both are shown in full. Its "User-visible change" line says the
+   screen is unaffected by #2; the screen changes too, whenever two classes collide.
+5. **§P4.C6**, add a row: the ranked and particle column names and cell expressions were written twice, in
    `TextReportWriter` and `Rows`; they are now defined once in `core/RankedTable`, and `TabTest` asserts that
    the screen's ranked and particle headers equal it.
-5. Check §P4.C1, §P4.C2, §P4.C3, §P4.C4 and §P4.C5 against the code and correct anything that no longer
+6. Check §P4.C1, §P4.C2, §P4.C3, §P4.C4 and §P4.C5 against the code and correct anything that no longer
    matches. §P4.C5 in particular should not claim the highlight allocates per frame: its corner arrays are
    static scratch space.
-6. **§P4.3** (deferred items), add four:
+7. **§P4.3** (deferred items), add four:
    - The Blocks table and the Sections cells are still written twice, in `TextReportWriter` and `Rows`, and
      could move into `core` the way Task 1a moved the ranked ones; only the Sections `avg ms/rb` header
      differs between the surfaces, by design.
@@ -2409,7 +2458,7 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
      session was taken. An exact check would compare the selected row's dimension (block entity and section
      keys carry one; entity rows would use the session dimension Task 6 records) with the current level's, and
      keep the blanket flag for logout only.
-7. **§P4.C3**, the design changed in review. The player's current Y is where they stand now, not a place
+8. **§P4.C3**, the design changed in review. The player's current Y is where they stand now, not a place
    they can stand at the section's column, so a player on foot heading towards a hill landed inside it. The
    teleport now keeps the player's Y raised to the first height at which the player's box fits in that column
    (`ResultsScreen.standingY`); a column the client has not loaded has no collision shapes and keeps the
@@ -2417,7 +2466,7 @@ In `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`:
    shapes of loaded chunks, which is what this uses. Add the heightmap as a rejected alternative: for an
    unloaded chunk `ClientLevel.getHeight` reads an empty chunk and returns the bottom of the world, in the
    Nether it returns the top of the bedrock roof, and `MOTION_BLOCKING` counts water and leaves.
-8. **§P4.C2**, correct the example trailing row: the text report prints only its top 20 sections, so the row
+9. **§P4.C2**, correct the example trailing row: the text report prints only its top 20 sections, so the row
    reads `... and N more sections (the JSON has all M)`, singular at one. Also say that the cap takes the first
    200 in the tab's current order, which is the 200 most-rebuilt only in the default order.
 

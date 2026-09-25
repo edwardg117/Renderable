@@ -210,23 +210,19 @@ public final class Rows {
                 Fmt.num(fw.total()), ""},
                 null, null, true, false, 0, null, -1));
 
+        Map<String, String> names = fw.displayNames();
         List<Map.Entry<String, Double>> ordered = new ArrayList<>(fw.byAverageDesc());
         boolean byName = sort.ranked() == Ranking.Sort.LABEL;
         Comparator<Map.Entry<String, Double>> by = byName
-                ? Comparator.comparing(e -> shortName(e.getKey()))
+                ? Comparator.comparing(e -> names.get(e.getKey()))
                 : Comparator.comparingDouble(Map.Entry::getValue);
         ordered.sort(ascending ? by : by.reversed());
 
         for (Map.Entry<String, Double> e : ordered) {
-            rows.add(new Row(new String[]{shortName(e.getKey()), Fmt.num(e.getValue()), ""},
+            rows.add(new Row(new String[]{names.get(e.getKey()), Fmt.num(e.getValue()), ""},
                     null, null, false, false, 1, null, -1));
         }
         return rows;
-    }
-
-    /** Task 5 replaces this with {@code FlywheelStats.displayNames()}, which the report will share. */
-    private static String shortName(String className) {
-        return className.substring(className.lastIndexOf('.') + 1);
     }
 
     /** Spec §5.3 Blocks tab: one row per block, by mesh time per second unless a header was clicked. */
