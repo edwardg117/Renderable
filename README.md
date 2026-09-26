@@ -126,4 +126,8 @@ Create: Enchantable Machinery at the versions the Gears & Frontiers pack pins.
 Add `-PquickPlay="<save folder>"` to join a world under `run/saves` straight from launch, which is
 how the mixins that only load inside a level are checked with `-Dmixin.debug.export=true`.
 
+CI builds every push to `main` and every pull request, and a `v*` tag builds and attaches
+`renderable-<version>.jar` to a GitHub Release. A release tag must match `mod_version` in
+`gradle.properties`, or the workflow stops before building.
+
 Design and plans live in `docs/superpowers/`.

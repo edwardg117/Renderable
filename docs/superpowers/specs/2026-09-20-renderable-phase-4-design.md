@@ -956,13 +956,16 @@ build, nothing is cached beyond `setup-gradle`'s defaults, neither workflow decl
 
 - **`build.yml`**: `permissions: contents: read`; `concurrency: group: build-${{ github.ref }}`,
   `cancel-in-progress: true`; a cache of `build/nested-mod-jars` keyed on `gradle.properties`'s hash, so a
-  warm cache survives a Modrinth outage; `extractNestedModJars` run first in a three-attempt retry loop so a
-  transient resolution failure does not fail the build; then `./gradlew build --no-daemon`; artifact upload
-  unchanged. `setup-gradle` already caches `~/.gradle`, and the plan states that rather than adding a
+  warm cache survives a Modrinth outage; `extractNestedModJars` and `createMinecraftArtifacts` run first in
+  a three-attempt retry loop, so a transient failure at Modrinth or at Minecraft's or NeoForge's servers does
+  not fail the build (both tasks only download and unpack, so a compile error never reaches the loop); then
+  `./gradlew build --no-daemon`; artifact upload unchanged. `setup-gradle` already caches `~/.gradle`, and the plan states that rather than adding a
   second, conflicting cache.
 - **`release.yml`**: the same `permissions: contents: write` it has, plus a concurrency group, the same
   cache and retry, and a **version gate** that fails before building when
-  `v$(mod_version from gradle.properties) != $GITHUB_REF_NAME`.
+  `v$(mod_version from gradle.properties) != $GITHUB_REF_NAME`; and the release step fails, rather than
+  publishing a release without its jar, when `build/libs/renderable-*.jar` matches nothing
+  (`fail_on_unmatched_files`).
 
 **Acceptance check (D4).** The workflows have never run, so the check is the user pushing a branch and a
 tag and reading the run: `build` green on a pull request, the version gate failing a deliberately mismatched
@@ -972,7 +975,7 @@ tag, and `release` attaching `renderable-<version>.jar`.
 
 | Item | Observed | Design |
 | --- | --- | --- |
-| `EntityKey` | The record's generated `equals`/`hashCode` include `name`, but `serialize()` is `typeId#entityId`. An entity renamed mid-session becomes a second key with the same serialised form, splitting its measurements and producing two JSON rows with identical `key` fields | Override `equals` and `hashCode` to use `typeId` and `entityId` only, documenting that the first name seen wins. `name` stays in the record for `label()` and the report |
+| `EntityKey` | The record's generated `equals`/`hashCode` include `name`, but `serialize()` is `typeId#entityId`. An entity renamed mid-session becomes a second key with the same serialised form, splitting its measurements and producing two JSON rows with identical `key` fields. (Since P4.B2 caches the accumulator on the entity object, an entity that stays loaded keeps its first key; the fork needs the client to re-create the entity object under a new name, as when it leaves tracking range and returns.) | Override `equals` and `hashCode` to use `typeId` and `entityId` only, documenting that the first name seen wins. `name` stays in the record for `label()` and the report |
 | `BlockEntityKey.label()` | Omits the dimension that `serialize()` carries | Leave the label alone and document why: `FrameEvents.onLevelUnload` discards a running session when the client level goes away, so every key in one session shares one dimension, which the environment header prints. Adding it to every row would widen the tables for no information. A unit test pins the rule so the next reader does not "fix" it |
 
 ---
