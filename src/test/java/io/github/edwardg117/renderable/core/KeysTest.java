@@ -118,4 +118,41 @@ class KeysTest {
             }
         }
     }
+
+    @Test
+    void entityIdentityIgnoresTheNameSoARenameDoesNotForkTheKey() {
+        EntityKey unnamed = new EntityKey("minecraft:cow", 7, "");
+        EntityKey named = new EntityKey("minecraft:cow", 7, "Bessie");
+        EntityKey other = new EntityKey("minecraft:cow", 8, "");
+        EntityKey otherType = new EntityKey("minecraft:pig", 7, "");
+
+        assertEquals(unnamed, named, "the same entity, renamed part way through a session, is one key");
+        assertEquals(unnamed.hashCode(), named.hashCode());
+        assertNotEquals(unnamed, other);
+        assertNotEquals(unnamed, otherType);
+        assertNotEquals(unnamed, new Object());
+
+        // The name is still carried, for the label and the report.
+        assertEquals("minecraft:cow #7", unnamed.label());
+        assertEquals("minecraft:cow #7 (Bessie)", named.label());
+        assertEquals(named.serialize(), unnamed.serialize(), "identity and serialisation agree");
+
+        java.util.Map<ProfileKey, String> map = new java.util.HashMap<>();
+        map.put(unnamed, "first");
+        map.put(named, "second");
+        assertEquals(1, map.size(), "one accumulator, not two");
+        assertEquals("second", map.get(unnamed));
+    }
+
+    @Test
+    void blockEntityLabelsOmitTheDimensionOnPurpose() {
+        BlockEntityKey overworld = new BlockEntityKey("minecraft:chest", "minecraft:overworld", 1, 2, 3);
+        BlockEntityKey nether = new BlockEntityKey("minecraft:chest", "minecraft:the_nether", 1, 2, 3);
+
+        assertEquals(overworld.label(), nether.label(),
+                "a session cannot span two dimensions, so the label does not need one");
+        assertNotEquals(overworld, nether, "the dimension is still part of identity");
+        assertNotEquals(overworld.serialize(), nether.serialize(), "and of the serialised form");
+        assertEquals("minecraft:chest@minecraft:the_nether:1,2,3", nether.serialize());
+    }
 }
