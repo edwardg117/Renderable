@@ -3,7 +3,7 @@ package io.github.edwardg117.renderable.core;
 /** Identity of one timed thing. Implementations are value records so they work as map keys. */
 public interface ProfileKey {
 
-    enum Category { BLOCK_ENTITY, ENTITY, PARTICLE, BLOCK, SECTION, VISUAL }
+    enum Category { BLOCK_ENTITY, ENTITY, PARTICLE, BLOCK, SECTION }
 
     Category category();
 

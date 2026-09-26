@@ -62,7 +62,7 @@ public final class FlywheelCompat {
         }
     }
 
-    /** The active backend id such as {@code flywheel:instancing}, or "absent" without Flywheel. */
+    /** The active backend id such as {@code flywheel:instancing}, or {@link Environment#ABSENT} without Flywheel. */
     public static String backendName() {
         if (!PRESENT) return Environment.ABSENT;
         if (backendNameBroken) return "unknown";

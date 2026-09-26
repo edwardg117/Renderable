@@ -7,6 +7,7 @@ import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
+import io.github.edwardg117.renderable.core.Hook;
 import io.github.edwardg117.renderable.core.MeshEntry;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
@@ -151,7 +152,7 @@ public final class TextReportWriter {
         }
         String backend = env.value("flywheelBackend");
         long bucketNanos = r.bucketTotalNanos(Bucket.FLYWHEEL);
-        if (bucketNanos == 0 && !env.hooksApplied().contains("FLYWHEEL")) {
+        if (bucketNanos == 0 && !env.hooksApplied().contains(Hook.FLYWHEEL.name())) {
             sb.append("  (hook did not apply for flywheel ").append(env.entries().getOrDefault("flywheel", "?"))
                     .append("; the bucket is missing but visual counts were still sampled)\n");
         }

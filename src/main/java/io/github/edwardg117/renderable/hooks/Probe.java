@@ -2,6 +2,7 @@ package io.github.edwardg117.renderable.hooks;
 
 import io.github.edwardg117.renderable.core.Accumulator;
 import io.github.edwardg117.renderable.core.Bucket;
+import io.github.edwardg117.renderable.core.Hook;
 import io.github.edwardg117.renderable.core.MeshAccumulator;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.hooks.compat.IrisCompat;

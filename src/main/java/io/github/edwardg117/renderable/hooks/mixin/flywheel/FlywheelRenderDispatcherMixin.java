@@ -4,7 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.engine_room.flywheel.api.backend.RenderContext;
 import io.github.edwardg117.renderable.core.Bucket;
-import io.github.edwardg117.renderable.hooks.Hook;
+import io.github.edwardg117.renderable.core.Hook;
 import io.github.edwardg117.renderable.hooks.Probe;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.server.level.BlockDestructionProgress;

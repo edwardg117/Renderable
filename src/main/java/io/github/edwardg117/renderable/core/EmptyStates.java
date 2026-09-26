@@ -20,7 +20,7 @@ public final class EmptyStates {
     }
 
     public static String particles(Environment env) {
-        return env.hooksApplied().contains("PARTICLE_RENDER")
+        return env.hooksApplied().contains(Hook.PARTICLE_RENDER.name())
                 ? "(no particles were rendered)"
                 : ranked();
     }
@@ -34,7 +34,7 @@ public final class EmptyStates {
     }
 
     private static String mesh(Environment env, String nothing) {
-        return env.hooksApplied().contains("SODIUM_MESH")
+        return env.hooksApplied().contains(Hook.SODIUM_MESH.name())
                 ? "(no data: no " + nothing + ")"
                 : "(no data: Sodium hooks were not active)";
     }

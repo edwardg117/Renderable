@@ -49,7 +49,7 @@ public final class IrisCompat {
         }
     }
 
-    /** The active shader pack name, "none" when shaders are off, "absent" without Iris. */
+    /** The active shader pack name, "none" when shaders are off, {@link Environment#ABSENT} without Iris. */
     public static String packName() {
         if (!PRESENT) return Environment.ABSENT;
         if (packNameBroken) return "unknown";

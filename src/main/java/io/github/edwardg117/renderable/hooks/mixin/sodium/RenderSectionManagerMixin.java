@@ -3,7 +3,7 @@ package io.github.edwardg117.renderable.hooks.mixin.sodium;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import io.github.edwardg117.renderable.core.Bucket;
-import io.github.edwardg117.renderable.hooks.Hook;
+import io.github.edwardg117.renderable.core.Hook;
 import io.github.edwardg117.renderable.hooks.Probe;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
 import org.spongepowered.asm.mixin.Mixin;
