@@ -10,12 +10,28 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md` §P4.D. §P4.D1's `TabTest` belongs to plan 4c, which changes `Tab`; §P4.D1's report-import test and §P4.D2 belong to plan 4b, which changes `ReportFiles`. Both reassignments are recorded in §P4.D and in the phase 4 readme.
 
-**Repository:** `H:\repos\Renderable`, branch `main`. Commits are YubiKey-signed: the orchestrator commits after telling the user to touch the key. **Subagents stage and report; they do not commit.**
+**Repository:** `H:\repos\Renderable`, branch `phase-4d-hygiene`, created from `phase-4c-screen` at `c831f0f`. Commits are YubiKey-signed: the orchestrator commits after telling the user to touch the key. **Subagents stage and report; they do not commit.**
 
-**Ordering:** This plan assumes **plan 4a is on `main`** (`v0.4.0`). It is independent of 4b and 4c, but two of its steps behave differently depending on whether those have run, and each says so explicitly:
+**Ordering:** Written assuming only plan 4a was on `main`; **executed from 2026-09-26 on top of plans 4b and
+4c**, which the user chose so that one in-pack session accepts 4b, 4c and 4d together. Every "if 4b or 4c has
+run" branch below takes that side. `main` stays at the accepted 4a state until the combined acceptance passes.
 
-- Task 1 must also fix `core/EmptyStates.java` **if plan 4c created it**, because that class spells two hook names as string literals and Task 1's guard test forbids that.
-- Task 3 adds `Environment.ABSENT` **only if plans 4b or 4c have not already**.
+**Revised on 2026-09-26**, before execution, against the code as 4b and 4c left it:
+
+- **Task 3 is folded into Task 1.** 4b already replaced every `"absent"` literal in code with
+  `Environment.ABSENT`; what is left is the guard test and two Javadoc comments (`FlywheelCompat.backendName`,
+  `IrisCompat.packName`) that spell `"absent"` in quotes, which the guard would reject. Both guards belong in
+  the one `SourceGuardsTest` Task 1 creates, so they land together.
+- **Task 2 still stands, for a rarer case than it describes.** Since 4b, an entity's accumulator is cached
+  on the entity object, so a mob renamed while it stays loaded keeps its first key. The fork now needs the
+  client to re-create the entity object (it leaves tracking range and comes back) with a different name, at
+  which point `Session.accumulator(key)` looks the key up by value.
+- **Task 4's forced failure moves to `EnvironmentTest`**, because the assertion it broke was in Task 3's
+  test, and `--rerun-tasks` became `test --rerun`: the former reruns every task in the build, including
+  ModDevGradle's Minecraft setup.
+- **Task 7 needs a GitHub remote, and this repository has none yet** (`git remote -v` is empty). It is the
+  user's step and separate from the in-pack acceptance.
+- The expected test totals start from 127.
 
 **Verified facts you can rely on:**
 
@@ -45,7 +61,7 @@
 - `gradle/actions/setup-gradle@v4` already caches `~/.gradle`, including `caches/modules-2` where the
   Modrinth artifacts land, and by default writes that cache only from the default branch. A second cache
   for the same path would fight it, so this plan does not add one.
-- The suite is **86 tests** after plan 4a.
+- The suite is **127 tests** after plans 4a, 4b and 4c.
 
 **Deviations from the spec addendum recorded in this plan:** none.
 
@@ -62,26 +78,24 @@ src/main/java/io/github/edwardg117/renderable/
   core/Hook.java                                              Create (moved from hooks/)
   hooks/Hook.java                                             Delete
   core/ProfileKey.java                                        Modify: drop VISUAL
-  core/Environment.java                                       Modify: ABSENT if 4b and 4c have not run
-  core/EmptyStates.java                                       Modify if plan 4c created it
+  core/EmptyStates.java                                       Modify: Hook constants (Task 1)
   core/EntityKey.java                                         Modify: identity without the name
   core/BlockEntityKey.java                                    Modify: document the label
   hooks/Probe.java                                            Modify: import core.Hook
   hooks/mixin/LevelLightEngineMixin.java                      Modify: import core.Hook
   hooks/mixin/flywheel/FlywheelRenderDispatcherMixin.java     Modify: import core.Hook
   hooks/mixin/sodium/RenderSectionManagerMixin.java           Modify: import core.Hook
-  hooks/compat/FlywheelCompat.java                            Modify: Environment.ABSENT if still a literal
-  hooks/compat/IrisCompat.java                                Modify: Environment.ABSENT if still a literal
-  report/EnvironmentCollector.java                            Modify: Environment.ABSENT if still a literal
-  report/TextReportWriter.java                                Modify: Hook constants, Environment.ABSENT
+  hooks/compat/FlywheelCompat.java                            Modify: Javadoc names Environment.ABSENT (Task 1)
+  hooks/compat/IrisCompat.java                                Modify: Javadoc names Environment.ABSENT (Task 1)
+  report/TextReportWriter.java                                Modify: Hook.FLYWHEEL (Task 1)
 src/test/java/io/github/edwardg117/renderable/
   core/KeysTest.java                                          Modify: key identity tests
   core/SourceGuardsTest.java                                  Create: hook-name and absent literal guards
 docs/acceptance/phase-4d.md                                   Create (Task 7)
 ```
 
-**Expected test totals**, assuming 4a is on `main` and neither 4b nor 4c has run: 86 at the start, 87 after
-Task 1, 89 after Task 2, 90 after Task 3, 90 at the end.
+**Expected test totals**, starting from 127 with 4a, 4b and 4c in: 129 after Task 1 (which now includes Task
+3's guard), 131 after Task 2, 131 at the end. Every task ends with `./gradlew build` green.
 
 ---
 
@@ -95,7 +109,9 @@ Task 1, 89 after Task 2, 90 after Task 3, 90 at the end.
 - Modify: `src/main/java/io/github/edwardg117/renderable/hooks/mixin/flywheel/FlywheelRenderDispatcherMixin.java`
 - Modify: `src/main/java/io/github/edwardg117/renderable/hooks/mixin/sodium/RenderSectionManagerMixin.java`
 - Modify: `src/main/java/io/github/edwardg117/renderable/report/TextReportWriter.java`
-- Modify: `src/main/java/io/github/edwardg117/renderable/core/EmptyStates.java` (only if plan 4c created it)
+- Modify: `src/main/java/io/github/edwardg117/renderable/core/EmptyStates.java` (plan 4c created it)
+- Modify: `src/main/java/io/github/edwardg117/renderable/hooks/compat/FlywheelCompat.java` (Javadoc only, Step 5b)
+- Modify: `src/main/java/io/github/edwardg117/renderable/hooks/compat/IrisCompat.java` (Javadoc only, Step 5b)
 - Modify: `src/main/java/io/github/edwardg117/renderable/core/ProfileKey.java`
 - Create: `src/test/java/io/github/edwardg117/renderable/core/SourceGuardsTest.java`
 
@@ -189,31 +205,7 @@ imports. In each of the three mixins, change
 
 - [ ] **Step 4: Use the constants in the writers**
 
-**If plan 4c has not run**, `TextReportWriter` still owns all three literals. In `appendParticles`:
-
-```java
-            sb.append(env.hooksApplied().contains(Hook.PARTICLE_RENDER.name())
-                    ? "  (no particles were rendered)\n\n"
-                    : "  (no data: hook not active in this build)\n\n");
-```
-
-in `meshNoData`:
-
-```java
-    private static String meshNoData(Environment env, String nothing) {
-        return env.hooksApplied().contains(Hook.SODIUM_MESH.name())
-                ? "  (no data: no " + nothing + ")\n"
-                : "  (no data: Sodium hooks were not active)\n";
-    }
-```
-
-and in `appendFlywheel`:
-
-```java
-        if (bucketNanos == 0 && !env.hooksApplied().contains(Hook.FLYWHEEL.name())) {
-```
-
-**If plan 4c has run**, the first two live in `core/EmptyStates.java` instead; change them there:
+Plan 4c has run, so two of the three literals live in `core/EmptyStates.java`; change them there:
 
 ```java
     public static String particles(Environment env) {
@@ -229,7 +221,11 @@ and in `appendFlywheel`:
     }
 ```
 
-and only the `appendFlywheel` line above in `TextReportWriter`.
+and the third in `TextReportWriter.appendFlywheel`:
+
+```java
+        if (bucketNanos == 0 && !env.hooksApplied().contains(Hook.FLYWHEEL.name())) {
+```
 
 Add `import io.github.edwardg117.renderable.core.Hook;` to `TextReportWriter.java`. `EmptyStates` is
 already in `core`, so it needs no import.
@@ -259,13 +255,49 @@ grep -rn 'Category.VISUAL' src
 
 Expected: no output.
 
+- [ ] **Step 5b: One name for "absent" (formerly Task 3)**
+
+Spec addendum §P4.D1 and §P4.B6 #5. Plan 4b already made the code use `Environment.ABSENT` everywhere;
+confirm it:
+
+```bash
+grep -rn '"absent"' src/main/java
+```
+
+Expected: `core/Environment.java` (the constant itself) and two Javadoc comments, in
+`hooks/compat/FlywheelCompat.backendName` and `hooks/compat/IrisCompat.packName`, which spell `"absent"` in
+quotes. The guard below reads source text, so it rejects those comments too. Rewrite each to name the
+constant instead, for example `or {@link Environment#ABSENT} without Flywheel`; add the `Environment` import
+only if the file does not have it and the Javadoc needs it to resolve.
+
+Append inside `SourceGuardsTest`:
+
+```java
+    @Test
+    void theAbsentSentinelIsNamedOnce() throws IOException {
+        // Environment.ABSENT is the only place the string may appear, so a change of wording is one edit.
+        try (Stream<Path> files = Files.walk(MAIN)) {
+            for (Path p : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                if (p.getFileName().toString().equals("Environment.java")) continue;
+                String src = Files.readString(p);
+                assertFalse(src.contains("\"absent\""),
+                        p + " spells the absent sentinel; use Environment.ABSENT");
+            }
+        }
+    }
+```
+
+(`EnvironmentTest` already pins `Environment.ABSENT` to `"absent"`, so this test does not repeat it.)
+
 - [ ] **Step 6: Run the tests to verify they pass**
 
 ```bash
-./gradlew test --no-daemon
+./gradlew build --no-daemon
+./gradlew test --rerun --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **87 tests**.
+Expected: `BUILD SUCCESSFUL`, **129 tests**, and the test task executed rather than restored from the build
+cache.
 
 - [ ] **Step 7: Stage and report**
 
@@ -277,7 +309,7 @@ git status --short
 `git add -A` is used here because a file was deleted. Commit message for the orchestrator:
 
 ```
-refactor(core): move Hook into core and name hooks by constant; drop the unused VISUAL category
+fix(core): name hooks by constant and the absent sentinel once, with guards; drop the unused VISUAL category
 ```
 
 ---
@@ -289,7 +321,11 @@ refactor(core): move Hook into core and name hooks by constant; drop the unused 
 - Modify: `src/main/java/io/github/edwardg117/renderable/core/BlockEntityKey.java`
 - Test: `src/test/java/io/github/edwardg117/renderable/core/KeysTest.java` (append)
 
-Spec addendum §P4.D5.
+Spec addendum §P4.D5. Since plan 4b, an entity's accumulator is cached on the entity object, so a mob
+renamed while it stays loaded keeps its first key and does not fork. The fork still happens when the client
+re-creates the entity object (it leaves tracking range and comes back) under a different name: the new
+object has no cached accumulator, and `Session.accumulator(key)` looks the key up by value, name included.
+Identity without the name closes that path too, and makes "the first name seen wins" true in every case.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -425,7 +461,7 @@ public record BlockEntityKey(String typeId, String dimension, int x, int y, int 
 ./gradlew test --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, **89 tests**.
+Expected: `BUILD SUCCESSFUL`, **131 tests** (run `./gradlew test --rerun --no-daemon` so they execute).
 
 - [ ] **Step 6: Stage and report**
 
@@ -442,133 +478,10 @@ fix(core): an entity key is its type and id, so a rename mid-session does not sp
 
 ---
 
-### Task 3: One name for "absent"
+### Task 3: One name for "absent" (folded into Task 1)
 
-**Files:**
-- Modify: `src/main/java/io/github/edwardg117/renderable/core/Environment.java` (only if the constant is missing)
-- Modify: `src/main/java/io/github/edwardg117/renderable/hooks/compat/FlywheelCompat.java` (if still a literal)
-- Modify: `src/main/java/io/github/edwardg117/renderable/hooks/compat/IrisCompat.java` (if still a literal)
-- Modify: `src/main/java/io/github/edwardg117/renderable/report/EnvironmentCollector.java` (if still a literal)
-- Modify: `src/main/java/io/github/edwardg117/renderable/report/TextReportWriter.java` (if still a literal)
-- Test: `src/test/java/io/github/edwardg117/renderable/core/SourceGuardsTest.java` (append)
-
-Spec addendum §P4.D1 and §P4.B6 #5. Plans 4b and 4c each remove some of these, so find out which are left
-before editing.
-
-- [ ] **Step 1: Find the remaining literals**
-
-```bash
-grep -rn '"absent"' src/main/java
-```
-
-Note which files come back; the steps below cover all four possible sites.
-
-- [ ] **Step 2: Write the failing test**
-
-Append inside `SourceGuardsTest`:
-
-```java
-    @Test
-    void theAbsentSentinelIsNamedOnce() throws IOException {
-        // Environment.ABSENT is the only place the string may appear, so a change of wording is one edit.
-        try (Stream<Path> files = Files.walk(MAIN)) {
-            for (Path p : files.filter(f -> f.toString().endsWith(".java")).toList()) {
-                if (p.getFileName().toString().equals("Environment.java")) continue;
-                String src = Files.readString(p);
-                assertFalse(src.contains("\"absent\""),
-                        p + " spells the absent sentinel; use Environment.ABSENT");
-            }
-        }
-        assertEquals("absent", Environment.ABSENT);
-    }
-```
-
-- [ ] **Step 3: Run it to verify it fails**
-
-```bash
-./gradlew test --tests 'io.github.edwardg117.renderable.core.SourceGuardsTest' --no-daemon
-```
-
-Expected: a failure naming whichever files Step 1 found, or — if 4b and 4c both ran — only a compilation
-error if `Environment.ABSENT` is somehow missing.
-
-- [ ] **Step 4: Add the constant if it is not there**
-
-Open `core/Environment.java`. **If it already declares `ABSENT`, skip this step.** Otherwise add inside the
-record body, above `of`:
-
-```java
-    /** The value the collector writes for a mod or feature that is not installed. */
-    public static final String ABSENT = "absent";
-```
-
-- [ ] **Step 5: Replace each remaining literal**
-
-Apply only the ones Step 1 found.
-
-In `hooks/compat/FlywheelCompat.java`, add `import io.github.edwardg117.renderable.core.Environment;` and:
-
-```java
-    /** The active backend id such as {@code flywheel:instancing}, or the absent sentinel without Flywheel. */
-    public static String backendName() {
-        return PRESENT ? Impl.backendName() : Environment.ABSENT;
-    }
-```
-
-(If plan 4b has run, this method already has a latch around `Impl.backendName()`; keep the latch and change
-only the `: "absent"` arm and the Javadoc.)
-
-In `hooks/compat/IrisCompat.java`, add the same import and:
-
-```java
-    /** The active shader pack name, "none" when shaders are off, the absent sentinel without Iris. */
-    public static String packName() {
-        return PRESENT ? Impl.packName() : Environment.ABSENT;
-    }
-```
-
-(Same note about plan 4b's latch.)
-
-In `report/EnvironmentCollector.java`:
-
-```java
-    private static String modVersion(String modId) {
-        return ModList.get().getModContainerById(modId)
-                .map(c -> c.getModInfo().getVersion().toString())
-                .orElse(Environment.ABSENT);
-    }
-```
-
-In `report/TextReportWriter.appendFlywheel`:
-
-```java
-        String backend = env.entries().getOrDefault("flywheelBackend", Environment.ABSENT);
-        if (Environment.ABSENT.equals(backend)) {
-```
-
-(If plan 4b or 4c has run, this is already `env.value("flywheelBackend")` plus an `Environment.ABSENT`
-comparison, and there is nothing to change.)
-
-- [ ] **Step 6: Run the tests to verify they pass**
-
-```bash
-./gradlew test --no-daemon
-```
-
-Expected: `BUILD SUCCESSFUL`, **90 tests**.
-
-- [ ] **Step 7: Stage and report**
-
-```bash
-git add src/main/java src/test/java
-git status --short
-```
-
-Commit message for the orchestrator:
-
-```
-refactor: name the absent sentinel once, on Environment
-```
+Revised on 2026-09-26: plan 4b had already replaced every literal in code, so only the guard test and two
+Javadoc comments were left, and they moved into Task 1 as Step 5b. There is nothing to do here.
 
 ---
 
@@ -612,16 +525,17 @@ tasks.named('test', Test) {
 - [ ] **Step 3: Verify the build still behaves**
 
 ```bash
-./gradlew test --no-daemon --rerun-tasks
+./gradlew test --rerun --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 90 tests, and per-test `PASSED` lines in the output — which is what
-`events 'passed'` produces and proves `testLogging` is still configured.
+Expected: `BUILD SUCCESSFUL`, 131 tests, and per-test `PASSED` lines in the output — which is what
+`events 'passed'` produces and proves `testLogging` is still configured. (`--rerun` reruns just the test
+task; `--rerun-tasks` would rerun every task, including ModDevGradle's Minecraft setup.)
 
-Then force a failure to prove `exceptionFormat = 'full'` is live: temporarily change one assertion in
-`SourceGuardsTest.theAbsentSentinelIsNamedOnce` to `assertEquals("not-absent", Environment.ABSENT);`, run
-the same command, and confirm the output carries a full stack trace rather than a one-line message. Revert
-the change.
+Then force a failure to prove `exceptionFormat = 'full'` is live: temporarily change the assertion in
+`EnvironmentTest` that pins the sentinel, `assertEquals("absent", Environment.ABSENT)`, to expect
+`"not-absent"`, run the same command, and confirm the output carries a full stack trace rather than a
+one-line message. Revert the change and confirm `git diff` shows only `build.gradle`.
 
 - [ ] **Step 4: Stage and report**
 
@@ -787,10 +701,10 @@ jobs:
 The gate is the one new piece of logic, and it is plain `sh`. Run it the way the runner will:
 
 ```bash
-GITHUB_REF_NAME=v0.4.0 sh -c 'version=$(sed -n "s/^mod_version=//p" gradle.properties | tr -d "\r"); test "v$version" = "$GITHUB_REF_NAME" && echo MATCH || echo MISMATCH'
+GITHUB_REF_NAME=v0.4.1 sh -c 'version=$(sed -n "s/^mod_version=//p" gradle.properties | tr -d "\r"); test "v$version" = "$GITHUB_REF_NAME" && echo MATCH || echo MISMATCH'
 ```
 
-Expected: `MATCH` (assuming `mod_version=0.4.0` from plan 4a). Then:
+Expected: `MATCH` (`mod_version=0.4.1` since plan 4b). Then:
 
 ```bash
 GITHUB_REF_NAME=v9.9.9 sh -c 'version=$(sed -n "s/^mod_version=//p" gradle.properties | tr -d "\r"); test "v$version" = "$GITHUB_REF_NAME" && echo MATCH || echo MISMATCH'
@@ -843,7 +757,7 @@ CI builds every push to `main` and every pull request, and a `v*` tag builds and
 ./gradlew build --no-daemon
 ```
 
-Expected: `BUILD SUCCESSFUL`, 90 tests.
+Expected: `BUILD SUCCESSFUL`, 131 tests.
 
 - [ ] **Step 3: Stage and report**
 
@@ -866,7 +780,9 @@ docs: README for phase 4d
 - Create: `docs/acceptance/phase-4d.md`
 
 CI has never executed on a runner, so the only way to accept this plan is to watch it. The user does this;
-the orchestrator writes the log, has it reviewed, and commits it.
+the orchestrator writes the log, has it reviewed, and commits it. **It needs a GitHub remote first:** as of
+2026-09-26 the repository has none. It is independent of the in-pack acceptance and can happen before or
+after it; the version gate's passing case (step 5) belongs with the release tag, after the merge.
 
 1. **Pull request build.** Push this plan's branch and open a pull request against `main`. Paste the run's
    conclusion, its duration, and the `Resolve the third-party mod jars` step's output. Confirm the
@@ -878,7 +794,8 @@ the orchestrator writes the log, has it reviewed, and commits it.
    status.
 4. **Version gate, failing.** From a scratch branch, tag a commit `v9.9.9` and push the tag. The release
    workflow must fail at **The tag must match mod_version** with
-   `tag v9.9.9 does not match mod_version=0.4.0`, before any build step runs. Paste the step log, then
+   `tag v9.9.9 does not match mod_version=0.4.1` (or whatever `mod_version` is by then), before any build
+   step runs. Paste the step log, then
    delete the tag locally and on the remote:
 
 ```bash
@@ -901,13 +818,14 @@ git commit -m "docs: phase 4d acceptance log"
 
 ## Notes for the orchestrator
 
-- Tasks 1, 2 and 3 are pure JUnit and need no client. Task 4 needs one Gradle run. Task 5 changes nothing a
-  local build can prove, which is why Task 7 exists.
+- Tasks 1 and 2 are pure JUnit. Task 1 does change three mixins' imports, which compiles or does not, but the
+  dev-client check the user asked for at the end of 4d (mixin export with `-PpackMods`, then a look at the
+  results screen) covers it at runtime before the in-pack session. Task 4 needs one Gradle run. Task 5
+  changes nothing a local build can prove, which is why Task 7 exists.
 - Task 1's guard test is the piece most likely to surprise: it walks `src/main/java` and fails on **any**
   hook name in quotes, including ones a later plan might add. That is the point — if a subagent adds one, it
   should be told to use the constant.
-- Task 3 is written to be a partial no-op depending on whether 4b and 4c have run. A subagent reporting "the
-  grep found nothing, so I only added the test" has done the task correctly.
+- Task 3 was folded into Task 1 (Step 5b) on 2026-09-26.
 - **Reviewer checklist per task:** `core/Hook.java` still has no imports; `EntityKey.equals` and `hashCode`
   agree with each other and with `serialize()`; both workflows declare `permissions` and `concurrency`; the
   release gate runs before `setup-java`; no second cache for `~/.gradle`.
