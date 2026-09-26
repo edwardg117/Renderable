@@ -507,8 +507,10 @@ literal with no `=`:
 grep -nE "^\s+[a-zA-Z][a-zA-Z0-9]* ['\"]" build.gradle
 ```
 
-Expected: `id`, `include`, `from`, `into`, the dependency configurations, and `exceptionFormat`. All but
-`exceptionFormat` are real methods that Gradle 10 keeps; only `exceptionFormat` is a property.
+Expected: `id`, `include`, `includeGroup`, `from`, `into`, `systemProperty`, `events`, the dependency
+configurations, and `exceptionFormat`. All but `exceptionFormat` are real methods that Gradle 10 keeps
+(`events(String...)`, `systemProperty(String, Object)` and `includeGroup(String)` were checked against the
+Gradle and ModDevGradle DSL when this ran); only `exceptionFormat` is a property.
 
 - [ ] **Step 2: Fix it**
 
