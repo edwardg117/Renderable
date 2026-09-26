@@ -366,8 +366,9 @@ Sections, in order:
 5. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames.
 6. **Entities by type** (top 20) and **individuals** (top 20), and the count of GC-suspect frames.
 7. **Particles** (top 20), and the count of GC-suspect frames.
-8. **Blocks** (top 20 by mesh ms/s) and **Sections** (top 20 by rebuilds), or one line saying
-   Sodium hooks were not active.
+8. **Blocks** (top 20 by mesh ms/s) and **Sections** (top 20 by rebuilds), or one line saying why
+   there are none: Sodium hooks were not active, or, when a Sodium hook fired, nothing was meshed or
+   rebuilt while sampling.
 9. **Flywheel**: bucket share and visual counts.
 
 Tables are fixed-width plain text so they survive being pasted into a GitHub issue inside a

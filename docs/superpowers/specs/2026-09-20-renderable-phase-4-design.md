@@ -712,6 +712,14 @@ boolean, Set<String>)`, which `ResultsScreen` already holds. The empty-state sen
 it, so the screen and the report can no longer drift. `ui` keeps its dependency direction (`ui -> core`);
 it does not gain one on `report`.
 
+Corrected on 2026-09-26, after a dev-client report said `(no data: Sodium hooks were not active)` in a client
+where Sodium was installed and hooked: `hooksApplied` lists hooks that have **fired while sampling**, not
+hooks that are installed, and a session in which no section is rebuilt never fires the mesh hook. Sodium's
+upload hook (`SODIUM_UPLOAD`, on `RenderSectionManager.uploadChunks` and `updateChunks`) fires on every frame
+Sodium renders, so either Sodium hook in the list now counts as proof the hooks are in place, and an empty
+table then reads `(no data: no sections were rebuilt)` or `(no data: no blocks were meshed)`. A session
+standing still at a base, the first step of the in-pack acceptance, is exactly that case.
+
 **Alternatives rejected.**
 
 - *Duplicating the strings in `Rows`.* Guarantees drift.

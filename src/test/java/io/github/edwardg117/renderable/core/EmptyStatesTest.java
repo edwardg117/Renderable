@@ -35,6 +35,15 @@ class EmptyStatesTest {
     }
 
     @Test
+    void sodiumsUploadHookFiresEveryFrameSoItAloneShowsSodiumIsHooked() {
+        // A session in which nothing is rebuilt fires Sodium's upload hook on every frame but never its mesh hook.
+        // Its empty tables mean nothing was rebuilt, not that Sodium is not hooked.
+        Environment uploadOnly = env(Map.of(), "SODIUM_UPLOAD");
+        assertEquals("(no data: no blocks were meshed)", EmptyStates.blocks(uploadOnly));
+        assertEquals("(no data: no sections were rebuilt)", EmptyStates.sections(uploadOnly));
+    }
+
+    @Test
     void flywheelStateNamesTheBackendItFoundOrSaysTheModIsAbsent() {
         assertEquals("(no data: Flywheel is not installed)", EmptyStates.flywheel(env(Map.of()), 0));
         assertEquals("(no data: Flywheel is not installed)",

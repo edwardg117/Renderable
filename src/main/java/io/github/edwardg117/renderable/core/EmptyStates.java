@@ -1,5 +1,7 @@
 package io.github.edwardg117.renderable.core;
 
+import java.util.List;
+
 /**
  * The one place the "there is nothing here" sentences live, so the results screen and the text report
  * cannot drift apart on the difference between "that mod is not installed" and "nothing happened"
@@ -33,8 +35,14 @@ public final class EmptyStates {
         return mesh(env, "sections were rebuilt");
     }
 
+    /**
+     * The hook list records hooks that fired while sampling, not hooks that are installed. Sodium's upload hook
+     * fires on every frame a session samples, so either Sodium hook in the list shows the hooks are in place, and
+     * an empty table then means nothing was meshed or rebuilt while sampling, not that the hooks are missing.
+     */
     private static String mesh(Environment env, String nothing) {
-        return env.hooksApplied().contains(Hook.SODIUM_MESH.name())
+        List<String> fired = env.hooksApplied();
+        return fired.contains(Hook.SODIUM_MESH.name()) || fired.contains(Hook.SODIUM_UPLOAD.name())
                 ? "(no data: no " + nothing + ")"
                 : "(no data: Sodium hooks were not active)";
     }
