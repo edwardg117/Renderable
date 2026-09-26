@@ -7,18 +7,65 @@ on:
 permissions:
   contents: write
 
+# Two runs attaching assets to one release would race; let the first finish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Fail before spending a build on a jar whose name will not match its tag.
+      - name: The tag must match mod_version
+        run: |
+          version=$(sed -n 's/^mod_version=//p' gradle.properties | tr -d '\r')
+          if [ -z "$version" ]; then
+            echo "gradle.properties has no mod_version"
+            exit 1
+          fi
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match mod_version=$version"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches mod_version=$version"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew build --no-daemon
+
+      - name: Cache the extracted mod jars
+        uses: actions/cache@v4
+        with:
+          path: build/nested-mod-jars
+          key: nested-mod-jars-${{ hashFiles('gradle.properties') }}
+
+      # Minecraft and NeoForge come from their own servers, and Sodium, Iris and Create from
+      # api.modrinth.com. A transient failure at any of them gets two more chances before failing the
+      # build. Both tasks only download and unpack, so a genuine compile error never reaches this retry loop.
+      - name: Resolve the third-party artifacts
+        run: |
+          for attempt in 1 2 3; do
+            if ./gradlew extractNestedModJars createMinecraftArtifacts --no-daemon; then
+              exit 0
+            fi
+            echo "attempt $attempt failed; retrying in 20s"
+            sleep 20
+          done
+          echo "could not resolve the artifacts after three attempts"
+          exit 1
+
+      - name: Build
+        run: ./gradlew build --no-daemon
+
       - uses: softprops/action-gh-release@v2
         with:
           files: build/libs/renderable-*.jar
           generate_release_notes: true
+          # A naming change must fail the release, not publish it without its jar.
+          fail_on_unmatched_files: true

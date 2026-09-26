@@ -560,7 +560,11 @@ build: assign exceptionFormat rather than using the space syntax Gradle 10 remov
 - Modify: `.github/workflows/build.yml`
 - Modify: `.github/workflows/release.yml`
 
-Spec addendum §P4.D4.
+Spec addendum §P4.D4. Two changes from this task's execution on 2026-09-26, which the YAML below carries:
+the retry covers `createMinecraftArtifacts` as well as `extractNestedModJars`, because a first run on a cold
+runner downloads Minecraft and NeoForge from their own servers and a blip there failed the build with no
+retry; and the release step sets `fail_on_unmatched_files: true`, because `softprops/action-gh-release`
+otherwise publishes a release without its jar when the glob matches nothing.
 
 - [ ] **Step 1: Rewrite `build.yml`**
 
@@ -604,18 +608,19 @@ jobs:
           path: build/nested-mod-jars
           key: nested-mod-jars-${{ hashFiles('gradle.properties') }}
 
-      # Sodium, Iris and Create come from api.modrinth.com, a third-party service. Give a transient failure
-      # two more chances before failing the whole build.
-      - name: Resolve the third-party mod jars
+      # Minecraft and NeoForge come from their own servers, and Sodium, Iris and Create from
+      # api.modrinth.com. A transient failure at any of them gets two more chances before failing the
+      # build. Both tasks only download and unpack, so a genuine compile error never reaches this retry loop.
+      - name: Resolve the third-party artifacts
         run: |
           for attempt in 1 2 3; do
-            if ./gradlew extractNestedModJars --no-daemon; then
+            if ./gradlew extractNestedModJars createMinecraftArtifacts --no-daemon; then
               exit 0
             fi
             echo "attempt $attempt failed; retrying in 20s"
             sleep 20
           done
-          echo "could not resolve the Modrinth artifacts after three attempts"
+          echo "could not resolve the artifacts after three attempts"
           exit 1
 
       - name: Build
@@ -677,16 +682,19 @@ jobs:
           path: build/nested-mod-jars
           key: nested-mod-jars-${{ hashFiles('gradle.properties') }}
 
-      - name: Resolve the third-party mod jars
+      # Minecraft and NeoForge come from their own servers, and Sodium, Iris and Create from
+      # api.modrinth.com. A transient failure at any of them gets two more chances before failing the
+      # build. Both tasks only download and unpack, so a genuine compile error never reaches this retry loop.
+      - name: Resolve the third-party artifacts
         run: |
           for attempt in 1 2 3; do
-            if ./gradlew extractNestedModJars --no-daemon; then
+            if ./gradlew extractNestedModJars createMinecraftArtifacts --no-daemon; then
               exit 0
             fi
             echo "attempt $attempt failed; retrying in 20s"
             sleep 20
           done
-          echo "could not resolve the Modrinth artifacts after three attempts"
+          echo "could not resolve the artifacts after three attempts"
           exit 1
 
       - name: Build
@@ -696,6 +704,8 @@ jobs:
         with:
           files: build/libs/renderable-*.jar
           generate_release_notes: true
+          # A naming change must fail the release, not publish it without its jar.
+          fail_on_unmatched_files: true
 ```
 
 - [ ] **Step 3: Check the version gate's shell logic locally**
@@ -721,7 +731,8 @@ python -c "import yaml,sys; [yaml.safe_load(open(f)) for f in ['.github/workflow
 ```
 
 Expected: `both parse`. If Python has no `yaml` module on this machine, say so in the report and rely on the
-runner check in Task 7 instead; do not install anything.
+runner check in Task 7 instead; do not install anything. (On 2026-09-26 it had none, so the parse is
+checked by the runner in Task 7.)
 
 - [ ] **Step 5: Stage and report**
 
