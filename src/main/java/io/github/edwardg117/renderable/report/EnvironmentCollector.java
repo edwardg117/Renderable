@@ -5,6 +5,8 @@ import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.GcNames;
 import io.github.edwardg117.renderable.core.JvmFlags;
 import io.github.edwardg117.renderable.hooks.GcWatcher;
+import io.github.edwardg117.renderable.hooks.HookInstalls;
+import io.github.edwardg117.renderable.hooks.Probe;
 import io.github.edwardg117.renderable.hooks.compat.FlywheelCompat;
 import io.github.edwardg117.renderable.hooks.compat.IrisCompat;
 import io.github.edwardg117.renderable.hooks.events.EventTiming;
@@ -19,7 +21,6 @@ import org.lwjgl.opengl.GL11;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.function.Supplier;
 
 /** Reads the client's environment for the report header. Must run on the render thread (reads OpenGL strings). */
@@ -28,7 +29,7 @@ public final class EnvironmentCollector {
     private EnvironmentCollector() {
     }
 
-    public static Environment collect(List<String> hooksApplied) {
+    public static Environment collect() {
         Minecraft mc = Minecraft.getInstance();
         Options o = mc.options;
         LinkedHashMap<String, String> m = new LinkedHashMap<>();
@@ -80,7 +81,7 @@ public final class EnvironmentCollector {
             BlockPos p = mc.player.blockPosition();
             m.put("position", p.getX() + " " + p.getY() + " " + p.getZ());
         }
-        return Environment.of(m, hooksApplied);
+        return Environment.of(m, Probe.hooksFired(), HookInstalls.installed(), HookInstalls.failed());
     }
 
     private static String modVersion(String modId) {

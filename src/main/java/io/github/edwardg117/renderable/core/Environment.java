@@ -8,8 +8,15 @@ import java.util.Map;
 /**
  * Plain environment description for reports (spec §6.1 item 2). Built by the Minecraft-aware collector in
  * {@code report}; the core only carries it. Entries keep insertion order.
+ *
+ * <p>Three hook lists (spec addendum §P5.D1): {@code hooksFired}, the hooks that have run while a session was
+ * sampling, in any session since the game started; {@code hooksInstalled}, those every injector of which found its
+ * target when its class loaded; and
+ * {@code hooksFailed}, those with an injector that did not. A hook whose classes never loaded is in neither of the
+ * last two. {@link #state} reads them together.
  */
-public record Environment(Map<String, String> entries, List<String> hooksApplied) {
+public record Environment(Map<String, String> entries, List<String> hooksFired, List<String> hooksInstalled,
+                          List<String> hooksFailed) {
 
     /**
      * The value written for a mod or feature that is not installed. Its informal partner, written directly as
@@ -38,20 +45,28 @@ public record Environment(Map<String, String> entries, List<String> hooksApplied
     public static final String JVM_FLAGS = "jvmFlags";
 
     /**
-     * Copies both collections so the record is really immutable, however it is built. The entries copy is a
+     * Copies every collection so the record is really immutable, however it is built. The entries copy is a
      * {@link LinkedHashMap}, not {@code Map.copyOf}, because {@code Map.copyOf} does not keep order.
      */
     public Environment {
         entries = Collections.unmodifiableMap(new LinkedHashMap<>(entries));
-        hooksApplied = List.copyOf(hooksApplied);
+        hooksFired = List.copyOf(hooksFired);
+        hooksInstalled = List.copyOf(hooksInstalled);
+        hooksFailed = List.copyOf(hooksFailed);
     }
 
-    public static Environment of(Map<String, String> entries, List<String> hooksApplied) {
-        return new Environment(entries, hooksApplied);
+    /** An environment with fired hooks only, for tests that need no more. */
+    public static Environment of(Map<String, String> entries, List<String> hooksFired) {
+        return new Environment(entries, hooksFired, List.of(), List.of());
+    }
+
+    public static Environment of(Map<String, String> entries, List<String> hooksFired, List<String> hooksInstalled,
+                                 List<String> hooksFailed) {
+        return new Environment(entries, hooksFired, hooksInstalled, hooksFailed);
     }
 
     public static Environment empty() {
-        return new Environment(Map.of(), List.of());
+        return new Environment(Map.of(), List.of(), List.of(), List.of());
     }
 
     /** True when {@code key} was collected and is not {@link #ABSENT}. */
@@ -63,5 +78,26 @@ public record Environment(Map<String, String> entries, List<String> hooksApplied
     /** The collected value for {@code key}, or {@link #ABSENT} when it was not collected. */
     public String value(String key) {
         return entries.getOrDefault(key, ABSENT);
+    }
+
+    /** What the three hook lists say about one hook (spec addendum §P5.D1). */
+    public enum HookState {
+        /** An injector of it did not find its target: the hook did not apply, wholly or in part. */
+        FAILED,
+        /** Every checked injector of it found its target, or it fired. */
+        INSTALLED,
+        /**
+         * No injector of it was checked and it never fired: the classes it hooks did not load in this client run, or
+         * Mixin rejected its mixin as a whole, or the check threw. The game log records the last two.
+         */
+        NOT_LOADED
+    }
+
+    /** The state of {@code hook}. A failed injector outweighs a firing: part of the hook is missing. */
+    public HookState state(Hook hook) {
+        String name = hook.name();
+        if (hooksFailed.contains(name)) return HookState.FAILED;
+        if (hooksInstalled.contains(name) || hooksFired.contains(name)) return HookState.INSTALLED;
+        return HookState.NOT_LOADED;
     }
 }

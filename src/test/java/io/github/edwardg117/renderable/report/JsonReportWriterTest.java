@@ -50,7 +50,17 @@ class JsonReportWriterTest {
         assertEquals(5, o.get("schema").getAsInt());
         assertEquals("0.1.0", o.getAsJsonObject("mod").get("version").getAsString());
         assertEquals("1.21.1", o.getAsJsonObject("environment").get("minecraft").getAsString());
-        assertEquals(2, o.getAsJsonObject("environment").getAsJsonArray("hooksApplied").size());
+        JsonObject environment = o.getAsJsonObject("environment");
+        assertEquals(2, environment.getAsJsonArray("hooksFired").size());
+        assertEquals(0, environment.getAsJsonArray("hooksInstalled").size());
+        assertEquals(0, environment.getAsJsonArray("hooksFailed").size());
+        assertNull(environment.get("hooksApplied"), "renamed to hooksFired");
+        JsonObject checked = JsonParser.parseString(JsonReportWriter.write(r, Environment.of(new LinkedHashMap<>(),
+                List.of("VERTICES"), List.of("BLOCK_ENTITY_RENDER"), List.of("SODIUM_MESH")), "0.5.0"))
+                .getAsJsonObject().getAsJsonObject("environment");
+        assertEquals("[\"VERTICES\"]", checked.getAsJsonArray("hooksFired").toString());
+        assertEquals("[\"BLOCK_ENTITY_RENDER\"]", checked.getAsJsonArray("hooksInstalled").toString());
+        assertEquals("[\"SODIUM_MESH\"]", checked.getAsJsonArray("hooksFailed").toString());
 
         JsonObject session = o.getAsJsonObject("session");
         assertEquals(0, session.get("vertexCalls").getAsLong());

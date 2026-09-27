@@ -57,8 +57,8 @@ public final class Rows {
             case FRAMES -> frames(r);
             case HITCHES -> hitches(r);
             case MODS -> mods(r, env, sort, ascending, expanded);
-            case BLOCK_ENTITIES -> ranked(r, ProfileKey.Category.BLOCK_ENTITY, sort, ascending, expanded);
-            case ENTITIES -> ranked(r, ProfileKey.Category.ENTITY, sort, ascending, expanded);
+            case BLOCK_ENTITIES -> ranked(r, env, ProfileKey.Category.BLOCK_ENTITY, sort, ascending, expanded);
+            case ENTITIES -> ranked(r, env, ProfileKey.Category.ENTITY, sort, ascending, expanded);
             case PARTICLES -> particles(r, env, sort, ascending);
             case FLYWHEEL -> flywheel(r, env, sort, ascending);
             case BLOCKS -> blocks(r, env, sort, ascending);
@@ -189,8 +189,8 @@ public final class Rows {
         return rows;
     }
 
-    static List<Row> ranked(SessionResult r, ProfileKey.Category category, ColumnSort sort, boolean ascending,
-                            Set<String> expanded) {
+    static List<Row> ranked(SessionResult r, Environment env, ProfileKey.Category category, ColumnSort sort,
+                            boolean ascending, Set<String> expanded) {
         int frames = r.frameCount();
         long total = r.stats().totalNanos();
         Ranking.Sort by = rankedSort(sort);
@@ -199,7 +199,14 @@ public final class Rows {
                 && (r.bucketTotalNanos(Bucket.FLYWHEEL) > 0 || r.flywheel().total() > 0)) {
             rows.add(Row.heading("Flywheel-instanced machines are not timed here; see the Flywheel tab"));
         }
-        for (RankedEntry t : Ranking.sort(Ranking.byType(r, category), by, ascending)) {
+        List<RankedEntry> types = Ranking.sort(Ranking.byType(r, category), by, ascending);
+        if (types.isEmpty()) {
+            // Under the Flywheel heading too, when there is one: it is not a row of this table (spec addendum §P5.D2).
+            rows.add(Row.plain(category == ProfileKey.Category.BLOCK_ENTITY
+                    ? EmptyStates.blockEntities(env) : EmptyStates.entities(env)));
+            return rows;
+        }
+        for (RankedEntry t : types) {
             rows.add(new Row(RankedTable.ranked(t.typeId() + "  (" + t.members() + ")", t, frames, total),
                     null, t.typeId(), true, true, 0, null, -1));
             if (expanded.contains(t.typeId())) {
@@ -209,7 +216,6 @@ public final class Rows {
                 }
             }
         }
-        if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.ranked()));
         return rows;
     }
 
@@ -278,6 +284,11 @@ public final class Rows {
         rows.add(new Row(new String[]{"Visuals, average over " + fw.samples() + " samples",
                 Fmt.num(fw.total()), ""},
                 null, null, true, false, 0, null, -1));
+        if (fw.avgByClass().isEmpty()) {
+            // No classes to list; say why when nothing was alive (the totals row above covers the rest).
+            if (fw.total() == 0) rows.add(Row.plain(EmptyStates.flywheelNoVisuals(fw.samples())));
+            return rows;
+        }
 
         Map<String, String> names = fw.displayNames();
         List<Map.Entry<String, Double>> ordered = new ArrayList<>(fw.byAverageDesc());

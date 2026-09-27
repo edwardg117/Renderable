@@ -110,7 +110,7 @@ class RankingTest {
     void environmentHoldsOrderedEntries() {
         Environment env = Environment.of(new java.util.LinkedHashMap<>(java.util.Map.of("minecraft", "1.21.1")), List.of("BLOCK_ENTITY_RENDER"));
         assertEquals("1.21.1", env.entries().get("minecraft"));
-        assertEquals(List.of("BLOCK_ENTITY_RENDER"), env.hooksApplied());
+        assertEquals(List.of("BLOCK_ENTITY_RENDER"), env.hooksFired());
         assertTrue(Environment.empty().entries().isEmpty());
     }
 

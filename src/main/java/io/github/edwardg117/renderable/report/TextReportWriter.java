@@ -58,9 +58,10 @@ public final class TextReportWriter {
 
         sb.append("Environment\n");
         env.entries().forEach((k, v) -> sb.append("  ").append(k).append(": ").append(v).append('\n'));
-        sb.append("  hooks applied: ")
-                .append(env.hooksApplied().isEmpty() ? "none" : String.join(", ", env.hooksApplied()))
-                .append("\n\n");
+        hooks(sb, "hooks installed", env.hooksInstalled());
+        hooks(sb, "hooks fired", env.hooksFired());
+        hooks(sb, "hooks that did not apply", env.hooksFailed());
+        sb.append('\n');
 
         sb.append("Frames\n");
         sb.append(String.format(Locale.ROOT,
@@ -111,15 +112,24 @@ public final class TextReportWriter {
         sb.append('\n');
 
         appendMods(sb, r, env, frames, total);
-        appendRanked(sb, "Block entities by type", Ranking.byType(r, ProfileKey.Category.BLOCK_ENTITY), frames, total);
-        appendRanked(sb, "Block entities by position", Ranking.byKey(r, ProfileKey.Category.BLOCK_ENTITY), frames, total);
-        appendRanked(sb, "Entities by type", Ranking.byType(r, ProfileKey.Category.ENTITY), frames, total);
-        appendRanked(sb, "Entities (individuals)", Ranking.byKey(r, ProfileKey.Category.ENTITY), frames, total);
+        appendRanked(sb, "Block entities by type", Ranking.byType(r, ProfileKey.Category.BLOCK_ENTITY), frames, total,
+                EmptyStates.blockEntities(env));
+        appendRanked(sb, "Block entities by position", Ranking.byKey(r, ProfileKey.Category.BLOCK_ENTITY), frames, total,
+                EmptyStates.blockEntities(env));
+        appendRanked(sb, "Entities by type", Ranking.byType(r, ProfileKey.Category.ENTITY), frames, total,
+                EmptyStates.entities(env));
+        appendRanked(sb, "Entities (individuals)", Ranking.byKey(r, ProfileKey.Category.ENTITY), frames, total,
+                EmptyStates.entities(env));
         appendParticles(sb, r, env, frames, total);
         appendBlocks(sb, r, env);
         appendSections(sb, r, env);
         appendFlywheel(sb, r, env, frames, total);
         return sb.toString();
+    }
+
+    /** One of the environment's three hook lists (spec addendum §P5.D1). */
+    private static void hooks(StringBuilder sb, String what, List<String> hooks) {
+        sb.append("  ").append(what).append(": ").append(hooks.isEmpty() ? "none" : String.join(", ", hooks)).append('\n');
     }
 
     /** Spec addendum §P5.B5: the {@link Advisor#REPORT_LIMIT} most important recommendations, right after the header line. */
@@ -143,10 +153,11 @@ public final class TextReportWriter {
         sb.append('\n');
     }
 
-    static void appendRanked(StringBuilder sb, String title, List<RankedEntry> entries, int frames, long total) {
+    static void appendRanked(StringBuilder sb, String title, List<RankedEntry> entries, int frames, long total,
+                             String empty) {
         sb.append(title).append(" (top ").append(TOP).append(")\n");
         if (entries.isEmpty()) {
-            sb.append("  ").append(EmptyStates.ranked()).append("\n\n");
+            sb.append("  ").append(empty).append("\n\n");
             return;
         }
         // Without shaders the shadow column is a column of zeros, so a table with no shadow time leaves it out
@@ -209,7 +220,8 @@ public final class TextReportWriter {
         }
         String backend = env.value("flywheelBackend");
         long bucketNanos = r.bucketTotalNanos(Bucket.FLYWHEEL);
-        if (bucketNanos == 0 && !env.hooksApplied().contains(Hook.FLYWHEEL.name())) {
+        // With visuals sampled, Flywheel's dispatcher class has loaded, so a hook that is not installed did not apply.
+        if (bucketNanos == 0 && env.state(Hook.FLYWHEEL) != Environment.HookState.INSTALLED) {
             sb.append("  (hook did not apply for flywheel ").append(env.entries().getOrDefault("flywheel", "?"))
                     .append("; the bucket is missing but visual counts were still sampled)\n");
         }
@@ -218,6 +230,13 @@ public final class TextReportWriter {
                 Fmt.pct(total == 0 ? 0 : 100.0 * bucketNanos / total), backend));
         sb.append(String.format(Locale.ROOT, "  visuals: %.1f block entities, %.1f entities, %.1f effects (average over %d samples)\n",
                 fw.avgBlockEntities(), fw.avgEntities(), fw.avgEffects(), fw.samples()));
+        if (fw.avgByClass().isEmpty()) {
+            // No classes to list. Say why when nothing was alive; when visuals were counted but not by class, the
+            // totals above are all there is.
+            if (fw.total() == 0) sb.append("  ").append(EmptyStates.flywheelNoVisuals(fw.samples())).append('\n');
+            sb.append('\n');
+            return;
+        }
         Table t = new Table(new String[]{"visual class", "avg count"}, new boolean[]{false, true});
         Map<String, String> names = fw.displayNames();
         for (Map.Entry<String, Double> e : fw.byAverageDesc().stream().limit(TOP).toList()) {

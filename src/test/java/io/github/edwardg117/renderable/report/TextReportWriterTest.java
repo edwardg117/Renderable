@@ -36,7 +36,12 @@ class TextReportWriterTest {
     void headerAndEnvironment() {
         String s = TextReportWriter.write(r, env, "0.1.0");
         assertTrue(s.startsWith("Renderable report  v0.1.0  "), s.substring(0, 40));
-        assertTrue(s.contains("\nEnvironment\n  minecraft: 1.21.1\n  gpu: Test GPU\n  hooks applied: BLOCK_ENTITY_RENDER, ENTITY_RENDER\n"), s);
+        assertTrue(s.contains("\nEnvironment\n  minecraft: 1.21.1\n  gpu: Test GPU\n  hooks installed: none\n"
+                + "  hooks fired: BLOCK_ENTITY_RENDER, ENTITY_RENDER\n  hooks that did not apply: none\n\n"), s);
+        String checked = TextReportWriter.write(r, Environment.of(new LinkedHashMap<>(), List.of("VERTICES"),
+                List.of("BLOCK_ENTITY_RENDER"), List.of("SODIUM_MESH")), "0.5.0");
+        assertTrue(checked.contains("\nEnvironment\n  hooks installed: BLOCK_ENTITY_RENDER\n  hooks fired: VERTICES\n"
+                + "  hooks that did not apply: SODIUM_MESH\n\n"), checked);
     }
 
     @Test
@@ -75,10 +80,22 @@ class TextReportWriterTest {
         assertTrue(lines[3].contains("6400.0"), "press type renders 128 ms over 20 frames = 6400 us/frame: " + lines[3]);
         assertTrue(lines[4].startsWith("  create:mechanical_mixer"), lines[4]);
 
-        assertTrue(s.contains("Particles (top 20)\n  (no data: hook not active in this build)\n"), s);
-        assertTrue(s.contains("Blocks (mesh build, top 20 by mesh ms/s)\n  (no data: Sodium hooks were not active)\n"), s);
-        assertTrue(s.contains("Sections (mesh rebuilds, top 20 by rebuilds)\n  (no data: Sodium hooks were not active)\n"), s);
+        assertTrue(s.contains("Particles (top 20)\n  (no particles were rendered)\n"), s);
+        assertTrue(s.contains("Blocks (mesh build, top 20 by mesh ms/s)\n  (no data: Sodium is not installed)\n"), s);
+        assertTrue(s.contains("Sections (mesh rebuilds, top 20 by rebuilds)\n  (no data: Sodium is not installed)\n"), s);
         assertTrue(s.contains("Entities (individuals) (top 20)\n"), s);
+
+        long[] now = {0};
+        Session quiet = new Session(new SessionConfig(10_000_000_000L, 2.0, 16_000_000L, 5, 0, 0), () -> now[0], 0);
+        quiet.onRenderPre(0, 0);
+        now[0] = 10_000_000L;
+        quiet.onRenderPre(0, 0);
+        String none = TextReportWriter.write(quiet.finish(),
+                Environment.of(new LinkedHashMap<>(), List.of(), List.of(), List.of("RIDER_TICK")), "0.5.0");
+        assertTrue(none.contains("\nBlock entities by type (top 20)\n  (nothing of this kind was drawn or ticked)\n\n"
+                + "Block entities by position (top 20)\n  (nothing of this kind was drawn or ticked)\n\n"
+                + "Entities by type (top 20)\n  (hook not installed)\n\n"
+                + "Entities (individuals) (top 20)\n  (hook not installed)\n\n"), none);
     }
 
     @Test
@@ -146,7 +163,7 @@ class TextReportWriterTest {
         String s = TextReportWriter.write(TestSessions.sample(), Environment.of(noHook, List.of()), "0.2.0");
         assertTrue(s.contains("Flywheel\n  (no data: no Flywheel visualization ran; backend flywheel:instancing)\n\n"), s);
 
-        assertTrue(TextReportWriter.write(r, env, "0.1.0").contains("Particles (top 20)\n  (no data: hook not active in this build)\n"));
+        assertTrue(TextReportWriter.write(r, env, "0.1.0").contains("Particles (top 20)\n  (no particles were rendered)\n"));
         LinkedHashMap<String, String> m = new LinkedHashMap<>();
         assertTrue(TextReportWriter.write(r, Environment.of(m, List.of("PARTICLE_RENDER")), "0.2.0")
                 .contains("Particles (top 20)\n  (no particles were rendered)\n"));
@@ -426,5 +443,26 @@ class TextReportWriterTest {
         assertFalse(byPosition.contains("shadow"), "the one row with shadow time is 21st, not printed: " + byPosition);
         String byType = report.substring(report.indexOf("Block entities by type (top 20)\n")).split("\n", 3)[1];
         assertTrue(byType.contains("shadow"), byType);
+    }
+
+    @Test
+    void aFlywheelTableWithSamplesButNoVisualsSaysSo() {
+        SessionResult withFw = withFlywheel(TestSessions.sample(), new FlywheelStats(3, 0, 0, 0, Map.of()), 0);
+        LinkedHashMap<String, String> m = new LinkedHashMap<>();
+        m.put("flywheel", "1.0.6");
+        m.put("flywheelBackend", "flywheel:instancing");
+        String s = TextReportWriter.write(withFw, Environment.of(m, List.of("FLYWHEEL")), "0.5.0");
+        assertTrue(s.contains("  visuals: 0.0 block entities, 0.0 entities, 0.0 effects (average over 3 samples)\n"
+                + "  (Flywheel sampled 3 times and found no visuals alive)\n\n"), s);
+        assertFalse(s.contains("visual class"), "no header over no rows: " + s);
+        assertFalse(s.contains("(hook did not apply"), "the hook fired: " + s);
+
+        // Counted, but not by class: the totals are all there is. A hook installed but never fired is in place.
+        SessionResult counted = withFlywheel(TestSessions.sample(), new FlywheelStats(3, 5, 0, 0, Map.of()), 0);
+        String c = TextReportWriter.write(counted, Environment.of(m, List.of(), List.of("FLYWHEEL"), List.of()),
+                "0.5.0");
+        assertTrue(c.contains("Flywheel\n  bucket 0.00 ms/frame (0.0% of frame time), backend flywheel:instancing\n"
+                + "  visuals: 5.0 block entities, 0.0 entities, 0.0 effects (average over 3 samples)\n\n"), c);
+        assertFalse(c.contains("no visuals alive"), c);
     }
 }

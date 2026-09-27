@@ -184,7 +184,7 @@ public final class ProfilerController implements Probe.Listener {
         session = null;
 
         SessionResult result = s.finish();
-        Environment env = EnvironmentCollector.collect(Probe.hooksApplied());
+        Environment env = EnvironmentCollector.collect();
         String text = TextReportWriter.write(result, env, RenderableMod.VERSION);
         ReportFiles.Written written = null;
         String writeFailure = null;

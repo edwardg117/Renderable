@@ -34,7 +34,7 @@ class EnvironmentTest {
                 List.copyOf(env.entries().keySet()),
                 "insertion order is what the text report prints, so the copy must keep it");
         assertThrows(UnsupportedOperationException.class, () -> env.entries().put("x", "y"));
-        assertThrows(UnsupportedOperationException.class, () -> env.hooksApplied().add("x"));
+        assertThrows(UnsupportedOperationException.class, () -> env.hooksFired().add("x"));
     }
 
     @Test
@@ -47,5 +47,18 @@ class EnvironmentTest {
         assertFalse(env.has("flywheel"), "a key that was never collected is not present either");
         assertEquals("0.6.13", env.value("sodium"));
         assertEquals(Environment.ABSENT, env.value("flywheel"));
+    }
+
+    @Test
+    void aHookIsFailedInstalledOrNotLoaded() {
+        Environment env = Environment.of(Map.of(), List.of("PARTICLE_RENDER", "VERTICES"),
+                List.of("BLOCK_ENTITY_RENDER"), List.of("VERTICES", "SODIUM_MESH"));
+        assertEquals(Environment.HookState.INSTALLED, env.state(Hook.BLOCK_ENTITY_RENDER));
+        assertEquals(Environment.HookState.INSTALLED, env.state(Hook.PARTICLE_RENDER), "firing shows it is in place");
+        assertEquals(Environment.HookState.FAILED, env.state(Hook.SODIUM_MESH));
+        assertEquals(Environment.HookState.FAILED, env.state(Hook.VERTICES), "it fired, but part of it did not apply");
+        assertEquals(Environment.HookState.NOT_LOADED, env.state(Hook.FLYWHEEL));
+        assertThrows(UnsupportedOperationException.class, () -> env.hooksInstalled().add("x"));
+        assertThrows(UnsupportedOperationException.class, () -> env.hooksFailed().add("x"));
     }
 }

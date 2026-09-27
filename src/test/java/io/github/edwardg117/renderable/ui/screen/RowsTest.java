@@ -6,6 +6,7 @@ import io.github.edwardg117.renderable.core.EmptyStates;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.ParticleKey;
+import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.Session;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -75,6 +77,39 @@ class RowsTest {
         List<String> names = Rows.flywheel(r, env, ColumnSort.of(Ranking.Sort.LABEL), true).stream()
                 .filter(row -> row.indent() == 1).map(row -> row.cells()[0]).toList();
         assertEquals(List.of("other.PressVisual", "press.PressVisual", "ShaftVisual", "Visual2", "Visual10"), names);
+    }
+
+    @Test
+    void anEmptyTableSaysWhyUnderTheFlywheelHeadingAndTheFlywheelTabSaysWhenNothingWasAlive() {
+        long[] now = {0};
+        Session quiet = new Session(new SessionConfig(10_000_000_000L, 2.0, 16_000_000L, 5, 0, 0), () -> now[0], 0);
+        quiet.onRenderPre(0, 0);
+        now[0] = 10_000_000L;
+        quiet.onRenderPre(0, 0);
+        SessionResult base = quiet.finish();
+        Environment env = Environment.of(Map.of("flywheelBackend", "flywheel:indirect"), List.of(), List.of(),
+                List.of("BLOCK_ENTITY_TICK"));
+
+        SessionResult counted = withFlywheel(base, new FlywheelStats(3, 5, 0, 0, Map.of()));
+        List<String> blockEntities = describe(Rows.ranked(counted, env, ProfileKey.Category.BLOCK_ENTITY,
+                ColumnSort.NONE, false, Set.of()));
+        assertEquals(List.of("0 G Flywheel-instanced machines are not timed here; see the Flywheel tab",
+                "0 - (hook not installed)"), blockEntities, "the sentence goes under the heading");
+        assertEquals(List.of("0 - (nothing of this kind was drawn or ticked)"),
+                describe(Rows.ranked(counted, env, ProfileKey.Category.ENTITY, ColumnSort.NONE, false, Set.of())));
+        List<String> countedTab = describe(Rows.flywheel(counted, env, ColumnSort.NONE, false));
+        assertTrue(countedTab.get(countedTab.size() - 1).startsWith("0 G Visuals, average over 3 samples|"),
+                "counted but not by class: the totals row is all there is: " + countedTab);
+
+        List<String> nothing = describe(Rows.flywheel(withFlywheel(base, new FlywheelStats(3, 0, 0, 0, Map.of())), env,
+                ColumnSort.NONE, false));
+        assertEquals("0 - (Flywheel sampled 3 times and found no visuals alive)", nothing.get(nothing.size() - 1));
+    }
+
+    private static SessionResult withFlywheel(SessionResult base, FlywheelStats fw) {
+        return new SessionResult(base.config(), base.wallStartMillis(), base.frames(), base.accumulators(),
+                base.stats(), base.hitchThresholdNanos(), base.hitches(), base.timedCalls(), base.vertexCalls(),
+                base.selfNanos(), base.overheadEstimateMs(), base.unbalancedFrames(), fw, base.mesh());
     }
 
     @Test

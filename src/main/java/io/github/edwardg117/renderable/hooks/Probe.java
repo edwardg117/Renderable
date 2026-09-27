@@ -133,7 +133,7 @@ public final class Probe {
     }
 
     /** Names of hooks that have fired at least once, in enum order. */
-    public static List<String> hooksApplied() {
+    public static List<String> hooksFired() {
         if (meshSeen) SEEN[Hook.SODIUM_MESH.ordinal()] = true;
         List<String> out = new ArrayList<>();
         for (Hook h : Hook.values()) {

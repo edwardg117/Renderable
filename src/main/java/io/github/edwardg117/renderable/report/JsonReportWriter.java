@@ -70,9 +70,9 @@ public final class JsonReportWriter {
 
         w.name("environment").beginObject();
         for (Map.Entry<String, String> e : env.entries().entrySet()) w.name(e.getKey()).value(e.getValue());
-        w.name("hooksApplied").beginArray();
-        for (String h : env.hooksApplied()) w.value(h);
-        w.endArray();
+        hooks(w, "hooksFired", env.hooksFired());
+        hooks(w, "hooksInstalled", env.hooksInstalled());
+        hooks(w, "hooksFailed", env.hooksFailed());
         w.endObject();
 
         FrameStats st = r.stats();
@@ -218,6 +218,13 @@ public final class JsonReportWriter {
 
         w.endObject();
         w.flush();
+    }
+
+    /** One of the environment's three hook lists (spec addendum §P5.D1). */
+    private static void hooks(JsonWriter w, String name, List<String> hooks) throws IOException {
+        w.name(name).beginArray();
+        for (String h : hooks) w.value(h);
+        w.endArray();
     }
 
     /**

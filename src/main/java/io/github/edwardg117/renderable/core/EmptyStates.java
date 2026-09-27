@@ -1,7 +1,5 @@
 package io.github.edwardg117.renderable.core;
 
-import java.util.List;
-
 /**
  * The one place the "there is nothing here" sentences live, so the results screen and the text report
  * cannot drift apart on the difference between "that mod is not installed" and "nothing happened"
@@ -12,19 +10,23 @@ public final class EmptyStates {
     private EmptyStates() {
     }
 
+    private static final String NOT_INSTALLED = "(hook not installed)";
+
     /**
-     * A ranked category with no rows. The sentence blames the hook, but the block entity and entity hooks are
-     * required vanilla mixins, so in practice an empty list means nothing of that kind was drawn; correcting the
-     * sentence changes the report and is deferred (spec addendum §P4.3).
+     * An empty Block Entities table (spec addendum §P5.D2). Its hooks are required vanilla mixins, without which the
+     * game does not start, so in practice the table is empty because nothing of the kind ran while sampling.
      */
-    public static String ranked() {
-        return "(no data: hook not active in this build)";
+    public static String blockEntities(Environment env) {
+        return ranked(env, Hook.BLOCK_ENTITY_RENDER, Hook.BLOCK_ENTITY_TICK);
+    }
+
+    /** An empty Entities table: as {@link #blockEntities}, with the rider hook as well. */
+    public static String entities(Environment env) {
+        return ranked(env, Hook.ENTITY_RENDER, Hook.ENTITY_TICK, Hook.RIDER_TICK);
     }
 
     public static String particles(Environment env) {
-        return env.hooksApplied().contains(Hook.PARTICLE_RENDER.name())
-                ? "(no particles were rendered)"
-                : ranked();
+        return failed(env, Hook.PARTICLE_RENDER, Hook.PARTICLE_TICK) ? NOT_INSTALLED : "(no particles were rendered)";
     }
 
     public static String blocks(Environment env) {
@@ -36,15 +38,29 @@ public final class EmptyStates {
     }
 
     /**
-     * The hook list records hooks that fired while sampling, not hooks that are installed. Sodium's upload hook
-     * fires on every frame a session samples, so either Sodium hook in the list shows the hooks are in place, and
-     * an empty table then means nothing was meshed or rebuilt while sampling, not that the hooks are missing.
+     * Sodium's tables tell four cases apart (spec addendum §P5.D1): Sodium is absent; its mesh hook did not apply;
+     * the hook is in place and nothing was meshed or rebuilt while sampling; or Sodium is present but no injector
+     * of the hook was checked, which in a world means Mixin rejected the whole hook class and logged why.
      */
     private static String mesh(Environment env, String nothing) {
-        List<String> fired = env.hooksApplied();
-        return fired.contains(Hook.SODIUM_MESH.name()) || fired.contains(Hook.SODIUM_UPLOAD.name())
-                ? "(no data: no " + nothing + ")"
-                : "(no data: Sodium hooks were not active)";
+        return switch (env.state(Hook.SODIUM_MESH)) {
+            case FAILED -> "(no data: Sodium's mesh hook did not apply)";
+            case INSTALLED -> "(no data: no " + nothing + ")";
+            case NOT_LOADED -> env.has("sodium")
+                    ? "(no data: Sodium's mesh hook never loaded; the game log says why)"
+                    : "(no data: Sodium is not installed)";
+        };
+    }
+
+    private static String ranked(Environment env, Hook... hooks) {
+        return failed(env, hooks) ? NOT_INSTALLED : "(nothing of this kind was drawn or ticked)";
+    }
+
+    private static boolean failed(Environment env, Hook... hooks) {
+        for (Hook h : hooks) {
+            if (env.state(h) == Environment.HookState.FAILED) return true;
+        }
+        return false;
     }
 
     /**
@@ -55,6 +71,11 @@ public final class EmptyStates {
         if (!env.has("flywheelBackend")) return "(no data: Flywheel is not installed)";
         if (samples == 0) return "(no data: no Flywheel visualization ran; backend " + env.value("flywheelBackend") + ")";
         return "";
+    }
+
+    /** A Flywheel table whose samples found no visual classes (spec addendum §P5.D2), in place of an empty table. */
+    public static String flywheelNoVisuals(int samples) {
+        return "(Flywheel sampled " + (samples == 1 ? "once" : samples + " times") + " and found no visuals alive)";
     }
 
     /** The Mods table's empty state (spec addendum §P5.A7). */
