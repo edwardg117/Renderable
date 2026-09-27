@@ -3,6 +3,7 @@ package io.github.edwardg117.renderable.core;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.LongSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -597,5 +598,301 @@ class SessionTest {
         assertEquals(0, f.tasksNanos());
         assertEquals(0, f.capNanos());
         assertEquals(7 * MS, f.swapNanos());
+    }
+
+    @Test
+    void attributionOnlyCallsLeaveBucketsToTheCallsTheyEnclose() {
+        Session s = session(10_000);
+        Accumulator handler = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        Accumulator be = s.accumulator(press);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.beginAttribution(handler);
+        at(2); s.begin(be, Bucket.BLOCK_ENTITY);    // a block entity the handler draws
+        at(5); s.end();
+        at(6); s.end();
+        at(8); s.onRenderPost();
+        at(10); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(3 * MS, f.bucket(Bucket.BLOCK_ENTITY), "still block entity time");
+        assertEquals(5 * MS, handler.renderNanos, "the handler's own row is inclusive");
+        assertEquals(1, handler.calls);
+        assertEquals(3 * MS, be.renderNanos);
+        assertEquals(2 * MS, f.named(Window.RENDER), "the handler's 5 ms less the 3 ms bucketed inside it");
+        assertEquals(5 * MS, f.otherRenderNanos(), "8 ms of render less the 3 ms bucketed");
+    }
+
+    @Test
+    void anAttributionOnlyCallInsideABucketOwnerCreditsNoBucketAndIsNotNamed() {
+        Session s = session(10_000);
+        Accumulator layer = s.accumulator(ModKey.layer("xaerominimap", "xaerominimap:minimap"));
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(null, Bucket.HUD);
+        at(2); s.beginAttribution(layer);
+        at(4); s.end();
+        at(5); s.end();
+        at(6); s.onRenderPost();
+        at(10); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(4 * MS, f.bucket(Bucket.HUD), "the layer's time stays in the HUD bucket");
+        assertEquals(2 * MS, layer.renderNanos);
+        assertEquals(0, f.named(Window.RENDER), "a bucket owner encloses it, so it is not named");
+        assertEquals(layer.key, f.top().get(0).key(), "an attribution-only key is a top contributor like any other");
+    }
+
+    @Test
+    void verticesSkipAttributionOnlyCalls() {
+        Session s = session(10_000);
+        Accumulator cowAcc = s.accumulator(cow);
+        Accumulator handler = s.accumulator(ModKey.event("somemod", "a.RenderLivingEvent$Pre"));
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(cowAcc, Bucket.ENTITY);
+        at(2); s.beginAttribution(handler);
+        s.vertex();
+        s.vertices(6);                  // drawn by the handler, inside the cow's render
+        at(3); s.end();
+        at(4); s.end();
+        at(5); s.beginAttribution(handler);
+        s.vertex();                     // no call that owns a bucket is open: dropped
+        at(6); s.end();
+        at(10); s.onRenderPre(0, 0);
+
+        assertEquals(7, cowAcc.vertices);
+        assertEquals(0, handler.vertices);
+        assertEquals(3, s.vertexCalls(), "counted whether or not the call landed on a key");
+        assertEquals(3 * MS, s.framesView().get(0).bucket(Bucket.ENTITY));
+    }
+
+    @Test
+    void namedTimeFollowsTheWindowItRanIn() {
+        Session s = session(10_000);
+        Accumulator tickHandler = s.accumulator(ModKey.event("somemod", "a.ClientTickEvent$Post"));
+        Accumulator packet = s.accumulator(ModKey.packet("minecraft", "minecraft:level_chunk_with_light"));
+        Accumulator inputHandler = s.accumulator(ModKey.event("somemod", "a.InputEvent$Key"));
+        at(0);  s.onRenderPre(0, 0);
+        at(2);  s.onRenderPost();
+        at(3);  s.onCapBegin();
+        at(3);  s.beginAttribution(inputHandler);
+        at(4);  s.end();
+        at(5);  s.onCapEnd();
+        at(6);  s.onTasksBegin();
+        at(6);  s.beginAttribution(packet);
+        at(8);  s.end();
+        at(9);  s.onTasksEnd();
+        at(10); s.onTickPre();
+        at(10); s.beginAttribution(tickHandler);
+        at(11); s.end();
+        at(12); s.onTickPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(2 * MS, f.named(Window.TASKS));
+        assertEquals(1 * MS, f.named(Window.TICK));
+        assertEquals(0, f.named(Window.RENDER));
+        assertEquals(1 * MS, tickHandler.tickNanos, "a call inside the client tick is tick time");
+        assertEquals(1, tickHandler.tickCalls);
+        assertEquals(2 * MS, packet.renderNanos, "outside the tick, an attribution-only call is on the render side");
+        assertEquals(1 * MS, inputHandler.renderNanos, "a handler during the frame-cap wait still counts for its mod");
+        long named = 0;
+        for (Window w : Window.VALUES) named += f.named(w);
+        assertEquals(3 * MS, named, "the frame-cap wait is in no window, so that handler is not named");
+    }
+
+    @Test
+    void attributionOnlyKeysGetPeaksAndGcFrames() {
+        Session s = session(10_000);
+        Accumulator h = s.accumulator(ModKey.event("somemod", "a.ClientTickEvent$Post"));
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.onTickPre(); s.beginAttribution(h);
+        at(4);  s.end(); s.onTickPost();                      // 3 ms, clean
+        at(10); s.onRenderPre(0, 0);
+        at(11); s.onTickPre(); s.beginAttribution(h);
+        at(51); s.end(); s.onTickPost();                      // 40 ms
+        at(60); s.onRenderPre(1, 40);                         // a 40 ms pause in that frame
+
+        RankedEntry row = Ranking.byType(s.finish(), ProfileKey.Category.MOD).get(0);
+        assertEquals("somemod", row.typeId());
+        assertEquals(3 * MS, row.maxFrameNanos(), "the 40 ms frame is GC-suspect and does not set the peak");
+        assertEquals(1, row.gcFrames());
+    }
+
+    @Test
+    void anUnbalancedAttributionCallIsResetAtTheFrameBoundary() {
+        Session s = session(10_000);
+        Accumulator h = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.begin(s.accumulator(press), Bucket.BLOCK_ENTITY);
+        at(2);  s.end();                                      // bucketed first, so named time left open would show
+        at(3);  s.beginAttribution(h);                        // a handler threw past its end()
+        at(10); s.onRenderPre(0, 0);
+        at(11); s.begin(s.accumulator(press), Bucket.BLOCK_ENTITY);
+        at(13); s.end();
+        at(20); s.onRenderPre(0, 0);
+
+        assertEquals(1, s.unbalancedFrames());
+        FrameRecord f = s.framesView().get(1);
+        assertEquals(2 * MS, f.bucket(Bucket.BLOCK_ENTITY), "the bucket rule works again after the reset");
+        assertEquals(0, f.named(Window.RENDER));
+    }
+
+    @Test
+    void phase5FixtureMatchesItsDescription() {
+        SessionResult r = TestSessions.phase5();
+        assertEquals(2, r.frameCount());
+        FrameRecord f = r.frames().get(0);
+        assertEquals(20 * MS, f.totalNanos());
+        assertEquals(5 * MS, f.renderNanos());
+        assertEquals(3 * MS, f.capNanos());
+        assertEquals(2 * MS, f.tasksNanos());
+        assertEquals(2 * MS, f.tickNanos());
+        assertEquals(8 * MS, f.swapNanos());
+        assertEquals(500_000, f.bucket(Bucket.ENTITY));
+        assertEquals(1 * MS, f.bucket(Bucket.BLOCK_ENTITY));
+        assertEquals(2 * MS, f.bucket(Bucket.HUD));
+        assertEquals(1 * MS, f.bucket(Bucket.ENTITY_TICK), "the boat only: the rider is nested inside it");
+        assertEquals(1_500_000, f.otherRenderNanos());
+        assertEquals(1 * MS, f.otherTickNanos());
+        assertEquals(1 * MS, f.named(Window.RENDER));
+        assertEquals(400_000, f.named(Window.TICK));
+        assertEquals(1 * MS, f.named(Window.TASKS));
+
+        Map<ProfileKey, Accumulator> acc = r.accumulators();
+        assertEquals(14, acc.get(TestSessions.COW).vertices, "the living-render handler's vertices stay on the cow");
+        assertEquals(0, acc.get(TestSessions.LIVING_HANDLER).vertices);
+        assertEquals(20, acc.get(TestSessions.PRESS).vertices);
+        assertEquals(800_000, acc.get(TestSessions.PLAYER).tickNanos, "the rider has its own tick");
+        assertEquals(2 * MS, acc.get(TestSessions.BOAT).tickNanos, "and the vehicle still includes it");
+
+        List<RankedEntry> mods = Ranking.byType(r, ProfileKey.Category.MOD);
+        assertEquals(List.of("create", "minecraft", "xaerominimap", "somemod"),
+                mods.stream().map(RankedEntry::typeId).toList(), "by total, ties A to Z");
+        assertEquals(2 * MS, mods.get(0).maxFrameNanos());
+        assertEquals(600_000, mods.get(3).maxFrameNanos(), "somemod's two handlers in one frame: 0.2 + 0.4");
+        assertEquals(20, r.timedCalls());
+        assertEquals(4, r.vertexCalls());
+    }
+
+    @Test
+    void aBucketedCallInsideAHudLayerCountsInTheHud() {
+        Session s = session(10_000);
+        Accumulator layer = s.accumulator(ModKey.layer("somemod", "somemod:companion"));
+        Accumulator cowAcc = s.accumulator(cow);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(null, Bucket.HUD);
+        at(2); s.beginAttribution(layer);
+        at(3); s.begin(cowAcc, Bucket.ENTITY);      // an entity model the layer draws
+        s.vertices(4);
+        at(5); s.end();
+        at(6); s.end();
+        at(7); s.end();
+        at(8); s.onRenderPost();
+        at(10); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(6 * MS, f.bucket(Bucket.HUD), "the HUD encloses the layer and everything the layer draws");
+        assertEquals(0, f.bucket(Bucket.ENTITY), "an enclosing bucket owner wins, even with a layer in between");
+        assertEquals(2 * MS, cowAcc.renderNanos, "the entity keeps its own row");
+        assertEquals(4, cowAcc.vertices);
+        assertEquals(4 * MS, layer.renderNanos);
+    }
+
+    @Test
+    void nestedAttributionOnlyCallsAreNamedOnceByTheOutermost() {
+        Session s = session(10_000);
+        Accumulator outer = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        Accumulator inner = s.accumulator(ModKey.event("othermod", "b.OtherRenderEvent"));
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.beginAttribution(outer);
+        at(2);  s.begin(s.accumulator(press), Bucket.BLOCK_ENTITY);
+        at(3);  s.end();
+        at(4);  s.beginAttribution(inner);                    // a handler of an event the outer handler posts
+        at(5);  s.begin(s.accumulator(mixer), Bucket.BLOCK_ENTITY);
+        at(7);  s.end();
+        at(8);  s.end();
+        at(9);  s.end();
+        at(10); s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(3 * MS, f.bucket(Bucket.BLOCK_ENTITY), "no call that owns a bucket encloses either block entity");
+        assertEquals(5 * MS, f.named(Window.RENDER), "the outer handler's 8 ms less all 3 ms bucketed inside it, once");
+        assertEquals(8 * MS, outer.renderNanos);
+        assertEquals(4 * MS, inner.renderNanos, "the inner handler's row is inclusive, like every row");
+    }
+
+    @Test
+    void vertexRoutingIsResetAtTheFrameBoundary() {
+        Session s = session(10_000);
+        Accumulator be = s.accumulator(press);
+        Accumulator h = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.begin(be, Bucket.BLOCK_ENTITY);             // a renderer threw past its end()
+        at(10); s.onRenderPre(0, 0);
+        at(11); s.beginAttribution(h);
+        s.vertex();                                           // nothing that owns a bucket is open: dropped
+        at(12); s.end();
+        at(20); s.onRenderPre(0, 0);
+
+        assertEquals(1, s.unbalancedFrames());
+        assertEquals(0, h.vertices, "vertices never land on an attribution-only call");
+        assertEquals(0, be.vertices);
+    }
+
+    @Test
+    void anAttributionOnlyCallNeverAddsShadowTime() {
+        Session s = session(10_000);
+        Accumulator h = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        at(0); s.onRenderPre(0, 0);
+        s.shadowPass = true;                        // still set by the last entity of the shadow pass
+        at(1); s.beginAttribution(h);
+        at(3); s.end();
+        s.shadowPass = false;
+        assertEquals(2 * MS, h.renderNanos);
+        assertEquals(0, h.shadowNanos, "the flag belongs to the block entity, entity and particle hooks that set it");
+    }
+
+    @Test
+    void attributionOnlyCallsDeeperThanTheStackAreSafe() {
+        Session s = session(10_000);
+        Accumulator be = s.accumulator(press);
+        Accumulator h = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(be, Bucket.BLOCK_ENTITY);
+        for (int i = 0; i < 100; i++) s.beginAttribution(h);
+        s.vertex();                                 // under calls the stack does not track: dropped
+        at(2);
+        for (int i = 0; i < 100; i++) s.end();
+        s.vertex();                                 // back inside the block entity
+        at(3); s.end();
+        at(10); s.onRenderPre(0, 0);
+
+        assertEquals(Session.MAX_DEPTH - 1, h.calls, "calls beyond the stack are dropped, not misattributed");
+        assertEquals(1, be.vertices);
+        assertEquals(2 * MS, s.framesView().get(0).bucket(Bucket.BLOCK_ENTITY));
+    }
+
+    @Test
+    void anAttributionOnlyCallBeforeTheFirstFrameIsNotNamed() {
+        Session s = session(10_000);
+        Accumulator packet = s.accumulator(ModKey.packet("minecraft", "minecraft:level_chunk_with_light"));
+        Accumulator input = s.accumulator(ModKey.event("somemod", "a.InputEvent$Key"));
+        at(0);  s.onTasksBegin();                   // the session attached between frames
+        at(0);  s.beginAttribution(packet);
+        at(1);  s.end();
+        at(1);  s.onTasksEnd();
+        at(2);  s.onRenderPre(0, 0);
+        at(4);  s.onRenderPost();
+        at(5);  s.onCapBegin();
+        at(5);  s.beginAttribution(input);          // in no window, so it opens no named time of its own
+        at(6);  s.end();
+        at(7);  s.onCapEnd();
+        at(12); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        long named = 0;
+        for (Window w : Window.VALUES) named += f.named(w);
+        assertEquals(0, named);
+        assertEquals(1 * MS, packet.renderNanos, "it still counts for its key, like any call before the first frame");
     }
 }

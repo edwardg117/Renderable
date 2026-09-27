@@ -28,6 +28,15 @@ public final class TestSessions {
     public static final BlockKey WATER = new BlockKey("minecraft:water");
     public static final SectionKey SECTION_A = new SectionKey("minecraft:overworld", 0, 4, 0);
     public static final SectionKey SECTION_B = new SectionKey("minecraft:overworld", 1, 4, 0);
+    public static final ModKey STAGE_HANDLER =
+            ModKey.event("create", "net.neoforged.neoforge.client.event.RenderLevelStageEvent");
+    public static final ModKey LIVING_HANDLER =
+            ModKey.event("somemod", "net.neoforged.neoforge.client.event.RenderLivingEvent$Pre");
+    public static final ModKey TICK_HANDLER =
+            ModKey.event("somemod", "net.neoforged.neoforge.client.event.ClientTickEvent$Post");
+    public static final ModKey MINIMAP = ModKey.layer("xaerominimap", "xaerominimap:minimap");
+    public static final ModKey CHUNK_PACKET = ModKey.packet("minecraft", "minecraft:level_chunk_with_light");
+    public static final EntityKey BOAT = new EntityKey("minecraft:boat", 9, "");
 
     public static final long WALL_START = 1_726_700_000_000L;
 
@@ -136,6 +145,76 @@ public final class TestSessions {
         clock[0] = 1 * MS;   s.begin(press, Bucket.BLOCK_ENTITY); clock[0] = 41 * MS; s.end();
         s.onRenderPost();
         clock[0] = 100 * MS; s.onRenderPre(1, 40);
+        return s.finish();
+    }
+
+    /**
+     * Phase 5 fixture (spec addendum §P5.A1, §P5.A6 and §P5.A8): two identical 20 ms frames that exercise every
+     * new frame component and every kind of attribution-only call. Per frame, in milliseconds from its start:
+     *
+     * render 0-5: cow render 0.5-1.0 (ENTITY) holding the living-render handler 0.6-0.8, which emits 7
+     * vertices; the stage handler 1-3 holding a press render 1.5-2.5 (BLOCK_ENTITY) that emits 10 vertices;
+     * the HUD 3-5 (bucket only) holding the minimap layer 3.5-4.5. Frame cap 5-8. Tasks 8-10 holding the chunk
+     * packet 8.5-9.5. Tick 10-12: the tick handler 10.2-10.6, then the boat's tick 10.6-11.6 (ENTITY_TICK)
+     * holding the player's rider tick 11.0-11.4.
+     *
+     * So per frame: render 5, frame cap 3, tasks 2, tick 2, swap 8. Buckets: entity 0.5, block entity 1,
+     * hud 2, entity tick 1 (the boat only; the rider is nested). Other render 1.5, of which 1 is named (the
+     * stage handler less the press inside it; the living handler is inside the cow). Other tick 1, of which
+     * 0.4 is named. Tasks 2, of which 1 is named. Vertices land on the cow (7) and the press (10). Type peaks:
+     * create 2, somemod 0.6, xaerominimap 1, minecraft 1. 10 timed calls and 2 vertex calls a frame.
+     */
+    public static SessionResult phase5() {
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25, 2), () -> now[0], WALL_START);
+        Accumulator cow = s.accumulator(COW);
+        Accumulator press = s.accumulator(PRESS);
+        Accumulator player = s.accumulator(PLAYER);
+        Accumulator boat = s.accumulator(BOAT);
+        Accumulator stage = s.accumulator(STAGE_HANDLER);
+        Accumulator living = s.accumulator(LIVING_HANDLER);
+        Accumulator tick = s.accumulator(TICK_HANDLER);
+        Accumulator minimap = s.accumulator(MINIMAP);
+        Accumulator chunk = s.accumulator(CHUNK_PACKET);
+
+        for (int i = 0; i <= 2; i++) {
+            long t0 = i * 20 * MS;
+            now[0] = t0; s.onRenderPre(0, 0);
+            if (i == 2) break;
+
+            now[0] = t0 + 500_000;    s.begin(cow, Bucket.ENTITY);
+            now[0] = t0 + 600_000;    s.beginAttribution(living);
+            s.vertices(7);
+            now[0] = t0 + 800_000;    s.end();
+            now[0] = t0 + 1 * MS;     s.end();
+            now[0] = t0 + 1 * MS;     s.beginAttribution(stage);
+            now[0] = t0 + 1_500_000;  s.begin(press, Bucket.BLOCK_ENTITY);
+            s.vertices(10);
+            now[0] = t0 + 2_500_000;  s.end();
+            now[0] = t0 + 3 * MS;     s.end();
+            now[0] = t0 + 3 * MS;     s.begin(null, Bucket.HUD);
+            now[0] = t0 + 3_500_000;  s.beginAttribution(minimap);
+            now[0] = t0 + 4_500_000;  s.end();
+            now[0] = t0 + 5 * MS;     s.end();
+            now[0] = t0 + 5 * MS;     s.onRenderPost();
+
+            now[0] = t0 + 5 * MS;     s.onCapBegin();
+            now[0] = t0 + 8 * MS;     s.onCapEnd();
+
+            now[0] = t0 + 8 * MS;     s.onTasksBegin();
+            now[0] = t0 + 8_500_000;  s.beginAttribution(chunk);
+            now[0] = t0 + 9_500_000;  s.end();
+            now[0] = t0 + 10 * MS;    s.onTasksEnd();
+
+            now[0] = t0 + 10 * MS;    s.onTickPre();
+            now[0] = t0 + 10_200_000; s.beginAttribution(tick);
+            now[0] = t0 + 10_600_000; s.end();
+            now[0] = t0 + 10_600_000; s.begin(boat, Bucket.ENTITY_TICK);
+            now[0] = t0 + 11 * MS;    s.begin(player, Bucket.ENTITY_TICK);    // riding the boat
+            now[0] = t0 + 11_400_000; s.end();
+            now[0] = t0 + 11_600_000; s.end();
+            now[0] = t0 + 12 * MS;    s.onTickPost();
+        }
         return s.finish();
     }
 

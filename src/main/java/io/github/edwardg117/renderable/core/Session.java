@@ -64,7 +64,20 @@ public final class Session {
 
     private final Accumulator[] stack = new Accumulator[MAX_DEPTH];
     private final long[] stackStart = new long[MAX_DEPTH];
+    /** Null marks an attribution-only call (spec addendum §P5.A6). */
     private final Bucket[] stackBucket = new Bucket[MAX_DEPTH];
+    /** Where {@link #innermostOrdinary} stood before the call at each index began, for end() to restore. */
+    private final int[] stackPrevOrdinary = new int[MAX_DEPTH];
+    /** Open tracked calls that own a bucket: every call except attribution-only ones. */
+    private int ordinaryDepth;
+    /** Stack index of the innermost open call that owns a bucket, or -1: where vertices land. */
+    private int innermostOrdinary = -1;
+    /** True while an attribution-only call that nothing encloses is open; its time is named time. */
+    private boolean namedOpen;
+    private int namedWindow;
+    private long namedBucketMark;
+    /** Bucket nanoseconds credited so far in this frame, so named time can leave out what was bucketed. */
+    private long bucketTotal;
     private int depth;
     private long timedCalls;
     private long vertexCalls;
@@ -218,23 +231,25 @@ public final class Session {
     }
 
     /**
-     * Counts one vertex on the innermost open call if it has a key (spec §4.3). Render thread only. A keyless
+     * Counts one vertex on the innermost open call that owns a bucket, if that call has a key (spec §4.3).
+     * Render thread only. Attribution-only calls are skipped (spec addendum §P5.A6), so a handler drawing
+     * inside an entity's render adds to the entity's count, as it did before handlers were timed. A keyless
      * inner timing (bucket-only work) hides the outer key, and vertices emitted deeper than {@link #MAX_DEPTH}
      * are dropped rather than credited to an ancestor, matching {@link #end()}. The call is counted for the
      * overhead estimate whether or not it lands on a key, because it cost the same either way.
      */
     public void vertex() {
         vertexCalls++;
-        if (depth == 0 || depth > MAX_DEPTH) return;
-        Accumulator a = stack[depth - 1];
+        if (depth > MAX_DEPTH || innermostOrdinary < 0) return;
+        Accumulator a = stack[innermostOrdinary];
         if (a != null) a.vertices++;
     }
 
-    /** Counts {@code n} vertices on the innermost open call if it has a key; same rules as {@link #vertex()}. */
+    /** Counts {@code n} vertices on the same call {@link #vertex()} would; same rules. */
     public void vertices(int n) {
         vertexCalls++;
-        if (depth == 0 || depth > MAX_DEPTH) return;
-        Accumulator a = stack[depth - 1];
+        if (depth > MAX_DEPTH || innermostOrdinary < 0) return;
+        Accumulator a = stack[innermostOrdinary];
         if (a != null) a.vertices += n;
     }
 
@@ -252,8 +267,9 @@ public final class Session {
 
     /**
      * Start timing a call attributed to {@code a} in {@code bucket}. Must be paired with {@link #end()}.
-     * {@code a} may be null for work that has no key (light updates, Flywheel, chunk upload): the bucket is
-     * still credited when the call is outermost, but nothing is added to an accumulator or to the frame's top list.
+     * {@code a} may be null for work that has no key (light updates, Flywheel, chunk upload, the HUD): the
+     * bucket is still credited when no other bucket-owning call encloses it, but nothing is added to an
+     * accumulator or to the frame's top list.
      */
     public void begin(Accumulator a, Bucket bucket) {
         long now = clock.getAsLong();
@@ -261,8 +277,44 @@ public final class Session {
             stack[depth] = a;
             stackStart[depth] = now;
             stackBucket[depth] = bucket;
+            stackPrevOrdinary[depth] = innermostOrdinary;
+            innermostOrdinary = depth;
+            ordinaryDepth++;
         }
         depth++;
+    }
+
+    /**
+     * Start timing an attribution-only call (spec addendum §P5.A6): a mod's event handler, a HUD layer or a
+     * packet. It is timed and ranked like any keyed call, but it owns no bucket. A bucket is credited by the
+     * outermost call that owns one, so a block entity drawn inside a handler still counts as block entity
+     * time, and vertices still land on the innermost call that owns a bucket. An attribution-only call that
+     * nothing encloses is named time for the window it runs in. Pair with {@link #end()}.
+     */
+    public void beginAttribution(Accumulator a) {
+        long now = clock.getAsLong();
+        if (depth < MAX_DEPTH) {
+            stack[depth] = a;
+            stackStart[depth] = now;
+            stackBucket[depth] = null;
+            if (depth == 0 && frameStartNanos >= 0) {
+                int w = window();
+                if (w >= 0) {
+                    namedOpen = true;
+                    namedWindow = w;
+                    namedBucketMark = bucketTotal;
+                }
+            }
+        }
+        depth++;
+    }
+
+    /** The window open right now: the tick, tasks or the render window, or -1 outside all three. */
+    private int window() {
+        if (tickStartNanos >= 0) return Window.TICK.ordinal();
+        if (tasksStartNanos >= 0) return Window.TASKS.ordinal();
+        if (renderOpen) return Window.RENDER.ordinal();
+        return -1;
     }
 
     /** Finish the innermost call. Extra calls with nothing open are ignored. */
@@ -276,12 +328,20 @@ public final class Session {
         Bucket bucket = stackBucket[depth];
         stack[depth] = null;
         timedCalls++;
+        boolean ownsBucket = bucket != null;
+        if (ownsBucket) {
+            ordinaryDepth--;
+            innermostOrdinary = stackPrevOrdinary[depth];
+        }
 
         if (a != null) {
-            if (bucket.isRender()) {
+            // An attribution-only call has no bucket to say which side it is on, so the window decides: a call
+            // inside the client tick is tick time, and anything else is on the render side.
+            boolean render = ownsBucket ? bucket.isRender() : tickStartNanos < 0;
+            if (render) {
                 a.renderNanos += elapsed;
                 a.calls++;
-                if (shadowPass) a.shadowNanos += elapsed;
+                if (shadowPass && ownsBucket) a.shadowNanos += elapsed;
             } else {
                 a.tickNanos += elapsed;
                 a.tickCalls++;
@@ -296,8 +356,13 @@ public final class Session {
                 }
                 a.frameNanos += elapsed;
             }
-            if (depth == 0) {
+            if (ownsBucket && ordinaryDepth == 0) {
                 buckets[bucket.ordinal()] += elapsed;
+                bucketTotal += elapsed;
+            }
+            if (namedOpen && depth == 0) {
+                named[namedWindow] += Math.max(0, elapsed - (bucketTotal - namedBucketMark));
+                namedOpen = false;
             }
         }
     }
@@ -324,6 +389,9 @@ public final class Session {
             unbalancedFrames++;
             depth = 0;
             Arrays.fill(stack, null);
+            ordinaryDepth = 0;
+            innermostOrdinary = -1;
+            namedOpen = false;
         }
 
         boolean done = false;
@@ -339,6 +407,7 @@ public final class Session {
         renderNanos = 0;
         tickNanos = 0;
         Arrays.fill(buckets, 0L);
+        bucketTotal = 0;
         tasksNanos = 0;
         capNanos = 0;
         Arrays.fill(named, 0L);
