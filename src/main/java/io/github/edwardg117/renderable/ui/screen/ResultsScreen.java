@@ -26,7 +26,7 @@ import java.util.Set;
 /** Spec §5.3. */
 public final class ResultsScreen extends Screen {
     private static final int TAB_Y = 4;
-    private static final int TABS_PER_ROW = 4;
+    private static final int TABS_PER_ROW = 5;
     private static final int TAB_ROW_HEIGHT = 22;
     private static final int SUMMARY_Y = 52;
     private static final int HEADER_Y = 74;

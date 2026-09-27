@@ -235,6 +235,43 @@ class RankingTest {
                 meshKeys(Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.CALLS, true)));
     }
 
+    @Test
+    void allCallsSortsByRenderAndTickCallsTogether() {
+        SessionResult r = TestSessions.phase5();
+        List<RankedEntry> mods = Ranking.sort(Ranking.byType(r, ProfileKey.Category.MOD), Ranking.Sort.ALL_CALLS);
+        assertEquals("somemod", mods.get(0).typeId(), "4 calls: 2 render, 2 tick; every other mod has 2");
+        assertEquals(2, mods.get(0).tickCalls());
+        assertEquals(2.0, mods.get(0).allCallsPerFrame(r.frameCount()), 1e-9);
+    }
+
+    @Test
+    void allCallsCountsEachSideOnce() {
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25, 2), () -> now[0], WALL_START);
+        s.onRenderPre(0, 0);
+        timeCalls(s, now, ModKey.layer("renders", "renders:hud"), 3, 100_000);   // 3 render calls, the most time
+        timeCalls(s, now, ModKey.event("both", "a.Frame"), 1, 1_000);            // 1 render call
+        s.onRenderPost();
+        s.onTickPre();
+        timeCalls(s, now, ModKey.event("ticks", "a.Tick"), 4, 1_000);            // 4 tick calls
+        timeCalls(s, now, ModKey.event("both", "a.Tick"), 1, 1_000);             // 1 tick call
+        s.onTickPost();
+        now[0] += MS;
+        s.onRenderPre(0, 0);
+        List<String> order = Ranking.sort(Ranking.byType(s.finish(), ProfileKey.Category.MOD), Ranking.Sort.ALL_CALLS)
+                .stream().map(RankedEntry::typeId).toList();
+        assertEquals(List.of("ticks", "renders", "both"), order,
+                "4 calls, 3, then 2; render calls alone, tick calls alone or time would each order them differently");
+    }
+
+    private static void timeCalls(Session s, long[] now, ModKey key, int times, long nanos) {
+        for (int i = 0; i < times; i++) {
+            s.beginAttribution(s.accumulator(key));
+            now[0] += nanos;
+            s.end();
+        }
+    }
+
     private static List<ProfileKey> meshKeys(List<MeshEntry> rows) {
         return rows.stream().map(MeshEntry::key).toList();
     }

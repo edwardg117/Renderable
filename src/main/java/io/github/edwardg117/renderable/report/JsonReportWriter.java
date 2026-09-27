@@ -159,6 +159,9 @@ public final class JsonReportWriter {
         for (FrameRecord h : r.hitches()) w.value(h.index());
         w.endArray();
 
+        w.name("mods");
+        mods(w, r, r.frameCount());
+
         w.name("blockEntities").beginObject();
         w.name("byType");
         ranked(w, Ranking.byType(r, ProfileKey.Category.BLOCK_ENTITY), r.frameCount());
@@ -221,19 +224,40 @@ public final class JsonReportWriter {
         w.beginArray();
         for (RankedEntry e : entries) {
             w.beginObject();
-            w.name("key").value(e.key() == null ? e.typeId() : e.key().serialize());
-            w.name("label").value(e.label());
-            w.name("typeId").value(e.typeId());
-            w.name("members").value(e.members());
-            w.name("calls").value(e.calls());
-            w.name("tickCalls").value(e.tickCalls());
-            w.name("callsPerFrame").value(e.callsPerFrame(frames));
-            w.name("renderUs").value(e.renderNanos() / 1000);
-            w.name("tickUs").value(e.tickNanos() / 1000);
-            w.name("shadowUs").value(e.shadowNanos() / 1000);
-            w.name("peakFrameUs").value(e.maxFrameNanos() / 1000);
-            w.name("gcFrames").value(e.gcFrames());
-            w.name("vertices").value(e.vertices());
+            rankedFields(w, e, frames);
+            w.endObject();
+        }
+        w.endArray();
+    }
+
+    /** One ranked row's fields, in the order {@code JsonReportWriterTest.RANKED_KEYS} pins. */
+    private static void rankedFields(JsonWriter w, RankedEntry e, int frames) throws IOException {
+        w.name("key").value(e.key() == null ? e.typeId() : e.key().serialize());
+        w.name("label").value(e.label());
+        w.name("typeId").value(e.typeId());
+        w.name("members").value(e.members());
+        w.name("calls").value(e.calls());
+        w.name("tickCalls").value(e.tickCalls());
+        w.name("callsPerFrame").value(e.callsPerFrame(frames));
+        w.name("renderUs").value(e.renderNanos() / 1000);
+        w.name("tickUs").value(e.tickNanos() / 1000);
+        w.name("shadowUs").value(e.shadowNanos() / 1000);
+        w.name("peakFrameUs").value(e.maxFrameNanos() / 1000);
+        w.name("gcFrames").value(e.gcFrames());
+        w.name("vertices").value(e.vertices());
+    }
+
+    /**
+     * Spec addendum §P5.A7: every mod, most expensive first, each a ranked row followed by an {@code entries}
+     * array of its members. Not {@code members}: the ranked row already has a {@code members} count.
+     */
+    private static void mods(JsonWriter w, SessionResult r, int frames) throws IOException {
+        w.beginArray();
+        for (RankedEntry m : Ranking.byType(r, ProfileKey.Category.MOD)) {
+            w.beginObject();
+            rankedFields(w, m, frames);
+            w.name("entries");
+            ranked(w, Ranking.membersOf(r, ProfileKey.Category.MOD, m.typeId()), frames);
             w.endObject();
         }
         w.endArray();

@@ -20,6 +20,17 @@ public final class RankedTable {
     public static final List<String> PARTICLE = List.of(
             "class", "render us/f", "tick us/f", "share", "avg live", "verts/f", "gc f");
 
+    /** Headers of the Mods table (spec addendum §P5.A7): a mod's time in total, not split by where it ran. */
+    public static final List<String> MODS = List.of("mod", "share", "us/f", "peak ms", "gc f", "calls/f");
+
+    /**
+     * Printed above the Mods table on both surfaces: the screen prints each line as a row, the report the two
+     * joined. Two lines so each fits the results screen at the default GUI scale.
+     */
+    public static final List<String> MODS_NOTE_LINES = List.of(
+            "(a mod's time includes what its handlers call, so shares overlap;",
+            "a library that runs other mods' handlers carries their time)");
+
     /**
      * Explains the gc f column and a "-" peak, as two lines so each fits the results screen at the default GUI
      * scale. The screen prints them under its GC row; the report prints {@link #GC_COLUMN_NOTE}.
@@ -58,5 +69,16 @@ public final class RankedTable {
                 Fmt.num(e.callsPerFrame(frames)),
                 Fmt.num(e.verticesPerFrame(frames)),
                 Fmt.count(e.gcFrames())};
+    }
+
+    /** One row of the Mods table. The caller supplies the name: a mod id, or a member's label. */
+    public static String[] mods(String name, RankedEntry e, int frames, long total) {
+        return new String[]{
+                name,
+                Fmt.pct(e.sharePercent(total)),
+                Fmt.us(e.usPerFrame(frames)),
+                Fmt.peakMs(e.maxFrameNanos(), e.gcFrames()),
+                Fmt.count(e.gcFrames()),
+                Fmt.num(e.allCallsPerFrame(frames))};
     }
 }

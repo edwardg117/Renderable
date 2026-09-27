@@ -9,6 +9,7 @@ import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
 import io.github.edwardg117.renderable.core.Hook;
 import io.github.edwardg117.renderable.core.MeshEntry;
+import io.github.edwardg117.renderable.core.ModKey;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.RankedTable;
@@ -25,6 +26,8 @@ import java.util.Map;
 public final class TextReportWriter {
     static final int TOP = 20;
     static final int HITCHES = 25;
+    static final int TOP_MODS = 15;
+    static final int TOP_MOD_MEMBERS = 3;
 
     /** Printed under the Sections table: mesh time is parallel worker time and overlaps the chunk upload bucket. */
     static final String MESH_NOTE = "  (mesh time is Sodium worker-thread time, so ms/s can exceed 1000; rebuilds stolen by the render thread also count in chunk upload)";
@@ -102,6 +105,7 @@ public final class TextReportWriter {
         }
         sb.append('\n');
 
+        appendMods(sb, r, env, frames, total);
         appendRanked(sb, "Block entities by type", Ranking.byType(r, ProfileKey.Category.BLOCK_ENTITY), frames, total);
         appendRanked(sb, "Block entities by position", Ranking.byKey(r, ProfileKey.Category.BLOCK_ENTITY), frames, total);
         appendRanked(sb, "Entities by type", Ranking.byType(r, ProfileKey.Category.ENTITY), frames, total);
@@ -122,6 +126,28 @@ public final class TextReportWriter {
         Table t = Table.nameThenNumbers(RankedTable.RANKED);
         for (RankedEntry e : entries.subList(0, Math.min(TOP, entries.size()))) {
             t.row((Object[]) RankedTable.ranked(e.label(), e, frames, total));
+        }
+        sb.append(t.render("  ")).append('\n');
+    }
+
+    /** Spec addendum §P5.A7: the top mods by time, each with its top members indented beneath it. */
+    static void appendMods(StringBuilder sb, SessionResult r, Environment env, int frames, long total) {
+        sb.append("Mods (top ").append(TOP_MODS).append(", each with its top ").append(TOP_MOD_MEMBERS).append(")\n");
+        List<RankedEntry> mods = Ranking.byType(r, ProfileKey.Category.MOD);
+        if (mods.isEmpty()) {
+            sb.append("  ").append(EmptyStates.mods(env)).append("\n\n");
+            return;
+        }
+        String missing = EmptyStates.modsHandlersMissing(env);
+        if (!missing.isEmpty()) sb.append("  ").append(missing).append('\n');
+        sb.append("  ").append(String.join(" ", RankedTable.MODS_NOTE_LINES)).append('\n');
+        Table t = Table.nameThenNumbers(RankedTable.MODS);
+        for (RankedEntry m : mods.subList(0, Math.min(TOP_MODS, mods.size()))) {
+            t.row((Object[]) RankedTable.mods(m.typeId(), m, frames, total));
+            List<RankedEntry> members = Ranking.membersOf(r, ProfileKey.Category.MOD, m.typeId());
+            for (RankedEntry e : members.subList(0, Math.min(TOP_MOD_MEMBERS, members.size()))) {
+                t.row((Object[]) RankedTable.mods("  " + ((ModKey) e.key()).memberLabel(), e, frames, total));
+            }
         }
         sb.append(t.render("  ")).append('\n');
     }

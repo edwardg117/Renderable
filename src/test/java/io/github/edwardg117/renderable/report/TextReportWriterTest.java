@@ -2,6 +2,7 @@ package io.github.edwardg117.renderable.report;
 
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
+import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TestSessions;
 import org.junit.jupiter.api.Test;
@@ -295,5 +296,38 @@ class TextReportWriterTest {
         assertTrue(s.contains("  Time split (avg ms/frame): tick 2.00 [entity tick 1.00, mods 0.40] | block entity 1.00"
                 + " | entity 0.50 | hud 2.00 | other render 1.50 [mods 1.00] | tasks 2.00 [mods 1.00]"
                 + " | frame cap 3.00 | swap/wait 8.00\n"), s);
+    }
+
+    @Test
+    void modsSectionListsModsWithTheirTopMembers() {
+        String s = TextReportWriter.write(TestSessions.phase5(), env, "0.5.0");
+        int at = s.indexOf("Mods (top 15, each with its top 3)\n");
+        assertTrue(at > 0, s);
+        assertTrue(at < s.indexOf("Block entities by type"), "right after the hitch list");
+        String section = s.substring(at, s.indexOf("\n\n", at));
+        assertTrue(section.contains("  " + String.join(" ", RankedTable.MODS_NOTE_LINES) + "\n"), section);
+        assertTrue(section.contains("\n  create    "), section);
+        assertTrue(section.contains("\n    event RenderLevelStageEvent "), section);
+        assertTrue(section.contains("\n    packet minecraft:level_chunk_with_light "), section);
+        assertTrue(section.indexOf("\n  create") < section.indexOf("\n  somemod"), "most expensive first");
+
+        LinkedHashMap<String, String> m = new LinkedHashMap<>();
+        m.put(Environment.EVENT_TIMING, Environment.UNAVAILABLE + "NoSuchFieldException: listenerLists");
+        String off = TextReportWriter.write(TestSessions.phase5(), Environment.of(m, List.of()), "0.5.0");
+        assertTrue(off.contains("  (event handlers were not timed: NoSuchFieldException: listenerLists)\n"), off);
+        assertTrue(TextReportWriter.write(TestSessions.sample(), env, "0.5.0")
+                .contains("Mods (top 15, each with its top 3)\n  (no mod handlers, HUD layers or packets were timed)\n"));
+    }
+
+    @Test
+    void modsSectionKeepsFifteenModsAndThreeMembersOfEach() {
+        String s = TextReportWriter.write(TestSessions.manyMods(), env, "0.5.0");
+        int at = s.indexOf("Mods (top 15, each with its top 3)\n");
+        String section = s.substring(at, s.indexOf("\n\n", at));
+        assertTrue(section.contains("\n  mod15 "), section);
+        assertFalse(section.contains("mod16"), section);
+        assertTrue(section.contains("\n    event E3 "), section);
+        assertFalse(section.contains("event E4"), section);
+        assertEquals(15 * 3, section.split("\n    event ", -1).length - 1, "three members under each of fifteen mods");
     }
 }

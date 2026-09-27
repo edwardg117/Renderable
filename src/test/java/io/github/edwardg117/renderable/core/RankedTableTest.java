@@ -36,6 +36,33 @@ class RankedTableTest {
         assertEquals(2, RankedTable.GC_COLUMN_NOTE_LINES.size());
     }
 
+    @Test
+    void modsRowsCarryTotalsNotSplits() {
+        SessionResult r = TestSessions.phase5();
+        RankedEntry create = Ranking.byType(r, ProfileKey.Category.MOD).get(0);
+        assertEquals(List.of("mod=create", "share=10.0%", "us/f=2000.0", "peak ms=2.00", "gc f=0", "calls/f=1.0"),
+                pairs(RankedTable.MODS, RankedTable.mods(create.typeId(), create, r.frameCount(), r.stats().totalNanos())));
+        assertEquals(2, RankedTable.MODS_NOTE_LINES.size());
+    }
+
+    @Test
+    void aModsRowAddsItsTickTimeAndTickCalls() {
+        SessionResult r = TestSessions.phase5();
+        int frames = r.frameCount();
+        long total = r.stats().totalNanos();
+        List<RankedEntry> mods = Ranking.byType(r, ProfileKey.Category.MOD);
+        RankedEntry somemod = mods.get(mods.size() - 1);
+        assertEquals("somemod", somemod.typeId());
+        assertEquals(List.of("mod=somemod", "share=3.0%", "us/f=600.0", "peak ms=0.60", "gc f=0", "calls/f=2.0"),
+                pairs(RankedTable.MODS, RankedTable.mods(somemod.typeId(), somemod, frames, total)),
+                "0.4 ms of render and 0.8 ms of tick over two frames, one render call and one tick call a frame");
+        RankedEntry tick = Ranking.membersOf(r, ProfileKey.Category.MOD, "somemod").get(0);
+        assertEquals(TestSessions.TICK_HANDLER, tick.key());
+        assertEquals(List.of("mod=member", "share=2.0%", "us/f=400.0", "peak ms=0.40", "gc f=0", "calls/f=1.0"),
+                pairs(RankedTable.MODS, RankedTable.mods("member", tick, frames, total)),
+                "a member that only ticks shows its tick time and its tick calls");
+    }
+
     private static List<String> pairs(List<String> headers, String[] cells) {
         assertEquals(headers.size(), cells.length, "one cell per header");
         List<String> out = new ArrayList<>();

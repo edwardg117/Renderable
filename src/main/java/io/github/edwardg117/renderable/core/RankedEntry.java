@@ -65,6 +65,11 @@ public record RankedEntry(String label,
         return frames == 0 ? 0 : (double) calls / frames;
     }
 
+    /** Render and tick calls per frame together: a mod's handlers run on both sides (spec addendum §P5.A7). */
+    public double allCallsPerFrame(int frames) {
+        return frames == 0 ? 0 : (double) (calls + tickCalls) / frames;
+    }
+
     public double renderUsPerFrame(int frames) {
         return frames == 0 ? 0 : renderNanos / 1000.0 / frames;
     }

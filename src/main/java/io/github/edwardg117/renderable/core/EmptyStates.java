@@ -56,4 +56,27 @@ public final class EmptyStates {
         if (samples == 0) return "(no data: no Flywheel visualization ran; backend " + env.value("flywheelBackend") + ")";
         return "";
     }
+
+    /** The Mods table's empty state (spec addendum §P5.A7). */
+    public static String mods(Environment env) {
+        String why = eventTimingUnavailable(env);
+        return why != null
+                ? "(event timing unavailable: " + why + ")"
+                : "(no mod handlers, HUD layers or packets were timed)";
+    }
+
+    /**
+     * A line to print above a Mods table that has rows but no event handlers because the bus could not be
+     * reached, or an empty string when handlers were timed or the report predates event timing.
+     */
+    public static String modsHandlersMissing(Environment env) {
+        String why = eventTimingUnavailable(env);
+        return why != null ? "(event handlers were not timed: " + why + ")" : "";
+    }
+
+    /** Why event timing could not run, or null. */
+    private static String eventTimingUnavailable(Environment env) {
+        String status = env.value(Environment.EVENT_TIMING);
+        return status.startsWith(Environment.UNAVAILABLE) ? status.substring(Environment.UNAVAILABLE.length()) : null;
+    }
 }

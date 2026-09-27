@@ -11,10 +11,11 @@ import java.util.regex.Pattern;
 
 import static io.github.edwardg117.renderable.ui.screen.ColumnSort.NONE;
 
-/** Tabs of the results screen and the column layout each one uses. Eight tabs, four per row on the screen. */
+/** Tabs of the results screen and the column layout each one uses. Nine tabs, five per row on the screen. */
 public enum Tab {
     FRAMES("Frames", Columns.METRIC_VALUE),
     HITCHES("Hitches", Columns.HITCH),
+    MODS("Mods", Columns.MODS),
     BLOCK_ENTITIES("Block Entities", Columns.RANKED),
     ENTITIES("Entities", Columns.RANKED),
     PARTICLES("Particles", Columns.PARTICLE),
@@ -90,6 +91,13 @@ public enum Tab {
                 right("avg live", 1, ColumnSort.of(Ranking.Sort.CALLS)),
                 right("verts/f", 1, ColumnSort.of(Ranking.Sort.VERTICES)),
                 right("gc f", 1, ColumnSort.of(Ranking.Sort.GC_FRAMES)));
+        static final Columns MODS = of(ColumnSort.of(Ranking.Sort.TOTAL),
+                left("mod", 5, ColumnSort.of(Ranking.Sort.LABEL)),
+                right("share", 1, ColumnSort.of(Ranking.Sort.TOTAL)),
+                right("us/f", 1, ColumnSort.of(Ranking.Sort.TOTAL)),
+                right("peak ms", 1, ColumnSort.of(Ranking.Sort.PEAK)),
+                right("gc f", 1, ColumnSort.of(Ranking.Sort.GC_FRAMES)),
+                right("calls/f", 1, ColumnSort.of(Ranking.Sort.ALL_CALLS)));
         static final Columns FLYWHEEL = of(ColumnSort.of(Ranking.Sort.TOTAL),
                 left("visual class", 6, ColumnSort.of(Ranking.Sort.LABEL)),
                 right("avg count", 1, ColumnSort.of(Ranking.Sort.TOTAL)),

@@ -42,7 +42,7 @@ class TabTest {
         }
         // Ranked rows carry ranked sorts only. The Flywheel tab reuses two of them for its class names and
         // average counts (spec addendum §P4.C7).
-        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.FLYWHEEL}) {
+        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.FLYWHEEL, Tab.MODS}) {
             assertEquals(ColumnSort.of(Ranking.Sort.LABEL), t.columns().get(0).sort(), t + "'s name column sorts by label");
             for (Tab.Column col : t.columns().all()) assertNull(col.sort().mesh(), t + " must not carry a mesh sort");
         }
@@ -51,7 +51,7 @@ class TabTest {
             assertEquals(ColumnSort.of(Ranking.MeshSort.LABEL), t.columns().get(0).sort(), t + "'s name column sorts by label");
             for (Tab.Column col : t.columns().all()) assertNull(col.sort().ranked(), t + " must not carry a ranked sort");
         }
-        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.FLYWHEEL, Tab.BLOCKS, Tab.SECTIONS}) {
+        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.FLYWHEEL, Tab.BLOCKS, Tab.SECTIONS, Tab.MODS}) {
             long sortable = t.columns().all().stream().filter(col -> col.sort().sortable()).count();
             assertTrue(sortable >= 2, t + " has only " + sortable + " sortable columns");
         }
@@ -73,7 +73,8 @@ class TabTest {
         assertEquals(RankedTable.RANKED, names(Tab.BLOCK_ENTITIES));
         assertEquals(RankedTable.RANKED, names(Tab.ENTITIES));
         assertEquals(RankedTable.PARTICLE, names(Tab.PARTICLES));
-        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES}) {
+        assertEquals(RankedTable.MODS, names(Tab.MODS));
+        for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.MODS}) {
             for (int i = 1; i < t.columns().size(); i++) {
                 assertTrue(t.columns().get(i).rightAlign(), t + " column " + i + " is a number");
             }
@@ -88,6 +89,9 @@ class TabTest {
         assertEquals(ColumnSort.of(Ranking.Sort.TOTAL), opening(Tab.FLYWHEEL));
         assertEquals(ColumnSort.of(Ranking.MeshSort.TIME), opening(Tab.BLOCKS));
         assertEquals(ColumnSort.of(Ranking.MeshSort.CALLS), opening(Tab.SECTIONS));
+        assertEquals(ColumnSort.of(Ranking.Sort.TOTAL), opening(Tab.MODS));
+        assertEquals("share", Tab.MODS.columns().get(Tab.MODS.columns().defaultSortColumn()).name(),
+                "share and us/f both sort by total time; the arrow sits on the first, as on the other ranked tabs");
         assertEquals(1, Tab.SECTIONS.columns().defaultSortColumn(), "rebuilds, not rebuilds/s, which sorts the same way");
     }
 
@@ -101,6 +105,8 @@ class TabTest {
                 + " | gc f 1 R GC_FRAMES | shadow 1 R SHADOW | verts/f 1 R VERTICES | calls 1 R CALLS";
         assertEquals(ranked, describe(Tab.BLOCK_ENTITIES));
         assertEquals(ranked, describe(Tab.ENTITIES));
+        assertEquals("mod 5 L LABEL | *share 1 R TOTAL | us/f 1 R TOTAL | peak ms 1 R PEAK | gc f 1 R GC_FRAMES"
+                + " | calls/f 1 R ALL_CALLS", describe(Tab.MODS));
         assertEquals("class 5 L LABEL | render us/f 1 R RENDER | tick us/f 1 R TICK | *share 1 R TOTAL"
                 + " | avg live 1 R CALLS | verts/f 1 R VERTICES | gc f 1 R GC_FRAMES", describe(Tab.PARTICLES));
         assertEquals("visual class 6 L LABEL | *avg count 1 R TOTAL | share 1 R -", describe(Tab.FLYWHEEL));

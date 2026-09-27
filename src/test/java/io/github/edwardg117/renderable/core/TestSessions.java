@@ -219,6 +219,28 @@ public final class TestSessions {
     }
 
     /**
+     * One frame with 17 mods of five event handlers each, for the report's top 15 and top 3 cuts, which the JSON
+     * must not make. {@code mod01} costs the most and {@code mod17} the least; within every mod, handler
+     * {@code a.E1} costs the most and {@code a.E5} the least.
+     */
+    public static SessionResult manyMods() {
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25, 2), () -> now[0], WALL_START);
+        s.onRenderPre(0, 0);
+        for (int m = 1; m <= 17; m++) {
+            for (int k = 1; k <= 5; k++) {
+                s.beginAttribution(s.accumulator(ModKey.event("mod" + (m < 10 ? "0" : "") + m, "a.E" + k)));
+                now[0] += (18 - m) * 100_000L + (6 - k) * 1_000L;
+                s.end();
+            }
+        }
+        s.onRenderPost();
+        now[0] += MS;
+        s.onRenderPre(0, 0);
+        return s.finish();
+    }
+
+    /**
      * The phase 2 skeleton: the {@link #sample()} frames plus particles, ticks, light, Flywheel and visual samples.
      *
      * Per frame: 0.1 ms other render, press 2 ms (60 in frame 10), press2 1.5, mixer 1, cow 0.5, player 0.3,

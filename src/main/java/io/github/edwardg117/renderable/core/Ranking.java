@@ -11,7 +11,7 @@ public final class Ranking {
 
     /** What a column of a ranked table sorts by (spec §5.3). */
     public enum Sort {
-        TOTAL, RENDER, TICK, PEAK, VERTICES, CALLS, SHADOW, GC_FRAMES, LABEL
+        TOTAL, RENDER, TICK, PEAK, VERTICES, CALLS, ALL_CALLS, SHADOW, GC_FRAMES, LABEL
     }
 
     /**
@@ -98,6 +98,7 @@ public final class Ranking {
             case PEAK -> Comparator.comparingLong(RankedEntry::maxFrameNanos);
             case VERTICES -> Comparator.comparingLong(RankedEntry::vertices);
             case CALLS -> Comparator.comparingLong(RankedEntry::calls);
+            case ALL_CALLS -> Comparator.comparingLong(e -> e.calls() + e.tickCalls());
             // The shadow column shows shadow time as a share of the row's own render time, not nanoseconds.
             case SHADOW -> Comparator.comparingDouble(RankedEntry::shadowPercent);
             case GC_FRAMES -> Comparator.comparingLong(RankedEntry::gcFrames);

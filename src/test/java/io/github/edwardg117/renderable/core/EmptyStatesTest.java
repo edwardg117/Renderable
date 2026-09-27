@@ -53,4 +53,14 @@ class EmptyStatesTest {
         assertEquals("", EmptyStates.flywheel(env(Map.of("flywheelBackend", "flywheel:indirect")), 3),
                 "an empty string means there is data to print");
     }
+
+    @Test
+    void modsStatesTellUnavailableFromNothing() {
+        assertEquals("(no mod handlers, HUD layers or packets were timed)", EmptyStates.mods(env(Map.of())));
+        assertEquals("", EmptyStates.modsHandlersMissing(env(Map.of(Environment.EVENT_TIMING, "on"))));
+        Environment off = env(Map.of(Environment.EVENT_TIMING, Environment.UNAVAILABLE + "NoSuchFieldException: listenerLists"));
+        assertEquals("(event timing unavailable: NoSuchFieldException: listenerLists)", EmptyStates.mods(off));
+        assertEquals("(event handlers were not timed: NoSuchFieldException: listenerLists)",
+                EmptyStates.modsHandlersMissing(off));
+    }
 }

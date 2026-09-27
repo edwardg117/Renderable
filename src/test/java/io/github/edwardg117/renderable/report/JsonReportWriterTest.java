@@ -320,4 +320,39 @@ class JsonReportWriterTest {
         assertEquals(List.of("render", "tick", "tasks"), List.copyOf(stats.getAsJsonObject("avgNamedMs").keySet()),
                 "the averages list every window, zeros included, as avgBucketsMs lists every bucket");
     }
+
+    @Test
+    void modsArrayCarriesEveryModAndMember() {
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(TestSessions.phase5(), environment(), "0.5.0"))
+                .getAsJsonObject();
+        JsonArray mods = o.getAsJsonArray("mods");
+        assertEquals(4, mods.size());
+        JsonObject create = mods.get(0).getAsJsonObject();
+        List<String> keys = new ArrayList<>(RANKED_KEYS);
+        keys.add("entries");
+        assertEquals(keys, List.copyOf(create.keySet()), "a ranked row, then its entries");
+        assertEquals("create", create.get("key").getAsString());
+        assertEquals(4_000, create.get("renderUs").getAsLong());
+        assertEquals(1, create.get("members").getAsInt(), "members stays the count, as on every ranked row");
+        JsonArray entries = create.getAsJsonArray("entries");
+        assertEquals(1, entries.size());
+        assertEquals("event@create:net.neoforged.neoforge.client.event.RenderLevelStageEvent",
+                entries.get(0).getAsJsonObject().get("key").getAsString());
+        JsonObject somemod = mods.get(3).getAsJsonObject();
+        assertEquals(2, somemod.getAsJsonArray("entries").size());
+        assertEquals(800, somemod.get("tickUs").getAsLong(), "the tick handler's time is tick time");
+        assertEquals(0, parse().getAsJsonArray("mods").size(), "a session with none still writes the array");
+    }
+
+    @Test
+    void modsArrayIsNotCutLikeTheReport() {
+        JsonArray mods = JsonParser.parseString(JsonReportWriter.write(TestSessions.manyMods(), environment(), "0.5.0"))
+                .getAsJsonObject().getAsJsonArray("mods");
+        assertEquals(17, mods.size(), "every mod, where the report shows 15");
+        for (int i = 0; i < mods.size(); i++) {
+            assertEquals(5, mods.get(i).getAsJsonObject().getAsJsonArray("entries").size(),
+                    "every member, where the report shows 3");
+        }
+        assertEquals("mod17", mods.get(16).getAsJsonObject().get("key").getAsString(), "most expensive first");
+    }
 }

@@ -10,6 +10,7 @@ import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
 import io.github.edwardg117.renderable.core.MeshEntry;
+import io.github.edwardg117.renderable.core.ModKey;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.RankedTable;
@@ -48,6 +49,7 @@ public final class Rows {
         return switch (tab) {
             case FRAMES -> frames(r);
             case HITCHES -> hitches(r);
+            case MODS -> mods(r, env, sort, ascending, expanded);
             case BLOCK_ENTITIES -> ranked(r, ProfileKey.Category.BLOCK_ENTITY, sort, ascending, expanded);
             case ENTITIES -> ranked(r, ProfileKey.Category.ENTITY, sort, ascending, expanded);
             case PARTICLES -> particles(r, env, sort, ascending);
@@ -179,6 +181,33 @@ public final class Rows {
             }
         }
         if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.ranked()));
+        return rows;
+    }
+
+    /** Spec addendum §P5.A7 Mods tab: one row per mod, expandable to its event types, layers and packets. */
+    static List<Row> mods(SessionResult r, Environment env, ColumnSort sort, boolean ascending, Set<String> expanded) {
+        int frames = r.frameCount();
+        long total = r.stats().totalNanos();
+        Ranking.Sort by = rankedSort(sort);
+        List<RankedEntry> mods = Ranking.sort(Ranking.byType(r, ProfileKey.Category.MOD), by, ascending);
+        List<Row> rows = new ArrayList<>();
+        if (mods.isEmpty()) {
+            rows.add(Row.plain(EmptyStates.mods(env)));
+            return rows;
+        }
+        String missing = EmptyStates.modsHandlersMissing(env);
+        if (!missing.isEmpty()) rows.add(Row.plain(missing));
+        for (String line : RankedTable.MODS_NOTE_LINES) rows.add(Row.plain(line));
+        for (RankedEntry m : mods) {
+            rows.add(new Row(RankedTable.mods(m.typeId() + "  (" + m.members() + ")", m, frames, total),
+                    null, m.typeId(), true, true, 0, null, -1));
+            if (expanded.contains(m.typeId())) {
+                for (RankedEntry e : Ranking.sort(Ranking.membersOf(r, ProfileKey.Category.MOD, m.typeId()), by, ascending)) {
+                    rows.add(new Row(RankedTable.mods(((ModKey) e.key()).memberLabel(), e, frames, total),
+                            e.key(), m.typeId(), false, false, 1, null, -1));
+                }
+            }
+        }
         return rows;
     }
 
