@@ -155,4 +155,29 @@ class KeysTest {
         assertNotEquals(overworld.serialize(), nether.serialize(), "and of the serialised form");
         assertEquals("minecraft:chest@minecraft:the_nether:1,2,3", nether.serialize());
     }
+
+    @Test
+    void modKeysFormatAndRollUpByMod() {
+        ModKey event = ModKey.event("create", "net.neoforged.neoforge.client.event.ClientTickEvent$Post");
+        assertEquals(ProfileKey.Category.MOD, event.category());
+        assertEquals("create", event.typeId());
+        assertEquals("event ClientTickEvent.Post (create)", event.label(), "standalone, an event row names its mod");
+        assertEquals("event ClientTickEvent.Post", event.memberLabel(), "under its mod's row it need not");
+        assertEquals("event@create:net.neoforged.neoforge.client.event.ClientTickEvent$Post", event.serialize());
+
+        ModKey layer = ModKey.layer("xaerominimap", "xaerominimap:minimap");
+        assertEquals("xaerominimap", layer.typeId());
+        assertEquals("layer xaerominimap:minimap", layer.label());
+        assertEquals(layer.label(), layer.memberLabel(), "a layer id already names its mod");
+        assertEquals("layer@xaerominimap:xaerominimap:minimap", layer.serialize());
+
+        ModKey packet = ModKey.packet("minecraft", "minecraft:level_chunk_with_light");
+        assertEquals("packet minecraft:level_chunk_with_light", packet.label());
+        assertEquals("packet@minecraft:minecraft:level_chunk_with_light", packet.serialize());
+
+        assertEquals(ModKey.event("a", "x.Y"), ModKey.event("a", "x.Y"));
+        assertNotEquals(ModKey.event("a", "x.Y"), ModKey.event("b", "x.Y"), "one event handled by two mods is two keys");
+        assertNotEquals(ModKey.layer("a", "a:y"), ModKey.packet("a", "a:y"), "the kind is part of identity");
+        assertEquals("Event", ModKey.simpleEventName("Event"), "a class in the default package keeps its name");
+    }
 }

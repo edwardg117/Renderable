@@ -3,7 +3,11 @@ package io.github.edwardg117.renderable.core;
 /** Identity of one timed thing. Implementations are value records so they work as map keys. */
 public interface ProfileKey {
 
-    enum Category { BLOCK_ENTITY, ENTITY, PARTICLE, BLOCK, SECTION }
+    /**
+     * {@code MOD} holds a mod's event handlers, HUD layers and packets, whose type id is the mod's id so they
+     * roll up into one row per mod (spec addendum §P5.A7).
+     */
+    enum Category { BLOCK_ENTITY, ENTITY, PARTICLE, BLOCK, SECTION, MOD }
 
     Category category();
 
