@@ -69,4 +69,14 @@ class RankedTableTest {
         for (int i = 0; i < cells.length; i++) out.add(headers.get(i) + "=" + cells[i]);
         return out;
     }
+
+    @Test
+    void theShadowColumnCanBeLeftOut() {
+        SessionResult p3 = TestSessions.phase3();
+        RankedEntry press = Ranking.byKey(p3, ProfileKey.Category.BLOCK_ENTITY).get(0);
+        assertEquals(List.of("name=row name", "render us/f=4900.0", "tick us/f=400.0", "share=27.6%", "peak ms=60.40",
+                        "gc f=0", "verts/f=100.0", "calls=20"),
+                pairs(RankedTable.RANKED_WITHOUT_SHADOW, RankedTable.withoutShadow(
+                        RankedTable.ranked("row name", press, p3.frameCount(), p3.stats().totalNanos()))));
+    }
 }

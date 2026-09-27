@@ -26,6 +26,12 @@ public record RankedEntry(String label,
                 a.vertices);
     }
 
+    /** This row under another label, for a table that names its rows differently (spec addendum §P5.D4). */
+    public RankedEntry withLabel(String newLabel) {
+        return new RankedEntry(newLabel, key, typeId, category, members, calls, tickCalls, renderNanos, tickNanos,
+                shadowNanos, maxFrameNanos, gcFrames, vertices);
+    }
+
     /**
      * Rolls members up into one type row. The peak and GC-frame count come from the shared
      * {@link TypeStats}, which counted the type's whole frame, not from the members (spec addendum §P4.A2).

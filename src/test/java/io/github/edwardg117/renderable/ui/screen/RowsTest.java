@@ -1,9 +1,15 @@
 package io.github.edwardg117.renderable.ui.screen;
 
+import io.github.edwardg117.renderable.core.Accumulator;
+import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.EmptyStates;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
+import io.github.edwardg117.renderable.core.ParticleKey;
+import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.Ranking;
+import io.github.edwardg117.renderable.core.Session;
+import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TestSessions;
 import io.github.edwardg117.renderable.core.advice.Recommendation;
@@ -18,9 +24,9 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Rows the screen builds: the Advice tab's, and the order of the Flywheel tab's names. {@code Rows} imports
- * {@code BlockPos}, which the test classpath lacks, so a test here must never call {@link Row#pos()}; building rows
- * that leave it null loads fine.
+ * Rows the screen builds: the Advice tab's, and the names and order of the Flywheel and Particles tabs.
+ * {@code Rows} imports {@code BlockPos}, which the test classpath lacks, so a test here must never call
+ * {@link Row#pos()}; building rows that leave it null loads fine.
  */
 class RowsTest {
 
@@ -69,5 +75,32 @@ class RowsTest {
         List<String> names = Rows.flywheel(r, env, ColumnSort.of(Ranking.Sort.LABEL), true).stream()
                 .filter(row -> row.indent() == 1).map(row -> row.cells()[0]).toList();
         assertEquals(List.of("other.PressVisual", "press.PressVisual", "ShaftVisual", "Visual2", "Visual10"), names);
+    }
+
+    @Test
+    void theParticlesTabOpensInTheReportsOrderUnderTheReportsNames() {
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000_000_000L, 2.0, 16_000_000L, 5, 0, 0), () -> now[0], 0);
+        Accumulator flame = s.accumulator(TestSessions.FLAME);
+        Accumulator ember = s.accumulator(new ParticleKey("com.example.fx.EmberParticle"));
+        s.onRenderPre(0, 0);
+        now[0] = 1_000_000;
+        s.begin(flame, Bucket.PARTICLE_RENDER);
+        now[0] = 2_000_000;
+        s.end();
+        s.begin(ember, Bucket.PARTICLE_RENDER);
+        now[0] = 3_000_000;
+        s.end();
+        s.onRenderPost();
+        now[0] = 16_000_000;
+        s.onRenderPre(0, 0);
+        SessionResult r = s.finish();
+
+        SortState opening = new SortState();
+        List<String> screen = Rows.particles(r, Environment.empty(), opening.sort(Tab.PARTICLES),
+                opening.ascending(Tab.PARTICLES)).stream().map(row -> row.cells()[0]).toList();
+        assertEquals(List.of("EmberParticle", "FlameParticle"), screen, "short names; the two tie, so A to Z");
+        assertEquals(Ranking.particles(r).stream().map(RankedEntry::label).toList(), screen,
+                "the order and names the report prints (spec §5.3)");
     }
 }

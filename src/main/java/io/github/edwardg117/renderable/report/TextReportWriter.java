@@ -9,6 +9,7 @@ import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
 import io.github.edwardg117.renderable.core.Hook;
 import io.github.edwardg117.renderable.core.MeshEntry;
+import io.github.edwardg117.renderable.core.MeshTable;
 import io.github.edwardg117.renderable.core.ModKey;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
@@ -148,9 +149,14 @@ public final class TextReportWriter {
             sb.append("  ").append(EmptyStates.ranked()).append("\n\n");
             return;
         }
-        Table t = Table.nameThenNumbers(RankedTable.RANKED);
-        for (RankedEntry e : entries.subList(0, Math.min(TOP, entries.size()))) {
-            t.row((Object[]) RankedTable.ranked(e.label(), e, frames, total));
+        // Without shaders the shadow column is a column of zeros, so a table with no shadow time leaves it out
+        // (spec addendum §P5.D4); the screen and the JSON keep it.
+        List<RankedEntry> shown = entries.subList(0, Math.min(TOP, entries.size()));
+        boolean shadow = shown.stream().anyMatch(e -> e.shadowNanos() > 0);
+        Table t = Table.nameThenNumbers(shadow ? RankedTable.RANKED : RankedTable.RANKED_WITHOUT_SHADOW);
+        for (RankedEntry e : shown) {
+            String[] cells = RankedTable.ranked(e.label(), e, frames, total);
+            t.row((Object[]) (shadow ? cells : RankedTable.withoutShadow(cells)));
         }
         sb.append(t.render("  ")).append('\n');
     }
@@ -180,7 +186,7 @@ public final class TextReportWriter {
     /** Spec §6.1 item 7. Particles have no peak or shadow of interest; the average live count replaces them. */
     static void appendParticles(StringBuilder sb, SessionResult r, Environment env, int frames, long total) {
         sb.append("Particles (top ").append(TOP).append(")\n");
-        List<RankedEntry> entries = Ranking.byKey(r, ProfileKey.Category.PARTICLE);
+        List<RankedEntry> entries = Ranking.particles(r);
         if (entries.isEmpty()) {
             sb.append("  ").append(EmptyStates.particles(env)).append("\n\n");
             return;
@@ -229,9 +235,9 @@ public final class TextReportWriter {
             return;
         }
         double seconds = r.stats().durationSeconds();
-        Table t = new Table(new String[]{"block", "mesh ms/s", "us/call", "calls"}, new boolean[]{false, true, true, true});
+        Table t = Table.nameThenNumbers(MeshTable.BLOCK);
         for (MeshEntry e : rows.subList(0, Math.min(TOP, rows.size()))) {
-            t.row(e.key().label(), Fmt.num(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls()));
+            t.row((Object[]) MeshTable.block(e, seconds));
         }
         sb.append(t.render("  ")).append('\n');
     }
@@ -245,11 +251,9 @@ public final class TextReportWriter {
             return;
         }
         double seconds = r.stats().durationSeconds();
-        Table t = new Table(new String[]{"section", "rebuilds", "rebuilds/s", "mesh ms", "avg ms/rebuild"},
-                new boolean[]{false, true, true, true, true});
+        Table t = Table.nameThenNumbers(MeshTable.SECTION);
         for (MeshEntry e : rows.subList(0, Math.min(TOP, rows.size()))) {
-            t.row(e.key().label(), Fmt.count(e.calls()), Fmt.num(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
-                    Fmt.ms2(e.calls() == 0 ? 0 : e.nanos() / e.calls()));
+            t.row((Object[]) MeshTable.section(e, seconds));
         }
         sb.append(t.render("  ")).append(MESH_NOTE).append("\n\n");
     }

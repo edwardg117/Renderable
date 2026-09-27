@@ -1,7 +1,11 @@
 package io.github.edwardg117.renderable.report;
 
+import io.github.edwardg117.renderable.core.Accumulator;
+import io.github.edwardg117.renderable.core.BlockEntityKey;
+import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
+import io.github.edwardg117.renderable.core.ParticleKey;
 import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.core.SessionConfig;
@@ -366,5 +370,61 @@ class TextReportWriterTest {
         assertTrue(cut.contains("\n  [player] Title 6  (3.0 ms/frame)\n"), cut);
         assertFalse(cut.contains("Title 7"), cut);
         assertTrue(cut.endsWith("\n  2 more on the Advice tab and in the JSON.\n\n"), cut);
+    }
+
+    @Test
+    void theShadowColumnIsLeftOutUnlessARowHasShadowTimeAndParticlesGoByShortName() {
+        String plain = TextReportWriter.write(r, env, "0.5.0");
+        String header = plain.substring(plain.indexOf("Block entities by type (top 20)\n")).split("\n", 3)[1];
+        assertFalse(header.contains("shadow"), "no shader pack, no shadow time: " + header);
+        assertTrue(header.endsWith("gc f  verts/f  calls"), header);
+
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000_000_000L, 2.0, 16_000_000L, 5, 0, 0), () -> now[0], 0);
+        Accumulator press = s.accumulator(TestSessions.PRESS);
+        Accumulator spark = s.accumulator(new ParticleKey("com.example.fx.SparkParticle"));
+        s.onRenderPre(0, 0);
+        s.shadowPass = true;
+        now[0] = 1_000_000;
+        s.begin(press, Bucket.BLOCK_ENTITY);
+        now[0] = 3_000_000;
+        s.end();
+        s.shadowPass = false;
+        s.begin(spark, Bucket.PARTICLE_RENDER);
+        now[0] = 4_000_000;
+        s.end();
+        s.onRenderPost();
+        now[0] = 16_000_000;
+        s.onRenderPre(0, 0);
+        String shadowed = TextReportWriter.write(s.finish(), env, "0.5.0");
+        String shadowHeader = shadowed.substring(shadowed.indexOf("Block entities by type (top 20)\n")).split("\n", 3)[1];
+        assertTrue(shadowHeader.contains("gc f  shadow  verts/f"), shadowHeader);
+        // Only the table: a recommendation names the class in full, which says which mod it is from.
+        String particles = shadowed.substring(shadowed.indexOf("Particles (top 20)\n"));
+        particles = particles.substring(0, particles.indexOf("\n\n"));
+        assertTrue(particles.contains("\n  SparkParticle "), particles);
+        assertFalse(particles.contains("com.example.fx.SparkParticle"), "the table's short name: " + particles);
+
+        // Only the printed rows decide: shadow time on the 21st block entity alone leaves the by-position table
+        // without the column, while the type's row, which sums all 21, keeps it.
+        long[] at = {0};
+        Session deep = new Session(new SessionConfig(10_000_000_000L, 2.0, 16_000_000L, 5, 0, 0), () -> at[0], 0);
+        deep.onRenderPre(0, 0);
+        for (int i = 0; i <= TextReportWriter.TOP; i++) {
+            Accumulator be = deep.accumulator(new BlockEntityKey("test:lamp", "minecraft:overworld", i, 64, 0));
+            deep.shadowPass = i == TextReportWriter.TOP;
+            deep.begin(be, Bucket.BLOCK_ENTITY);
+            at[0] += (TextReportWriter.TOP + 1 - i) * 10_000L;
+            deep.end();
+        }
+        deep.shadowPass = false;
+        deep.onRenderPost();
+        at[0] = 16_000_000;
+        deep.onRenderPre(0, 0);
+        String report = TextReportWriter.write(deep.finish(), env, "0.5.0");
+        String byPosition = report.substring(report.indexOf("Block entities by position (top 20)\n")).split("\n", 3)[1];
+        assertFalse(byPosition.contains("shadow"), "the one row with shadow time is 21st, not printed: " + byPosition);
+        String byType = report.substring(report.indexOf("Block entities by type (top 20)\n")).split("\n", 3)[1];
+        assertTrue(byType.contains("shadow"), byType);
     }
 }

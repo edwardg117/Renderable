@@ -32,6 +32,20 @@ public final class Ranking {
         return sort(out, Sort.TOTAL);
     }
 
+    /**
+     * The particle table's rows, most expensive first, each labelled with its class's short name, as the Flywheel
+     * table names its classes (spec addendum §P5.D4). The JSON uses {@link #byKey}, which keeps the full names.
+     * Sorted again under the short names, so an exact tie reads A to Z by the name shown, as the screen's
+     * {@link #sort} breaks it, and the Particles tab opens in the report's order (spec §5.3).
+     */
+    public static List<RankedEntry> particles(SessionResult r) {
+        List<RankedEntry> rows = byKey(r, ProfileKey.Category.PARTICLE);
+        Map<String, String> names = SimpleNames.of(rows.stream().map(RankedEntry::typeId).toList());
+        List<RankedEntry> out = new ArrayList<>(rows.size());
+        for (RankedEntry e : rows) out.add(e.withLabel(names.get(e.typeId())));
+        return sort(out, Sort.TOTAL);
+    }
+
     /** One row per type id of the category, most expensive first. */
     public static List<RankedEntry> byType(SessionResult r, ProfileKey.Category category) {
         Map<String, List<Accumulator>> groups = new LinkedHashMap<>();

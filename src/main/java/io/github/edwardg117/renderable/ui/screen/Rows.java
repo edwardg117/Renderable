@@ -10,6 +10,7 @@ import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
 import io.github.edwardg117.renderable.core.MeshEntry;
+import io.github.edwardg117.renderable.core.MeshTable;
 import io.github.edwardg117.renderable.core.ModKey;
 import io.github.edwardg117.renderable.core.NaturalOrder;
 import io.github.edwardg117.renderable.core.ProfileKey;
@@ -244,7 +245,7 @@ public final class Rows {
         int frames = r.frameCount();
         long total = r.stats().totalNanos();
         List<Row> rows = new ArrayList<>();
-        for (RankedEntry e : Ranking.sort(Ranking.byKey(r, ProfileKey.Category.PARTICLE), rankedSort(sort), ascending)) {
+        for (RankedEntry e : Ranking.sort(Ranking.particles(r), rankedSort(sort), ascending)) {
             rows.add(new Row(RankedTable.particle(e, frames, total),
                     e.key(), e.typeId(), false, false, 0, null, -1));
         }
@@ -298,8 +299,7 @@ public final class Rows {
         double seconds = r.stats().durationSeconds();
         List<Row> rows = new ArrayList<>();
         for (MeshEntry e : Ranking.mesh(r, ProfileKey.Category.BLOCK, meshSort(sort, Ranking.MeshSort.TIME), ascending)) {
-            rows.add(new Row(new String[]{e.key().label(), Fmt.num(e.msPerSecond(seconds)), Fmt.us(e.usPerCall()), Fmt.count(e.calls())},
-                    e.key(), e.key().typeId(), false, false, 0, null, -1));
+            rows.add(new Row(MeshTable.block(e, seconds), e.key(), e.key().typeId(), false, false, 0, null, -1));
         }
         if (rows.isEmpty()) rows.add(Row.plain(EmptyStates.blocks(env)));
         return rows;
@@ -316,9 +316,8 @@ public final class Rows {
         List<Row> rows = new ArrayList<>();
         for (MeshEntry e : all.subList(0, Math.min(MAX_SECTION_ROWS, all.size()))) {
             SectionKey k = (SectionKey) e.key();
-            rows.add(new Row(new String[]{k.label(), Fmt.count(e.calls()), Fmt.num(e.callsPerSecond(seconds)), Fmt.ms(e.nanos()),
-                    Fmt.ms2(e.calls() == 0 ? 0 : e.nanos() / e.calls())},
-                    k, k.typeId(), false, false, 0, new BlockPos(k.centerX(), k.centerY(), k.centerZ()), -1));
+            rows.add(new Row(MeshTable.section(e, seconds), k, k.typeId(), false, false, 0,
+                    new BlockPos(k.centerX(), k.centerY(), k.centerZ()), -1));
         }
         if (all.size() > MAX_SECTION_ROWS) {
             int hidden = all.size() - MAX_SECTION_ROWS;

@@ -317,4 +317,40 @@ class RankingTest {
     private static RankedEntry named(String label) {
         return new RankedEntry(label, null, label, ProfileKey.Category.BLOCK_ENTITY, 1, 0, 0, 0, 0, 0, 0, 0, 0);
     }
+
+    @Test
+    void particleRowsAreNamedByTheirShortClassName() {
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> now[0], WALL_START);
+        Accumulator spark = s.accumulator(new ParticleKey("com.example.fx.SparkParticle"));
+        Accumulator flame = s.accumulator(FLAME);
+        Accumulator ember = s.accumulator(new ParticleKey("com.example.fx.EmberParticle"));
+        s.onRenderPre(0, 0);
+        now[0] = 1 * MS;
+        s.begin(spark, Bucket.PARTICLE_RENDER);
+        now[0] = 3 * MS;
+        s.end();
+        s.begin(flame, Bucket.PARTICLE_RENDER);
+        now[0] = 4 * MS;
+        s.end();
+        s.begin(ember, Bucket.PARTICLE_RENDER);
+        now[0] = 5 * MS;
+        s.end();
+        s.onRenderPost();
+        now[0] = 16 * MS;
+        s.onRenderPre(0, 0);
+        SessionResult r = s.finish();
+
+        List<RankedEntry> rows = Ranking.particles(r);
+        assertEquals(List.of("SparkParticle", "EmberParticle", "FlameParticle"),
+                rows.stream().map(RankedEntry::label).toList(),
+                "most expensive first, short names; Ember and Flame tie, and a tie reads A to Z by the name shown");
+        assertEquals(rows, Ranking.sort(rows, Ranking.Sort.TOTAL, false), "the order the Particles tab opens in");
+        assertEquals("com.example.fx.SparkParticle", Ranking.byKey(r, ProfileKey.Category.PARTICLE).get(0).label(),
+                "byKey, which the JSON writes, keeps the key's own label");
+
+        RankedEntry e = new RankedEntry("a.B", FLAME, "a.B", ProfileKey.Category.PARTICLE, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        assertEquals(new RankedEntry("B", FLAME, "a.B", ProfileKey.Category.PARTICLE, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+                e.withLabel("B"), "withLabel changes the label and nothing else");
+    }
 }

@@ -20,6 +20,12 @@ public final class RankedTable {
     public static final List<String> PARTICLE = List.of(
             "class", "render us/f", "tick us/f", "share", "avg live", "verts/f", "gc f");
 
+    /**
+     * {@link #RANKED} without the shadow column: the text report's header for a table in which no row has shadow
+     * time, as with no shader pack on (spec addendum §P5.D4). The screen and the JSON always keep the column.
+     */
+    public static final List<String> RANKED_WITHOUT_SHADOW = RANKED.stream().filter(h -> !h.equals("shadow")).toList();
+
     /** Headers of the Mods table (spec addendum §P5.A7): a mod's time in total, not split by where it ran. */
     public static final List<String> MODS = List.of("mod", "share", "us/f", "peak ms", "gc f", "calls/f");
 
@@ -57,6 +63,15 @@ public final class RankedTable {
                 Fmt.pct(e.shadowPercent()),
                 Fmt.num(e.verticesPerFrame(frames)),
                 Fmt.count(e.calls())};
+    }
+
+    /** A {@link #ranked} row without its shadow cell, to go under {@link #RANKED_WITHOUT_SHADOW}. */
+    public static String[] withoutShadow(String[] cells) {
+        int shadow = RANKED.indexOf("shadow");
+        String[] out = new String[cells.length - 1];
+        System.arraycopy(cells, 0, out, 0, shadow);
+        System.arraycopy(cells, shadow + 1, out, shadow, cells.length - shadow - 1);
+        return out;
     }
 
     /** One row of the particle table. */

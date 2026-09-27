@@ -1,5 +1,6 @@
 package io.github.edwardg117.renderable.ui.screen;
 
+import io.github.edwardg117.renderable.core.MeshTable;
 import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.Ranking;
 import org.junit.jupiter.api.Test;
@@ -79,6 +80,8 @@ class TabTest {
         assertEquals(RankedTable.RANKED, names(Tab.BLOCK_ENTITIES));
         assertEquals(RankedTable.RANKED, names(Tab.ENTITIES));
         assertEquals(RankedTable.PARTICLE, names(Tab.PARTICLES));
+        assertEquals(MeshTable.BLOCK, names(Tab.BLOCKS));
+        assertEquals(MeshTable.SECTION_SCREEN, names(Tab.SECTIONS));
         assertEquals(RankedTable.MODS, names(Tab.MODS));
         for (Tab t : new Tab[]{Tab.BLOCK_ENTITIES, Tab.ENTITIES, Tab.PARTICLES, Tab.MODS}) {
             for (int i = 1; i < t.columns().size(); i++) {
