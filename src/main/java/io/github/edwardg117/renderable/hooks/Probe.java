@@ -1,12 +1,18 @@
 package io.github.edwardg117.renderable.hooks;
 
+import io.github.edwardg117.renderable.RenderableMod;
 import io.github.edwardg117.renderable.core.Accumulator;
 import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.Hook;
 import io.github.edwardg117.renderable.core.MeshAccumulator;
+import io.github.edwardg117.renderable.core.ModKey;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.hooks.compat.IrisCompat;
 import net.minecraft.client.particle.Particle;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.PacketType;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -16,6 +22,7 @@ import net.minecraft.world.level.material.FluidState;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -50,6 +57,19 @@ public final class Probe {
     private static Listener listener;
     private static Thread renderThread;
     private static final HashMap<Class<?>, Accumulator> BY_CLASS = new HashMap<>(256);
+
+    /**
+     * HUD layer ids and packet types, each a constant object, mapped to the accumulator of their key (spec
+     * addendum §P5.A4 and §P5.A5). Render thread only; cleared on attach and detach.
+     */
+    private static final IdentityHashMap<Object, Accumulator> BY_CONSTANT = new IdentityHashMap<>(256);
+
+    /**
+     * Mod payload ids mapped to the accumulator of their key (spec addendum §P5.A5). Keyed by id, not by the
+     * payload's type object, because a mod may build a new {@code Type} on every call; keyed by identity, every
+     * such payload would allocate a key while sampling. Render thread only; cleared on attach and detach.
+     */
+    private static final HashMap<ResourceLocation, Accumulator> PAYLOAD_BY_ID = new HashMap<>(64);
     private static final boolean[] SEEN = new boolean[Hook.values().length];
     /** Mesh accumulators by Block or Fluid instance; written from Sodium's worker threads. */
     private static final ConcurrentHashMap<Object, MeshAccumulator> MESH_BY_OBJECT = new ConcurrentHashMap<>(512);
@@ -80,6 +100,8 @@ public final class Probe {
      */
     public static void attach(Session s, String levelDimension) {
         BY_CLASS.clear();
+        BY_CONSTANT.clear();
+        PAYLOAD_BY_ID.clear();
         MESH_BY_OBJECT.clear();
         seenVertices = false;
         seenAcceleratedVertices = false;
@@ -100,6 +122,8 @@ public final class Probe {
         ACTIVE = false;
         session = null;
         BY_CLASS.clear();
+        BY_CONSTANT.clear();
+        PAYLOAD_BY_ID.clear();
         MESH_BY_OBJECT.clear();
     }
 
@@ -218,6 +242,69 @@ public final class Probe {
         Session s = session;
         if (s == null || Thread.currentThread() != renderThread) return;
         s.onCapEnd();
+    }
+
+    /**
+     * One HUD layer (spec addendum §P5.A4), keyed by its id, whose namespace names the mod. Renderable's own
+     * layers are left out: the sampling line is self time, and the label overlay is empty while sampling.
+     * Returns whether a call was begun, which the caller must then end with {@link #end()}.
+     */
+    public static boolean beginLayer(ResourceLocation layer) {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return false;
+        if (RenderableMod.MOD_ID.equals(layer.getNamespace())) return false;
+        SEEN[Hook.HUD_LAYERS.ordinal()] = true;
+        s.beginAttribution(constantAccumulator(s, layer, ModKey.Kind.LAYER, layer));
+        return true;
+    }
+
+    /**
+     * One packet's main-thread handling (spec addendum §P5.A5), keyed by its type's id. Ignored off the render
+     * thread, because the integrated server handles its own packets through the same method. Returns whether
+     * a call was begun.
+     */
+    public static boolean beginPacket(Packet<?> packet) {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return false;
+        SEEN[Hook.PACKETS.ordinal()] = true;
+        PacketType<?> type = packet.type();
+        s.beginAttribution(constantAccumulator(s, type, ModKey.Kind.PACKET, type.id()));
+        return true;
+    }
+
+    /** A mod payload's main-thread handler (spec addendum §P5.A5), keyed by the payload's id. Same rules. */
+    public static boolean beginPayload(CustomPacketPayload payload) {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return false;
+        SEEN[Hook.PAYLOADS.ordinal()] = true;
+        ResourceLocation id = payload.type().id();
+        Accumulator a = PAYLOAD_BY_ID.get(id);
+        if (a == null) {
+            a = s.accumulator(new ModKey(ModKey.Kind.PACKET, id.getNamespace(), id.toString()));
+            PAYLOAD_BY_ID.put(id, a);
+        }
+        s.beginAttribution(a);
+        return true;
+    }
+
+    /**
+     * A passenger's tick, which vanilla runs from its vehicle's (spec addendum §P5.A8). It is an ordinary entity
+     * tick nested inside the vehicle's, so the entity-tick bucket is still credited once, by the vehicle.
+     */
+    public static void beginRiderTick(Entity rider) {
+        Session s = session;
+        if (s == null) return;
+        SEEN[Hook.RIDER_TICK.ordinal()] = true;
+        s.begin(instanceAccumulator(s, rider), Bucket.ENTITY_TICK);
+    }
+
+    private static Accumulator constantAccumulator(Session s, Object constant, ModKey.Kind kind, ResourceLocation id) {
+        Accumulator a = BY_CONSTANT.get(constant);
+        if (a == null) {
+            a = s.accumulator(new ModKey(kind, id.getNamespace(), id.toString()));
+            BY_CONSTANT.put(constant, a);
+        }
+        return a;
     }
 
     /** Ends the innermost keyed call. Safe to call when no session is running. */

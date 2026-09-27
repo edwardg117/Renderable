@@ -15,7 +15,11 @@
     "BlockEntityAccumulatorMixin",
     "EntityAccumulatorMixin",
     "MinecraftMixin",
-    "GuiMixin"
+    "GuiMixin",
+    "GuiLayerManagerMixin",
+    "PacketUtilsMixin",
+    "MainThreadPayloadHandlerMixin",
+    "ClientLevelMixin"
   ],
   "injectors": {
     "defaultRequire": 1
