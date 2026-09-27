@@ -2,6 +2,9 @@ package io.github.edwardg117.renderable.report;
 
 import com.mojang.blaze3d.platform.GlStateManager;
 import io.github.edwardg117.renderable.core.Environment;
+import io.github.edwardg117.renderable.core.GcNames;
+import io.github.edwardg117.renderable.core.JvmFlags;
+import io.github.edwardg117.renderable.hooks.GcWatcher;
 import io.github.edwardg117.renderable.hooks.compat.FlywheelCompat;
 import io.github.edwardg117.renderable.hooks.compat.IrisCompat;
 import io.github.edwardg117.renderable.hooks.events.EventTiming;
@@ -13,6 +16,8 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.internal.versions.neoforge.NeoForgeVersion;
 import org.lwjgl.opengl.GL11;
 
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.function.Supplier;
@@ -32,6 +37,15 @@ public final class EnvironmentCollector {
         m.put("neoforge", NeoForgeVersion.getVersion());
         m.put("java", System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ")");
         m.put("maxHeapMiB", Long.toString(Runtime.getRuntime().maxMemory() >> 20));
+        m.put(Environment.INITIAL_HEAP_MIB, safe(() -> mib(ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getInit())));
+        m.put(Environment.PHYSICAL_MEMORY_MIB, safe(() -> mib(((com.sun.management.OperatingSystemMXBean)
+                ManagementFactory.getOperatingSystemMXBean()).getTotalMemorySize())));
+        m.put(Environment.GC, safe(() -> GcNames.collector(ManagementFactory.getGarbageCollectorMXBeans().stream()
+                .map(GarbageCollectorMXBean::getName).toList())));
+        long live = GcWatcher.liveHeapAfterGcMiB();
+        if (live >= 0) m.put(Environment.LIVE_HEAP_AFTER_GC_MIB, Long.toString(live));
+        m.put(Environment.JVM_FLAGS, safe(() -> String.join(" ",
+                JvmFlags.kept(ManagementFactory.getRuntimeMXBean().getInputArguments()))));
         m.put("mods", Integer.toString(ModList.get().size()));
         m.put("gpu", safe(() -> GlStateManager._getString(GL11.GL_RENDERER)));
         m.put("glVersion", safe(() -> GlStateManager._getString(GL11.GL_VERSION)));
@@ -73,6 +87,11 @@ public final class EnvironmentCollector {
         return ModList.get().getModContainerById(modId)
                 .map(c -> c.getModInfo().getVersion().toString())
                 .orElse(Environment.ABSENT);
+    }
+
+    /** Bytes as MiB, or "unknown" for the -1 an MXBean reports when it does not know. */
+    private static String mib(long bytes) {
+        return bytes < 0 ? "unknown" : Long.toString(bytes >> 20);
     }
 
     private static String safe(Supplier<String> s) {

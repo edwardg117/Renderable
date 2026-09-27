@@ -26,6 +26,17 @@ public record Environment(Map<String, String> entries, List<String> hooksApplied
     /** Starts the {@link #EVENT_TIMING} value when the event bus could not be reached; the reason follows it. */
     public static final String UNAVAILABLE = "unavailable: ";
 
+    /** Physical memory in MiB (spec addendum §P5.B3). */
+    public static final String PHYSICAL_MEMORY_MIB = "physicalMemoryMiB";
+    /** The garbage collector in use, as {@code GcNames.collector} names it. */
+    public static final String GC = "gc";
+    /** The initial heap in MiB. */
+    public static final String INITIAL_HEAP_MIB = "initialHeapMiB";
+    /** The smallest heap in use after any collection during the session, in MiB; absent when none ran. */
+    public static final String LIVE_HEAP_AFTER_GC_MIB = "liveHeapAfterGcMiB";
+    /** The whitelisted JVM arguments, space-separated (see {@code JvmFlags}). */
+    public static final String JVM_FLAGS = "jvmFlags";
+
     /**
      * Copies both collections so the record is really immutable, however it is built. The entries copy is a
      * {@link LinkedHashMap}, not {@code Map.copyOf}, because {@code Map.copyOf} does not keep order.
