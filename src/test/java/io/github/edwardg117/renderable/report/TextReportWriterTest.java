@@ -288,4 +288,12 @@ class TextReportWriterTest {
         assertTrue(s.contains("\n  press.PressVisual "), s);
         assertTrue(s.contains("\n  mixer.PressVisual "), s);
     }
+
+    @Test
+    void phase5SplitNamesTheNewComponents() {
+        String s = TextReportWriter.write(TestSessions.phase5(), env, "0.5.0");
+        assertTrue(s.contains("  Time split (avg ms/frame): tick 2.00 [entity tick 1.00, mods 0.40] | block entity 1.00"
+                + " | entity 0.50 | hud 2.00 | other render 1.50 [mods 1.00] | tasks 2.00 [mods 1.00]"
+                + " | frame cap 3.00 | swap/wait 8.00\n"), s);
+    }
 }

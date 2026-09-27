@@ -90,7 +90,7 @@ class ReportFilesTest {
         assertEquals(JsonReportWriter.write(r, env, "0.4.0"), onDisk,
                 "the only test that drives the real writer through ReportFiles into a real file: "
                         + "the streamed bytes must equal the in-memory ones");
-        assertEquals(4, JsonParser.parseString(onDisk).getAsJsonObject().get("schema").getAsInt());
+        assertEquals(JsonReportWriter.SCHEMA, JsonParser.parseString(onDisk).getAsJsonObject().get("schema").getAsInt());
     }
 
     @Test

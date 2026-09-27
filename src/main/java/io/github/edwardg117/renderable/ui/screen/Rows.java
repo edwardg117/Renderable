@@ -18,6 +18,7 @@ import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.Splits;
 import io.github.edwardg117.renderable.core.TopEntry;
+import io.github.edwardg117.renderable.core.Window;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
@@ -95,11 +96,16 @@ public final class Rows {
             if (!b.isRender() && st.avgBucket(b) > 0) rows.add(Row.plain("  " + b.label(), Fmt.ms2(st.avgBucket(b)) + " ms"));
         }
         rows.add(Row.plain("  other tick", Fmt.ms2(st.avgOtherTickNanos()) + " ms"));
+        namedRow(rows, "    in the Mods tab", st.avgNamed(Window.TICK));
         rows.add(Row.plain("render", Fmt.ms2(st.avgRenderNanos()) + " ms"));
         for (Bucket b : Bucket.VALUES) {
             if (b.isRender() && st.avgBucket(b) > 0) rows.add(Row.plain("  " + b.label(), Fmt.ms2(st.avgBucket(b)) + " ms"));
         }
         rows.add(Row.plain("  other render", Fmt.ms2(st.avgOtherRenderNanos()) + " ms"));
+        namedRow(rows, "    in the Mods tab", st.avgNamed(Window.RENDER));
+        rows.add(Row.plain("tasks", Fmt.ms2(st.avgTasksNanos()) + " ms"));
+        namedRow(rows, "  in the Mods tab", st.avgNamed(Window.TASKS));
+        rows.add(Row.plain("frame cap", Fmt.ms2(st.avgCapNanos()) + " ms"));
         rows.add(Row.plain("swap / wait", Fmt.ms2(st.avgSwapNanos()) + " ms"));
         rows.add(Row.plain("", ""));
 
@@ -125,6 +131,11 @@ public final class Rows {
             rows.add(Row.plain(label, String.format(Locale.ROOT, "%5d  %s", counts[i], "#".repeat(bar))));
         }
         return rows;
+    }
+
+    /** A named-time row (spec addendum §P5.A6), shown only when there is some. */
+    private static void namedRow(List<Row> rows, String label, long nanos) {
+        if (nanos > 0) rows.add(Row.plain(label, Fmt.ms2(nanos) + " ms"));
     }
 
     static List<Row> hitches(SessionResult r) {

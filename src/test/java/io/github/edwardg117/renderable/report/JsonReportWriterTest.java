@@ -25,6 +25,13 @@ class JsonReportWriterTest {
             "hitchThresholdMs", "overheadEstimateMs", "timedCalls", "vertexCalls", "selfMs", "unbalancedFrames",
             "config");
 
+    /** Pins a frame's field order, and the stats object's, the same way SESSION_KEYS pins the session's. */
+    private static final List<String> FRAME_KEYS = List.of("i", "startUs", "totalUs", "tickUs", "renderUs", "tasksUs",
+            "capUs", "swapUs", "otherRenderUs", "namedUs", "bucketsUs", "gcCount", "gcMs", "top");
+    private static final List<String> STATS_KEYS = List.of("avgMs", "avgFps", "p50Ms", "p95Ms", "p99Ms", "maxMs",
+            "avgTickMs", "avgRenderMs", "avgTasksMs", "avgCapMs", "avgSwapMs", "avgOtherRenderMs", "avgOtherTickMs",
+            "avgNamedMs", "gcCount", "gcMs", "avgBucketsMs");
+
     final SessionResult r = TestSessions.sample();
 
     static Environment environment() {
@@ -40,7 +47,7 @@ class JsonReportWriterTest {
     @Test
     void schemaModEnvironmentAndSession() {
         JsonObject o = parse();
-        assertEquals(4, o.get("schema").getAsInt());
+        assertEquals(5, o.get("schema").getAsInt());
         assertEquals("0.1.0", o.getAsJsonObject("mod").get("version").getAsString());
         assertEquals("1.21.1", o.getAsJsonObject("environment").get("minecraft").getAsString());
         assertEquals(2, o.getAsJsonObject("environment").getAsJsonArray("hooksApplied").size());
@@ -187,7 +194,7 @@ class JsonReportWriterTest {
     }
 
     @Test
-    void rankedRowsHaveTheSchema4ShapeInOrder() {
+    void rankedRowsHaveTheirShapeInOrder() {
         JsonObject o = JsonParser.parseString(
                 JsonReportWriter.write(TestSessions.phase3(), environment(), "0.4.0")).getAsJsonObject();
 
@@ -247,7 +254,7 @@ class JsonReportWriterTest {
         // phase3 calls vertex() once per vertex: 100 on the press and 20 on the mixer, each frame, over 20
         // frames. The batched vertices(int) path is covered by SessionTest, not here.
         assertEquals(2400, o.getAsJsonObject("session").get("vertexCalls").getAsLong());
-        assertEquals(4, o.get("schema").getAsInt());
+        assertEquals(JsonReportWriter.SCHEMA, o.get("schema").getAsInt());
     }
 
     @Test
@@ -257,7 +264,7 @@ class JsonReportWriterTest {
     }
 
     @Test
-    void sessionObjectHasTheSchema4ShapeInOrder() {
+    void sessionObjectHasItsShapeInOrder() {
         JsonObject session = parse().getAsJsonObject("session");
         assertEquals(SESSION_KEYS, List.copyOf(session.keySet()),
                 "session object shape changed - bump SCHEMA if that was intended");
@@ -269,7 +276,48 @@ class JsonReportWriterTest {
         java.io.StringWriter out = new java.io.StringWriter();
         JsonReportWriter.write(r3, environment(), "0.4.0", out);
         assertEquals(JsonReportWriter.write(r3, environment(), "0.4.0"), out.toString());
-        assertEquals(4, JsonParser.parseString(out.toString()).getAsJsonObject().get("schema").getAsInt());
-        assertTrue(out.toString().startsWith("{\n  \"schema\": 4,"), out.toString().substring(0, 40));
+        assertEquals(5, JsonParser.parseString(out.toString()).getAsJsonObject().get("schema").getAsInt());
+        assertTrue(out.toString().startsWith("{\n  \"schema\": 5,"), out.toString().substring(0, 40));
+    }
+
+    @Test
+    void phase5FramesAndStatsCarryTheNewComponents() {
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(TestSessions.phase5(), environment(), "0.5.0"))
+                .getAsJsonObject();
+        JsonObject f0 = o.getAsJsonArray("frames").get(0).getAsJsonObject();
+        assertEquals(5_000, f0.get("renderUs").getAsLong());
+        assertEquals(2_000, f0.get("tasksUs").getAsLong());
+        assertEquals(3_000, f0.get("capUs").getAsLong());
+        assertEquals(8_000, f0.get("swapUs").getAsLong());
+        JsonObject named = f0.getAsJsonObject("namedUs");
+        assertEquals(1_000, named.get("render").getAsLong());
+        assertEquals(400, named.get("tick").getAsLong());
+        assertEquals(1_000, named.get("tasks").getAsLong());
+        assertEquals(2_000, f0.getAsJsonObject("bucketsUs").get("hud").getAsLong());
+
+        JsonObject stats = o.getAsJsonObject("stats");
+        assertEquals(2.0, stats.get("avgTasksMs").getAsDouble(), 1e-9);
+        assertEquals(3.0, stats.get("avgCapMs").getAsDouble(), 1e-9);
+        assertEquals(8.0, stats.get("avgSwapMs").getAsDouble(), 1e-9);
+        assertEquals(1.0, stats.getAsJsonObject("avgNamedMs").get("render").getAsDouble(), 1e-9);
+        assertEquals(0.4, stats.getAsJsonObject("avgNamedMs").get("tick").getAsDouble(), 1e-9);
+        assertEquals(1.0, stats.getAsJsonObject("avgNamedMs").get("tasks").getAsDouble(), 1e-9);
+        assertEquals(2.0, stats.getAsJsonObject("avgBucketsMs").get("hud").getAsDouble(), 1e-9);
+
+        JsonObject plain = parse().getAsJsonArray("frames").get(0).getAsJsonObject();
+        assertEquals(0, plain.get("tasksUs").getAsLong(), "a frame with no tasks still says so");
+        assertTrue(plain.getAsJsonObject("namedUs").keySet().isEmpty(), "empty windows are omitted, like empty buckets");
+    }
+
+    @Test
+    void framesAndStatsHaveTheirShapeInOrder() {
+        JsonObject o = parse();
+        assertEquals(FRAME_KEYS, List.copyOf(o.getAsJsonArray("frames").get(0).getAsJsonObject().keySet()),
+                "frame shape changed - bump SCHEMA if that was intended");
+        JsonObject stats = o.getAsJsonObject("stats");
+        assertEquals(STATS_KEYS, List.copyOf(stats.keySet()),
+                "stats object shape changed - bump SCHEMA if that was intended");
+        assertEquals(List.of("render", "tick", "tasks"), List.copyOf(stats.getAsJsonObject("avgNamedMs").keySet()),
+                "the averages list every window, zeros included, as avgBucketsMs lists every bucket");
     }
 }

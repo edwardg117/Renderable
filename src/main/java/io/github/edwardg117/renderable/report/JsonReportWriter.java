@@ -13,6 +13,7 @@ import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TopEntry;
+import io.github.edwardg117.renderable.core.Window;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -27,7 +28,7 @@ import java.util.Map;
  * capped.
  */
 public final class JsonReportWriter {
-    public static final int SCHEMA = 4;
+    public static final int SCHEMA = 5;
 
     private JsonReportWriter() {
     }
@@ -100,9 +101,14 @@ public final class JsonReportWriter {
         w.name("maxMs").value(st.maxNanos() / 1e6);
         w.name("avgTickMs").value(st.avgTickNanos() / 1e6);
         w.name("avgRenderMs").value(st.avgRenderNanos() / 1e6);
+        w.name("avgTasksMs").value(st.avgTasksNanos() / 1e6);
+        w.name("avgCapMs").value(st.avgCapNanos() / 1e6);
         w.name("avgSwapMs").value(st.avgSwapNanos() / 1e6);
         w.name("avgOtherRenderMs").value(st.avgOtherRenderNanos() / 1e6);
         w.name("avgOtherTickMs").value(st.avgOtherTickNanos() / 1e6);
+        w.name("avgNamedMs").beginObject();
+        for (Window win : Window.VALUES) w.name(win.label()).value(st.avgNamed(win) / 1e6);
+        w.endObject();
         w.name("gcCount").value(st.gcCount());
         w.name("gcMs").value(st.gcMillis());
         w.name("avgBucketsMs").beginObject();
@@ -118,8 +124,16 @@ public final class JsonReportWriter {
             w.name("totalUs").value(f.totalNanos() / 1000);
             w.name("tickUs").value(f.tickNanos() / 1000);
             w.name("renderUs").value(f.renderNanos() / 1000);
+            w.name("tasksUs").value(f.tasksNanos() / 1000);
+            w.name("capUs").value(f.capNanos() / 1000);
             w.name("swapUs").value(f.swapNanos() / 1000);
             w.name("otherRenderUs").value(f.otherRenderNanos() / 1000);
+            w.name("namedUs").beginObject();
+            for (Window win : Window.VALUES) {
+                long v = f.named(win);
+                if (v > 0) w.name(win.label()).value(v / 1000);
+            }
+            w.endObject();
             w.name("bucketsUs").beginObject();
             for (Bucket b : Bucket.VALUES) {
                 long v = f.bucket(b);
