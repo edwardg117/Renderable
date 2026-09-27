@@ -111,7 +111,7 @@ final class MemoryRules {
      * Physical memory to the nearest whole GiB, or NaN when it is unknown. The JVM reports the memory the system
      * can use: what is installed, less what the firmware and an integrated GPU reserve, so a 16 GB PC reads 15.8
      * to 15.9 GiB. Rounding counts that PC as the 16 GiB the player knows, so 12 GiB on it is fine, while a
-     * reservation of half a GiB or more, which the game cannot use either, still counts against it.
+     * reservation of more than half a GiB, which the game cannot use either, still counts against it.
      */
     private static double physicalMib(Facts f) {
         double mib = f.number(Environment.PHYSICAL_MEMORY_MIB);

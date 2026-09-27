@@ -8,9 +8,9 @@ time**, and what caused each hitch.
 
 1. Press **F7** (or run `/renderable start [seconds]`). A line at the top of the screen counts the
    session's elapsed seconds; default 30 s.
-2. When it ends, a results screen opens and a chat message offers **Open results**, **Copy
-   report** and **Open folder**. Two files land in `<game dir>/renderable/`: a text report you can
-   paste into an issue, and a JSON file with everything.
+2. When it ends, a results screen opens on the **Advice** tab (what to change, drawn from what was measured)
+   and a chat message offers **Open results**, **Copy report** and **Open folder**. Two files land in
+   `<game dir>/renderable/`: a text report you can paste into an issue, and a JSON file with everything.
 3. In the world, the costliest block entities and entities carry floating labels in green,
    yellow or red, and the most rebuilt chunk sections carry yellow labels at their centres. A
    leading `!` means that thing showed up in a hitch. Labels are shown only in the dimension they
@@ -35,6 +35,22 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
 
 ## Reading a report
 
+- **Recommendations** come first: up to six, with the rest on the Advice tab and in the JSON. Each says who
+  can act on it (`[player]` or `[pack author]`), what was measured and what to do, and, unless it is a note,
+  how much time the finding is about: its worst single occurrence for stutter, milliseconds a frame for frame
+  rate. That figure is an upper bound on what the change can save, not a prediction. Stutter comes first,
+  then frame rate, then notes: a stall averaged over a session looks small but is what a player notices. The
+  rules are generic, not written for any one pack, and their thresholds are first estimates.
+- A hitch contributor counts toward repeated stutter only when it took at least a quarter of that hitch and
+  carries no `[gc]` mark: every hitch's top list also holds the frame's usual costs.
+- **Environment** includes physical memory, the garbage collector, the initial heap, the smallest heap in use
+  after a collection (an upper bound on the pack's live data), and the JVM flags that set the heap and the
+  collector. Physical memory is what the system can use: what is installed, less what the firmware and an
+  integrated GPU reserve. The memory advice rounds it to the nearest whole GiB, so a 16 GB PC that reports
+  15.8 GiB counts as 16. Only flags on a fixed list are included, never paths or `-D` properties, because the
+  full list can carry the player's user name. Under ZGC and Shenandoah, the GC figures count pauses only, not
+  the collectors' concurrent cycles. A ZGC allocation stall, or Shenandoah holding back a thread that
+  allocates, is not a pause either: its time lands in whatever was running, with no `[gc]` mark.
 - **Frames** gives the frame-time distribution. Trust p95 and p99 over the average.
 - **Time split** shows where the average frame went: client tick (with its block entity, entity
   and particle tick shares in brackets), block entities, entities, particles, Flywheel, light
@@ -125,7 +141,11 @@ The JSON report carries a `schema` number.
 Schema 5 (this version) adds `tasksUs`, `capUs` and `namedUs` (`render`, `tick` and `tasks`, empty ones left out)
 to every frame; `avgTasksMs`, `avgCapMs` and `avgNamedMs` (all three windows, zeros kept) to `stats`; a `hud`
 bucket; `environment.eventTiming` (`on`, or `unavailable: ` and why);
-and a `mods` array, one ranked row per mod followed by an `entries` array of its event, layer and packet rows.
+a `mods` array, one ranked row per mod followed by an `entries` array of its event, layer and packet rows;
+a `recommendations` array, right after `stats`, holding every recommendation with its `rule`, `kind`,
+`audience`, `title`, `finding`, `action`, `msPerFrame` and `worstMs`; and `physicalMemoryMiB`, `gc`,
+`initialHeapMiB`, `liveHeapAfterGcMiB` (left out when the session saw no collection) and `jvmFlags` in
+`environment`.
 As on every ranked row, a mod's `members` is a count and its `callsPerFrame` counts only `calls`; `calls`
 plus `tickCalls` is its total. A mod has no bucket to say which side it ran on, so its `tickUs` and
 `tickCalls` hold what ran inside the client tick, and its `renderUs` and `calls` everything else, packets

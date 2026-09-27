@@ -545,8 +545,9 @@ generic rules only.
   double msPerFrame, double worstMs)`, with `Audience { PLAYER, PACK_AUTHOR }` and
   `Kind { STUTTER, FRAME_RATE, NOTE }`.
 - **At stake** is the measured cost a finding is about. `msPerFrame` averages it over the session, and
-  `worstMs` is its largest single occurrence. It is an upper bound on what the action can save, never a
-  prediction of the saving, and the wording says so.
+  `worstMs`, for stutter only, is its largest single occurrence. A figure that does not apply is 0, so a note
+  carries 0 in both. It is an upper bound on what the action can save, never a prediction of the saving. The
+  README says so; the findings do not.
 - **Ranking.**
   1. `STUTTER` findings, by `worstMs`.
   2. `FRAME_RATE` findings, by `msPerFrame`.
@@ -554,9 +555,16 @@ generic rules only.
 
   Ties go to the player's findings first, then to rule order. Stutter comes first because averaging hides
   stalls (P5.1 change 5).
-- **Rules.** Each rule is a small class with unit tests on synthetic sessions (`TestSessions`).
+- **Rules.** Each rule is one static method in one of four themed classes (`SettingsRules`, `SceneRules`,
+  `MemoryRules`, `PackRules`). It reads a `Facts` record derived once from the session, so each rule is
+  unit-tested with `Facts` built in the test.
 - **Missing data.** A rule never fires on it: if an environment value it needs is absent or unparseable,
   the rule is skipped.
+- **Failure.** A rule that throws costs the advice, not the report. The report is written on the render
+  thread as the session ends, where an exception would end the client and lose the session. So `advise`
+  catches any `RuntimeException`, from a rule or from deriving `Facts`, and returns one pack-author note in
+  place of the advice: `advice-failed`, which names the exception and where it was thrown (plan 5b, from
+  review).
 - **Thresholds.** They live as constants in one class, `Thresholds`. The numbers below are first
   estimates, to be revisited against real reports.
 - **No automatic changes.** Recommendations never change a setting or a file.
@@ -572,60 +580,96 @@ real: it is hitch #1 of the 4b/4c base session.
 | `particles` | player | frame rate | Particles is `ALL`, and particle render plus tick ≥ 0.5 ms/f | particle render + tick |
 | `shadows` | player | frame rate | a shader pack is on, and shadow time ≥ 1.0 ms/f and ≥ 30% of block entity plus entity render | shadow time |
 | `flywheel-shaders` | player | frame rate | a shader pack is on, the Flywheel backend is `flywheel:off`, and block entity render ≥ 1.0 ms/f | block entity render |
-| `chunk-rebuilds` | player | frame rate, or stutter when chunk upload is the largest part of the split in 3 or more hitches | chunk upload ≥ 1.0 ms/f, with biome blend ≥ 3 or render distance ≥ 16 | chunk upload; in the stutter form, its largest time in one hitch |
+| `chunk-rebuilds` | player | frame rate, or stutter when chunk upload is the largest part of the split in 3 or more hitches | chunk upload ≥ 1.0 ms/f, with biome blend ≥ 3 or render distance ≥ 16 | chunk upload; in the stutter form, its largest time in one of the hitches it leads |
 | `frame-cap` | player | note | frame cap ≥ 25% of the average frame | — |
 | `vsync` | player | note | vsync is on, and swap ≥ 25% of the average frame | — |
 | `block-entity-type` | player | frame rate | a type's render plus tick ≥ 1.0 ms/f (at most three types) | that type |
 | `entity-type` | player | frame rate | the same, for entity types | that type |
-| `particle-type` | player | frame rate | a particle class ≥ 0.5 ms/f | that class |
-| `hitch-repeat` | player | stutter | a key is among the top contributors of 3 or more hitches, and of at least a quarter of all hitches | its hitch time; its largest hitch share |
-| `heap-vs-ram` | player | note, or stutter when a frame's GC pause reached 500 ms | physical memory minus the maximum heap is under 4 GiB | GC time; in the stutter form, the longest GC pause in one frame |
+| `particle-type` | player | frame rate | a particle class ≥ 0.5 ms/f (at most three classes) | that class |
+| `hitch-repeat` | player | stutter | a key other than a mod's (the mod rules cover those) is among the top contributors, with at least a quarter of the hitch and no `[gc]` mark, of 3 or more hitches, and of at least a quarter of all hitches | its hitch time; its largest time in one hitch |
+| `heap-vs-ram` | player | note, or stutter when a frame's GC pause reached 500 ms | physical memory, to the nearest whole GiB, minus the maximum heap is under 4 GiB | none as a note; in the stutter form, GC time and the longest GC pause in one frame |
 | `heap-small` | player | frame rate | the smallest heap in use after any collection is ≥ 80% of the maximum heap | GC time |
-| `gc-pauses` | player | stutter | the collector is not ZGC or Shenandoah, and the longest GC pause in one frame is ≥ 50 ms | GC time; longest pause |
-| `unattributed-stall` | pack author | stutter | a hitch where other tick, other render or tasks, less the time the Mods tab names in it (P5.A6), is ≥ 50 ms and at least half the frame | that time |
-| `mod-handlers` | pack author | frame rate | a mod's event handlers ≥ 0.5 ms/f | that mod's handlers |
-| `mod-hud` | pack author | frame rate | a mod's HUD layers ≥ 0.5 ms/f | those layers |
-| `mod-network` | pack author | frame rate, or stutter when one of its packet types is among the top contributors of 3 or more hitches | a mod's payloads ≥ 0.5 ms/f | those payloads; in the stutter form, the most one of its packet types took in one hitch |
+| `gc-pauses` | player | stutter | the collector is G1, Parallel or Serial, and the longest GC pause in one frame is ≥ 50 ms | GC time; longest pause |
+| `unattributed-stall` | pack author | stutter | a hitch where other tick, other render or tasks, less the time the Mods tab names in it (P5.A6) and less the frame's GC pause, is ≥ 50 ms and at least half the frame | that time |
+| `mod-handlers` | pack author | frame rate, or stutter when one of its handlers took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test | a mod's event handlers ≥ 0.5 ms/f, or the stutter form's test, whatever their steady cost | that mod's handlers; in the stutter form, that handler's largest time in one of the hitches the finding is about |
+| `mod-hud` | pack author | frame rate, or stutter when one of its layers took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test | a mod's HUD layers ≥ 0.5 ms/f, or the stutter form's test, whatever their steady cost | those layers; in the stutter form, that layer's largest time in one of the hitches the finding is about |
+| `mod-network` | pack author | frame rate, or stutter when one of its payload types took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test | a mod's payloads ≥ 0.5 ms/f, or the stutter form's test, whatever their steady cost | those payloads; in the stutter form, that payload type's largest time in one of the hitches the finding is about |
 | `stack-resets` | pack author | note | `unbalancedFrames` > 0 | — |
 
 | Rule | Finding (example) | Action |
 | --- | --- | --- |
 | `entity-distance` | Entities take 2.4 ms of each 12.0 ms frame at 300% entity distance. | Lower Entity Distance in Video Settings; the number of entities drawn falls with the square of the distance. |
-| `particles` | Particles take 0.9 ms a frame with Particles on All. | Set Particles to Decreased. |
+| `particles` | Particles take 0.9 ms a frame with Particles on All. | Set Particles to Decreased in Video Settings. |
 | `shadows` | The shader pack's shadow pass is 38% of block entity and entity drawing, 2.1 ms a frame. | Lower the shader pack's shadow distance or resolution, or turn its shadows off. |
-| `flywheel-shaders` | Flywheel is not instancing under this shader pack, so Create's machines are drawn one at a time: 3.2 ms a frame. | Turn shaders off, or use a shader pack Flywheel supports, to bring instancing back. |
-| `chunk-rebuilds` | Chunk rebuilds take 1.8 ms a frame and are the largest part of 4 of 6 hitches, at render distance 16 and biome blend 7×7. | Lower Biome Blend to 5×5 or less. While travelling, a lower render distance rebuilds fewer sections. |
+| `flywheel-shaders` | Flywheel is not instancing under this shader pack, so the machines it would instance are drawn one at a time: block entities take 3.2 ms a frame. | Turn shaders off to bring instancing back: Flywheel does not instance while any shader pack is in use. |
+| `chunk-rebuilds` | Chunk rebuilds take 1.8 ms a frame and are the largest part of 4 of 6 hitches, at render distance 16 and biome blend 7x7. | Lower Biome Blend to 5x5 or less. While travelling, a lower render distance rebuilds fewer sections. |
 | `frame-cap` | 8.3 ms of each 16.7 ms frame is spent waiting for the 60 fps limit, so the game has headroom. | Raise Max Framerate if you want more frames. |
 | `vsync` | With VSync on, 5.2 ms of each 16.7 ms frame is spent waiting for the display. | Turn VSync off for more frames, at the risk of tearing. |
 | `block-entity-type` | `create:factory_panel` takes 1.1 ms a frame across 212 blocks; the most expensive is at 120 64 -340. | It is the build, not a setting: fewer of them in view at once costs less. Highlight on the Block Entities tab shows where they are. |
 | `entity-type` | `minecraft:item_frame` takes 1.3 ms a frame across 340 entities. | Fewer of them nearby, or a lower Entity Distance. |
-| `particle-type` | `DripParticle` takes 0.7 ms a frame, with 1,400 alive on average. | Find what emits them; lowering Particles hides most of them. |
-| `hitch-repeat` | `create:mechanical_crafter` at 118 64 -338 was a top cost in 5 of 13 hitches, up to 42 ms. | Look at what it is doing when the stutter happens. A pack author can take this report to the mod. |
-| `heap-vs-ram` | 14 GiB is allocated on a machine with 16 GiB, which leaves 2 GiB for Windows, drivers and the game's memory outside the heap. | Allocate at most 12 GiB, this machine's memory less 4 GiB, rounded down. When the live data (`heap-small`) needs more than that, the finding says instead that the machine is short of memory for this pack. |
-| `heap-small` | After every collection at least 6.9 of 8 GiB was still in use, so the collector runs often. | Allocate 12 GiB (1.6 × the live data, rounded up to a whole GiB), if `heap-vs-ram` allows it. |
-| `gc-pauses` | Garbage collection paused the game for up to 120 ms (14 collections, 610 ms in total). | On Java 21 or 22, add `-XX:+UseZGC -XX:+ZGenerational` to the JVM arguments; on 23 and later, `-XX:+UseZGC`. ZGC pauses for well under a millisecond but uses more CPU, and more memory for the same data, so keep a quarter of the heap free. |
+| `particle-type` | `DripParticle` takes 0.7 ms a frame, with 1,400 drawn on average. | Find what emits them; lowering Particles hides most of them. |
+| `hitch-repeat` | `create:mechanical_crafter @ 118 64 -338` was a top cost in 5 of 13 hitches, up to 42 ms. | Look at what it is doing when the stutter happens. A pack author can take this report to the mod. |
+| `heap-vs-ram` | 14 GiB is allocated on a machine with 16 GiB, which leaves 2 GiB for Windows, drivers and the game's memory outside the heap. | Allocate at most 12 GiB, this machine's memory less 4 GiB. When the live data (`heap-small`) would fill 80% or more of that heap, the action says instead that the machine is short of memory for this pack, and to close other programs while playing. So does a machine with less than a whole GiB to spare. |
+| `heap-small` | After every collection at least 6.9 of 8 GiB was still in use, so the collector runs often. | Allocate 12 GiB (1.6 x the live data, rounded up to a whole GiB). When that is more than `heap-vs-ram` allows, the action offers the most this machine can spare, if the live data would fill under 80% of it: "Allocate 10 GiB, the most this machine can spare (1.6 x the live data would be 12 GiB)." Otherwise: "This machine cannot spare 12 GiB (1.6 x the live data): close other programs, or lower render distance so the game needs less." |
+| `gc-pauses` | Garbage collection paused the game for up to 120 ms (14 collections, 610 ms in total). | On Java 21, add `-XX:+UseZGC -XX:+ZGenerational` to the JVM arguments (leave out `-XX:+ZGenerational` on Java 23 or later: from Java 26 the game will not start with it). ZGC pauses for well under a millisecond but uses more CPU, and more memory for the same data, so keep a quarter of the heap free. From Java 23 the action names `-XX:+UseZGC` alone, with no note in brackets. When `jvmFlags` holds the flag that chose the collector in use, such as `-XX:+UseG1GC`, the action says to replace that flag instead: the JVM will not start with two collectors chosen. |
 | `unattributed-stall` | Hitch #1 (382 ms): 374 ms of client tick is in code Renderable does not time. | Profile the same place with a sampling profiler such as spark, which names the code. |
 | `mod-handlers` | `somemod`'s event handlers take 1.2 ms a frame, most of it in `RenderLevelStageEvent`. | Check the mod's config for the feature behind that event, or report it to the mod with this file. |
-| `mod-hud` | `somemod`'s HUD layers take 0.8 ms a frame. | Check the mod's HUD settings, or report it with this file. |
-| `mod-network` | `somemod`'s payloads take 0.6 ms a frame on the client, and one type appears in 4 hitches. | The server is sending work the client handles on its main thread; report it to the mod with this file. |
+| `mod-hud` | `somemod`'s HUD layers take 0.8 ms a frame. | Check the mod's HUD settings, or report it to the mod with this file. |
+| `mod-network` | The `somemod:sync` payload was a top cost in 4 of 13 hitches, up to 24 ms. `somemod`'s payloads take 0.6 ms a frame on the client. | The server is sending work the client handles on its main thread; report it to the mod with this file. |
 | `stack-resets` | 12 frames had unbalanced timing: a timed call did not return normally. | The game log from around the session should hold the exception; report it with the log. |
+
+The `mod-handlers`, `mod-hud` and `mod-network` rules skip `minecraft`, `neoforge` and `unknown`: vanilla HUD
+layers and packets appear in the Mods tab, but a pack author cannot change them, nor NeoForge's own handlers,
+nor handlers whose mod could not be found. The mod rules' stutter forms exist because `unattributed-stall`
+no longer fires for time the Mods tab names, `hitch-repeat` leaves mod keys out, and a stall averages far
+below half a millisecond a frame over a session (plan 5b, deviations 2, 3 and 6). A hitch counts toward a
+repeat only when the key took at least a quarter of it and carries no `[gc]` mark, because every hitch's top
+list also holds the frame's usual costs.
+
+Review changed these rules after plan 5b was written (plan 5b, from review):
+
+- **The mod rules share their stutter forms.** Plan 5b's deviation 2 gave `mod-handlers` a stall form and a
+  repeat form; `mod-hud` and `mod-network` now have the same two, for one layer or one payload type. All
+  three fire them whatever the mod's steady cost, and a contributor with the `[gc]` mark counts toward
+  neither. The finding names the handler, layer or payload type, and adds the mod's steady cost when that
+  reaches 0.5 ms a frame. Its figure is that key's largest time in one of the hitches the finding is about. A
+  repeat is named rather than a stall when its worst time is at least as large.
+- **Physical memory counts in whole GiB.** `physicalMemoryMiB` is usable memory (P5.B3), so a 16 GB PC reports
+  15.8 to 15.9 GiB. `heap-vs-ram` and `heap-small` round it to the nearest whole GiB, so 12 GiB allocated on
+  that PC is fine, while a reservation of more than half a GiB still counts against the machine. The
+  environment keeps the figure as measured, and `heap-vs-ram`'s finding shows it rounded.
+- **`heap-vs-ram` and `heap-small` share one test.** Each asks whether the live data would fill under 80% of
+  the largest heap `heap-vs-ram` accepts, this machine's memory less 4 GiB. When it would not, `heap-vs-ram`
+  says the machine is short of memory and `heap-small` says the machine cannot spare what the live data
+  needs, so the two agree on whether the machine can hold this pack.
+- **`heap-small` can offer the most the machine can spare.** When 1.6 times the live data is more than that,
+  but the shared test passes, it suggests that heap instead.
+- **`gc-pauses` swaps the collector flag.** The JVM will not start with two collectors chosen, and launchers
+  often choose G1. When `jvmFlags` holds the flag for the collector in use, such as `-XX:+UseG1GC`, the action
+  says to replace it rather than to add `-XX:+UseZGC`.
+- **`gc-pauses` warns about `-XX:+ZGenerational`.** On Java 21 and 22 the action says to leave it out on Java
+  23 or later. From Java 23 ZGC is generational by default, and from Java 26 the game will not start with it.
+- **`particle-type` counts particles drawn, not alive.** The count is the class's average number drawn each
+  frame, the Particles tab's avg live figure. The finding leaves it out when it rounds to 0.
+- **`flywheel-shaders` says only to turn shaders off.** The Flywheel the pack pins does not instance while any
+  shader pack is in use, so no shader pack brings instancing back.
 
 ## P5.B3 New environment facts
 
 | Key | Source | Notes |
 | --- | --- | --- |
-| `physicalMemoryMiB` | `com.sun.management.OperatingSystemMXBean.getTotalMemorySize()` | 63100 on the dev machine |
+| `physicalMemoryMiB` | `com.sun.management.OperatingSystemMXBean.getTotalMemorySize()` | the memory the system can use: what is installed, less what the firmware and an integrated GPU reserve. 63100 on the dev machine. `heap-vs-ram` and `heap-small` round it to the nearest whole GiB |
 | `gc` | the collector bean names | `G1`, `ZGC`, `ZGC generational`, `Shenandoah`, `Parallel`, `Serial`, or the raw names |
 | `initialHeapMiB` | `MemoryMXBean.getHeapMemoryUsage().getInit()` | |
 | `liveHeapAfterGcMiB` | the smallest heap in use after any collection in the session | absent when the session saw no collection |
 | `jvmFlags` | `RuntimeMXBean.getInputArguments()`, through a whitelist | never paths or system properties |
 
-`liveHeapAfterGcMiB` comes from GC notifications. A `NotificationListener` on each collector bean is
-registered at session start and removed at the end. It sums `GcInfo.getMemoryUsageAfterGc()` over the
-heap pools and keeps the minimum. It runs on the JMX notification thread, so the render thread never
-allocates for it. The value is an upper bound on live data, because a young collection leaves old garbage
-in place. `heap-small` therefore fires only when every collection in the session left the heap at least
-80% full.
+`liveHeapAfterGcMiB` comes from GC notifications. A `NotificationListener` on each collector bean except the
+pause beans (a ZGC or Shenandoah pause notification reports no heap in use) is registered at session start
+and removed at the end. It sums `GcInfo.getMemoryUsageAfterGc()` over the heap pools and keeps the minimum,
+ignoring a sum of 0. It runs on the JMX notification thread, so the render thread never allocates for it. The
+value is an upper bound on live data, because a young collection leaves old garbage in place. `heap-small`
+therefore fires only when every collection in the session left the heap at least 80% full.
 
 The `jvmFlags` whitelist keeps only these, each with a value that is a number with an optional size suffix
 or a bare word:
@@ -633,7 +677,7 @@ or a bare word:
 - `-Xmx`, `-Xms`, `-Xmn` and `-Xss`;
 - `-XX:+/-` with `UseG1GC`, `UseZGC`, `ZGenerational`, `UseShenandoahGC`, `UseParallelGC`, `UseSerialGC`,
   `AlwaysPreTouch`, `UseLargePages`, `UseTransparentHugePages`, `UseStringDeduplication`,
-  `DisableExplicitGC` or `UnlockExperimentalVMOptions`;
+  `DisableExplicitGC`, `UnlockExperimentalVMOptions` or a `G1`-prefixed name;
 - `-XX:Name=value` for `MaxGCPauseMillis`, `ParallelGCThreads`, `ConcGCThreads`, `SoftMaxHeapSize`,
   `MaxRAMPercentage`, `InitialRAMPercentage` and `G1`-prefixed names.
 
@@ -661,6 +705,11 @@ hitch GC lines would be inflated.
 count. Otherwise it sums them all, as now. The name test is a pure function in `core`, unit-tested with the
 names above.
 
+**Limit.** A pause is not the only way these two collectors hold the game up. A ZGC allocation stall, and
+Shenandoah's pacing of a thread that allocates, make that thread wait outside any pause, so the time is not
+GC time. It counts as frame time, charged to whatever was running, with no `[gc]` mark. When a timed call was
+allocating, `hitch-repeat` or a mod rule can name it for a stall the collector caused (plan 5b, from review).
+
 **Acceptance check (B4).** A unit test covers the four collectors' bean names. A dev-client session under
 `-XX:+UseZGC -XX:+ZGenerational` reports pauses of a millisecond or less and no GC-suspect frames.
 
@@ -668,16 +717,18 @@ names above.
 
 - **Text report.** A `Recommendations` section right after the header line, before `Environment`. It shows
   up to six recommendations, each tagged `[player]` or `[pack author]`, with its title and at-stake figure,
-  then its finding and action indented. When there are more it adds "N more on the Advice tab and in the
-  JSON". With none it says "No recommendations: nothing measured crossed a threshold."
+  then its finding and action indented. The figure reads "up to 83 ms" for stutter and "1.2 ms/frame" for
+  frame rate, or "under 0.1 ms/frame" where that would read 0.0; a note has none. When there are more it
+  adds "N more on the Advice tab and in the JSON". With none it says "No recommendations: nothing measured
+  crossed a threshold."
 - **Screen.** A new `Advice` tab, first in the row. A new result opens on it (P5.D6 keeps the last tab on
   reopen). The tab shows every recommendation, grouped under "For you" then "For the pack author", each
   wrapped to the list's width as single-column rows. The ten tabs run Advice, Frames, Hitches, Mods,
   Block Entities, then Entities, Particles, Flywheel, Blocks, Sections: five per row instead of four, so
   the tab area stays two rows high. At the narrowest supported GUI, 427 px at Auto scale on 1440p and
   4K (Minecraft rounds the scaled width up), that gives a 79 px button, and "Block Entities" is 66 px of text.
-- **Chat line.** After the hitch count, `, N suggestions` when N > 0, for example "Renderable: 2872
-  frames in 30.0 s, avg 10.4 ms, 13 hitches, 4 suggestions."
+- **Chat line.** After the hitch count, `, N suggestions` when N > 0 (`, 1 suggestion` for one), for example
+  "Renderable: 2872 frames in 30.0 s, avg 10.4 ms, 13 hitches, 4 suggestions."
 - **JSON.** A `recommendations` array with every recommendation:
   `{rule, kind, audience, title, finding, action, msPerFrame, worstMs}`.
 
@@ -936,7 +987,7 @@ Applied by the plan that implements each:
 | §6.1 | Simple particle names; the shadow column dropped when empty | 5d |
 | §6.2 | Schema 5 | 5a, 5b, 5d |
 | §9 | Check 5's scene gains `NoAI` mobs; its result; the new unit tests | 5c |
-| §11 | A phase 5 row | 5a |
+| §11 | A row each for 5a and 5b | 5a, 5b |
 
 ## P5.4 What phase 5 does not do
 

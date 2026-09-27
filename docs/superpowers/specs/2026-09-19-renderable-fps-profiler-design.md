@@ -74,7 +74,7 @@ Every frame in the session produces one record:
 | `capNanos` | time in `RenderSystem.limitDisplayFPS`: the wait for the fps limit (phase 5) |
 | buckets | `BLOCK_ENTITY`, `ENTITY`, `PARTICLE_RENDER`, `FLYWHEEL`, `CHUNK_UPLOAD`, `LIGHT`, `HUD`, `PARTICLE_TICK`, `BE_TICK`, `ENTITY_TICK`, each a nanosecond sum for this frame |
 | `namedNanos` | per window (render, tick, tasks), the time of the outermost attribution-only calls (§3.4) that no bucket-owning call encloses, less the bucket time inside them (phase 5) |
-| `gcCount`, `gcMillis` | delta of `GarbageCollectorMXBean` collection count and time since the previous frame |
+| `gcCount`, `gcMillis` | delta since the previous frame of the collection count and time summed over the collectors' pause beans: all of them under G1, Parallel and Serial, and only the `Pauses` beans under ZGC and Shenandoah, whose `Cycles` beans time concurrent work (phase 5) |
 | `top` | up to `topContributorsPerFrame` (default 5) keys with the most nanoseconds in this frame, across all timed keys |
 
 Derived values, computed at report time and never stored twice:
@@ -323,6 +323,7 @@ Tabs and columns:
 
 | Tab | Rows | Columns |
 | --- | --- | --- |
+| Advice | the recommendations, the player's first, each wrapped as a title and two short paragraphs | none; the screen opens on this tab |
 | Frames | summary block plus a frame-time histogram | sampled seconds, frames, avg, p50, p95, p99, max, threshold, average bucket split |
 | Hitches | one per hitch | frame index, time into session, total ms, bucket split bar, GC delta, top contributors (a GC-suspect contributor's **split** cell reads `[gc]` in place of the bar, since the name cell is the one the list truncates) |
 | Mods | one row per mod, expandable to its event types, HUD layers and packets | share %, µs/frame, peak frame ms, gc f, calls/frame |
@@ -380,13 +381,16 @@ clickable actions: **Open results**, **Copy report**, **Open folder**.
 Sections, in order:
 
 1. **Header**: mod version, timestamp, session length.
-2. **Environment**: Minecraft, NeoForge, Java version, max heap, mod count; GPU renderer and
-   version strings from OpenGL; render distance, simulation distance, biome blend, graphics
+2. **Recommendations**: up to six, most important first (stutter, then frame rate, then notes), each tagged
+   with its audience, with what was measured and what to do; or one line saying none crossed a threshold.
+3. **Environment**: Minecraft, NeoForge, Java version, max heap, mod count; physical memory, the collector,
+   the initial heap, the smallest heap in use after a collection and the whitelisted JVM flags; GPU renderer
+   and version strings from OpenGL; render distance, simulation distance, biome blend, graphics
    mode, vsync, FPS limit, particles setting, entity distance, fullscreen resolution and GUI
    scale; Sodium, Iris (and active shader pack), Flywheel (and backend), Accelerated Rendering,
    Distant Horizons present or not; dimension, player position, loaded section count; which
    Renderable hooks applied.
-3. **Frames**: frames, avg ms and FPS, p50, p95, p99, max; hitch threshold and count and total
+4. **Frames**: frames, avg ms and FPS, p50, p95, p99, max; hitch threshold and count and total
    hitch time as a share of wall time; average split per frame: tick, the buckets (the HUD among them),
    other render, tasks, the frame cap and swap, leaving out a bucket, tasks or the frame cap that took no
    time, with the part of tick, other render and tasks that the Mods section names in brackets; the GC count
@@ -394,20 +398,20 @@ Sections, in order:
    `gc f` counts frames a pause could account for, that those are left out of `peak ms`, and that `-` means
    none was clean; Renderable's own estimated overhead; and the measured time of its own in-frame work
    (§3.5), when it had any.
-4. **Hitches**: up to 25 worst, each on two lines: frame and time, total, bucket split; then top
+5. **Hitches**: up to 25 worst, each on two lines: frame and time, total, bucket split; then top
    contributors with their milliseconds in that frame, with a contributor at least as large as
    that frame's GC pause marked `[gc]`. A note under the section heading explains the marker,
    printed only when the session has at least one hitch.
-5. **Mods** (top 15, each with its top 3 event types, HUD layers or packets), under a note that counting is
+6. **Mods** (top 15, each with its top 3 event types, HUD layers or packets), under a note that counting is
    inclusive and that a library carries the handlers it runs for other mods; or one line saying why there are
    none, and a line above the table when event timing was off.
-6. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames.
-7. **Entities by type** (top 20) and **individuals** (top 20), and the count of GC-suspect frames.
-8. **Particles** (top 20), and the count of GC-suspect frames.
-9. **Blocks** (top 20 by mesh ms/s) and **Sections** (top 20 by rebuilds), or one line saying why
+7. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames.
+8. **Entities by type** (top 20) and **individuals** (top 20), and the count of GC-suspect frames.
+9. **Particles** (top 20), and the count of GC-suspect frames.
+10. **Blocks** (top 20 by mesh ms/s) and **Sections** (top 20 by rebuilds), or one line saying why
    there are none: Sodium hooks were not active, or, when a Sodium hook fired, nothing was meshed or
    rebuilt while sampling.
-10. **Flywheel**: bucket share and visual counts.
+11. **Flywheel**: bucket share and visual counts.
 
 Tables are fixed-width plain text so they survive being pasted into a GitHub issue inside a
 code fence.
@@ -422,6 +426,9 @@ code fence.
   "session": { "startedAt": iso8601, "durationSeconds": 30.0, "frames": 2412,
                "hitchThresholdMs": 33.2, "overheadEstimateMs": 0.4, "timedCalls": 6947008,
                "vertexCalls": 1204331 },
+  "stats": { "avgMs": ..., "avgFps": ..., "p50Ms": ..., "p95Ms": ..., "p99Ms": ..., "maxMs": ..., ... },
+  "recommendations": [ { "rule": "gc-pauses", "kind": "STUTTER", "audience": "PLAYER", "title": ...,
+                         "finding": ..., "action": ..., "msPerFrame": ..., "worstMs": ... } ],
   "frames": [ { "i": 0, "totalUs": ..., "tickUs": ..., "renderUs": ..., "tasksUs": ..., "capUs": ...,
                 "namedUs": { "render": ..., "tick": ..., "tasks": ... }, "bucketsUs": { ... },
                 "gcCount": 0, "gcMs": 0, "top": [ { "key": "...", "us": ..., "gc": false } ] }, ... ],
@@ -550,6 +557,7 @@ Each phase is its own implementation plan and its own release tag.
 | 3 | Sodium mesh per block and per section, chunk upload bucket, vertex counts, Blocks and Sections tabs | in-game check 4 |
 | 4a | GC-suspect values excluded from per-key and per-type peaks and flagged in every output, type peaks taken from the type's worst frame, Accelerated Rendering vertices counted, the overhead estimate extended to vertex calls and its calibration corrected, JSON schema 4 | in-game checks 1 to 4; check 5 (idle cost) still not run |
 | 5a | frame components (tasks, frame cap, HUD), frame and tick boundaries at the `Minecraft` call sites, mod event handlers through per-session listener proxies, HUD layers, packets and payloads, rider ticks, attribution-only calls and named time, the Mods tab and report section, JSON schema 5 | spec addendum §P5.A's checks, in the in-pack acceptance at the end of phase 5 |
+| 5b | the recommendation engine and its nineteen rules, the environment's memory and JVM facts, pause-only GC sampling, the Advice tab, the report's Recommendations section, the chat line's suggestion count, the JSON's `recommendations` | spec addendum §P5.B's checks, in the in-pack acceptance at the end of phase 5 |
 
 Phase 4 is four independently executable plans rather than one. Group A ships alone as `v0.4.0`; groups B
 (robustness and cost), C (screen and overlay) and D (hygiene and CI) follow in any order, each with its own
