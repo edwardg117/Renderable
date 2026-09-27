@@ -17,6 +17,8 @@ import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.Splits;
 import io.github.edwardg117.renderable.core.TopEntry;
+import io.github.edwardg117.renderable.core.advice.Advisor;
+import io.github.edwardg117.renderable.core.advice.Recommendation;
 
 import java.util.List;
 import java.util.Locale;
@@ -50,6 +52,8 @@ public final class TextReportWriter {
         sb.append("Renderable report  v").append(modVersion)
                 .append("  ").append(Fmt.timestamp(r.wallStartMillis()))
                 .append("  session ").append(Fmt.secs(total)).append(" s\n\n");
+
+        appendRecommendations(sb, Advisor.advise(r, env));
 
         sb.append("Environment\n");
         env.entries().forEach((k, v) -> sb.append("  ").append(k).append(": ").append(v).append('\n'));
@@ -115,6 +119,27 @@ public final class TextReportWriter {
         appendSections(sb, r, env);
         appendFlywheel(sb, r, env, frames, total);
         return sb.toString();
+    }
+
+    /** Spec addendum §P5.B5: the {@link Advisor#REPORT_LIMIT} most important recommendations, right after the header line. */
+    static void appendRecommendations(StringBuilder sb, List<Recommendation> advice) {
+        sb.append("Recommendations\n");
+        if (advice.isEmpty()) {
+            sb.append("  ").append(EmptyStates.advice()).append("\n\n");
+            return;
+        }
+        int shown = Math.min(Advisor.REPORT_LIMIT, advice.size());
+        for (Recommendation a : advice.subList(0, shown)) {
+            sb.append("  [").append(a.audience().label()).append("] ").append(a.title());
+            if (!a.atStake().isEmpty()) sb.append("  (").append(a.atStake()).append(')');
+            sb.append('\n');
+            sb.append("    ").append(a.finding()).append('\n');
+            sb.append("    ").append(a.action()).append('\n');
+        }
+        if (advice.size() > shown) {
+            sb.append("  ").append(advice.size() - shown).append(" more on the Advice tab and in the JSON.\n");
+        }
+        sb.append('\n');
     }
 
     static void appendRanked(StringBuilder sb, String title, List<RankedEntry> entries, int frames, long total) {

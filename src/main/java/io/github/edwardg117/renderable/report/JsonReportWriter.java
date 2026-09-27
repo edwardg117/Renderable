@@ -14,6 +14,8 @@ import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TopEntry;
 import io.github.edwardg117.renderable.core.Window;
+import io.github.edwardg117.renderable.core.advice.Advisor;
+import io.github.edwardg117.renderable.core.advice.Recommendation;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -115,6 +117,21 @@ public final class JsonReportWriter {
         for (Bucket b : Bucket.VALUES) w.name(b.label()).value(st.avgBucket(b) / 1e6);
         w.endObject();
         w.endObject();
+
+        w.name("recommendations").beginArray();
+        for (Recommendation a : Advisor.advise(r, env)) {
+            w.beginObject();
+            w.name("rule").value(a.rule());
+            w.name("kind").value(a.kind().name());
+            w.name("audience").value(a.audience().name());
+            w.name("title").value(a.title());
+            w.name("finding").value(a.finding());
+            w.name("action").value(a.action());
+            w.name("msPerFrame").value(a.msPerFrame());
+            w.name("worstMs").value(a.worstMs());
+            w.endObject();
+        }
+        w.endArray();
 
         w.name("frames").beginArray();
         for (FrameRecord f : r.frames()) {

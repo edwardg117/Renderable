@@ -355,4 +355,21 @@ class JsonReportWriterTest {
         }
         assertEquals("mod17", mods.get(16).getAsJsonObject().get("key").getAsString(), "most expensive first");
     }
+
+    @Test
+    void everyRecommendationIsInTheJson() {
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(TestSessions.phase5(), environment(), "0.5.0"))
+                .getAsJsonObject();
+        JsonArray advice = o.getAsJsonArray("recommendations");
+        assertEquals(5, advice.size());
+        JsonObject first = advice.get(0).getAsJsonObject();
+        assertEquals(List.of("rule", "kind", "audience", "title", "finding", "action", "msPerFrame", "worstMs"),
+                List.copyOf(first.keySet()));
+        assertEquals("mod-handlers", first.get("rule").getAsString());
+        assertEquals("FRAME_RATE", first.get("kind").getAsString());
+        assertEquals("PACK_AUTHOR", first.get("audience").getAsString());
+        assertEquals(2.0, first.get("msPerFrame").getAsDouble(), 1e-9);
+        List<String> keys = new ArrayList<>(o.keySet());
+        assertEquals(keys.indexOf("stats") + 1, keys.indexOf("recommendations"), "right after the averages");
+    }
 }

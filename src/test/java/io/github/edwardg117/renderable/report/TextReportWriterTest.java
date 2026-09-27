@@ -3,10 +3,14 @@ package io.github.edwardg117.renderable.report;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.FlywheelStats;
 import io.github.edwardg117.renderable.core.RankedTable;
+import io.github.edwardg117.renderable.core.Session;
+import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.TestSessions;
+import io.github.edwardg117.renderable.core.advice.Recommendation;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -329,5 +333,38 @@ class TextReportWriterTest {
         assertTrue(section.contains("\n    event E3 "), section);
         assertFalse(section.contains("event E4"), section);
         assertEquals(15 * 3, section.split("\n    event ", -1).length - 1, "three members under each of fifteen mods");
+    }
+
+    @Test
+    void recommendationsLeadTheReport() {
+        String s = TextReportWriter.write(TestSessions.phase5(), env, "0.5.0");
+        int at = s.indexOf("Recommendations\n");
+        assertTrue(at > 0 && at < s.indexOf("\nEnvironment\n"), "before the environment");
+        assertTrue(s.contains("\n  [pack author] create's event handlers  (2.0 ms/frame)\n"
+                + "    create's event handlers take 2.0 ms a frame, most of it in RenderLevelStageEvent.\n"
+                + "    Check the mod's config for the feature behind that event, or report it to the mod with this file.\n"), s);
+        assertTrue(s.contains("\n  [player] Costly block entity: create:mechanical_press  (1.0 ms/frame)\n"), s);
+        assertFalse(s.contains("more on the Advice tab"), "all five fit under the limit of six");
+
+        long[] now = {0};
+        Session quiet = new Session(new SessionConfig(10_000_000_000L, 2.0, 16_000_000L, 5, 0, 0), () -> now[0], 0);
+        quiet.onRenderPre(0, 0);
+        now[0] = 10_000_000L;
+        quiet.onRenderPre(0, 0);
+        assertTrue(TextReportWriter.write(quiet.finish(), env, "0.5.0")
+                .contains("Recommendations\n  No recommendations: nothing measured crossed a threshold.\n\n"));
+
+        List<Recommendation> eight = new ArrayList<>();
+        for (int i = 1; i <= 8; i++) {
+            eight.add(new Recommendation("r" + i, Recommendation.Kind.FRAME_RATE, Recommendation.Audience.PLAYER,
+                    "Title " + i, "Finding " + i + ".", "Action " + i + ".", 9 - i, 0));
+        }
+        StringBuilder sb = new StringBuilder();
+        TextReportWriter.appendRecommendations(sb, eight);
+        String cut = sb.toString();
+        assertEquals(6, cut.split("\n  \\[player\\] ", -1).length - 1, cut);
+        assertTrue(cut.contains("\n  [player] Title 6  (3.0 ms/frame)\n"), cut);
+        assertFalse(cut.contains("Title 7"), cut);
+        assertTrue(cut.endsWith("\n  2 more on the Advice tab and in the JSON.\n\n"), cut);
     }
 }

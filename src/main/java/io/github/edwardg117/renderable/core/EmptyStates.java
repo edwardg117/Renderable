@@ -79,4 +79,9 @@ public final class EmptyStates {
         String status = env.value(Environment.EVENT_TIMING);
         return status.startsWith(Environment.UNAVAILABLE) ? status.substring(Environment.UNAVAILABLE.length()) : null;
     }
+
+    /** Said by the report and the Advice tab when no rule fired (spec addendum §P5.B5). */
+    public static String advice() {
+        return "No recommendations: nothing measured crossed a threshold.";
+    }
 }

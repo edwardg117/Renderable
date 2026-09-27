@@ -8,6 +8,7 @@ import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
+import io.github.edwardg117.renderable.core.advice.Advisor;
 import io.github.edwardg117.renderable.hooks.GcWatcher;
 import io.github.edwardg117.renderable.hooks.Probe;
 import io.github.edwardg117.renderable.hooks.compat.FlywheelCompat;
@@ -220,17 +221,19 @@ public final class ProfilerController implements Probe.Listener {
         }
         WorldOverlay.setResult(result, sessionDimension);
 
-        chat(finishedMessage(result, written, writeFailure));
+        chat(finishedMessage(result, written, writeFailure, Advisor.advise(result, env).size()));
 
         if (RenderableConfig.OPEN_RESULTS_ON_FINISH.get()) {
             openResults();
         }
     }
 
-    private static MutableComponent finishedMessage(SessionResult r, ReportFiles.Written w, String writeFailure) {
+    private static MutableComponent finishedMessage(SessionResult r, ReportFiles.Written w, String writeFailure,
+                                                    int suggestions) {
         MutableComponent msg = Component.literal(String.format(Locale.ROOT,
-                "Renderable: %d frames in %.1f s, avg %.1f ms, %d hitches. ",
-                r.frameCount(), r.stats().durationSeconds(), r.stats().avgNanos() / 1e6, r.hitches().size()));
+                "Renderable: %d frames in %.1f s, avg %.1f ms, %d hitches%s. ",
+                r.frameCount(), r.stats().durationSeconds(), r.stats().avgNanos() / 1e6, r.hitches().size(),
+                suggestions == 0 ? "" : ", " + suggestions + (suggestions == 1 ? " suggestion" : " suggestions")));
         msg.append(commandLink("[Open results]", "/renderable results")).append(" ");
         msg.append(commandLink("[Copy report]", "/renderable copy"));
         // A partial write (e.g. the text report landed but the JSON write failed) still offers the folder
