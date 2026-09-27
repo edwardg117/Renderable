@@ -28,6 +28,7 @@ public final class Keybinds {
     /** Game bus. */
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
+        ProfilerController.get().tickAutostart();
         while (TOGGLE.consumeClick()) {
             ProfilerController.get().toggle();
         }

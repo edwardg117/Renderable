@@ -31,6 +31,10 @@ import java.util.Locale;
 public final class ProfilerController implements Probe.Listener {
     private static final ProfilerController INSTANCE = new ProfilerController();
     private static final long MIN_KEEP_NANOS = 2_000_000_000L;
+    /** Dev aid: the length of one session started by itself after joining a world, or 0 for none. */
+    private static final int AUTOSTART_SECONDS = Integer.getInteger("renderable.autostart", 0);
+    /** Ten seconds of ticks, so the world has settled before an autostarted session begins. */
+    private static final int AUTOSTART_DELAY_TICKS = 200;
 
     public static ProfilerController get() {
         return INSTANCE;
@@ -49,6 +53,8 @@ public final class ProfilerController implements Probe.Listener {
     private Environment lastEnvironment;
     private String lastReportText;
     private Path lastFolder;
+    private boolean autostarted;
+    private int ticksInWorld;
 
     private ProfilerController() {
     }
@@ -86,6 +92,23 @@ public final class ProfilerController implements Probe.Listener {
         } else {
             start(RenderableConfig.DEFAULT_DURATION_SECONDS.get());
         }
+    }
+
+    /**
+     * Dev aid: with {@code -Drenderable.autostart=<seconds>}, runs one session of that length ten seconds after a
+     * world is joined, so a headless dev client produces a report to check. Called every client tick; does
+     * nothing when the property is absent.
+     */
+    public void tickAutostart() {
+        if (AUTOSTART_SECONDS <= 0 || autostarted) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null) {
+            ticksInWorld = 0;
+            return;
+        }
+        if (++ticksInWorld < AUTOSTART_DELAY_TICKS) return;
+        autostarted = true;
+        start(Math.max(2, Math.min(600, AUTOSTART_SECONDS)));
     }
 
     public void start(int seconds) {
