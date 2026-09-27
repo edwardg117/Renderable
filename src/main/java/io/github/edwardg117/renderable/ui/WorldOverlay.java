@@ -13,8 +13,10 @@ import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
@@ -41,7 +43,8 @@ import java.util.Set;
  * Both are projected to screen space and drawn as a GUI layer so they sit on top of everything the world
  * renderer and any shader pipeline produce; an obstructed machine is still findable, as in Observable.
  * The view-projection matrix and camera are captured from the level render each frame (game bus) and
- * consumed by the GUI layer (mod bus).
+ * consumed by the GUI layer (mod bus). Labels and the highlight are each drawn only in the dimension they
+ * belong to (spec addendum §P5.D7).
  */
 public final class WorldOverlay {
     private static final ResourceLocation LAYER = ResourceLocation.fromNamespaceAndPath("renderable", "labels");
@@ -49,6 +52,14 @@ public final class WorldOverlay {
     private static final int BACKGROUND = 0x90000000;
     private static final int HIGHLIGHT_COLOR = 0xFFFF4D4D;
     private static final int MIN_HIGHLIGHT = 8;
+    /**
+     * GUI depth between one label and the next, so that where two overlap the later one covers the earlier one's
+     * text, though every background is drawn before any text (spec addendum §P5.D8). The highlight goes one step
+     * above the last label. Seventy-five labels, the default, span under four units; 600, the config's most, span
+     * 30. The whole stack must stay inside the 200 units NeoForge gives each GUI layer
+     * ({@code GuiLayerManager.Z_SEPARATION}).
+     */
+    private static final float LABEL_DEPTH_STEP = 0.05f;
 
     /**
      * One label, built once per result. Block entities and sections carry the position they were profiled
@@ -60,10 +71,16 @@ public final class WorldOverlay {
     }
 
     private static List<Label> labels = List.of();
+    /** Where this frame's labels go, in drawing order. Sized with the labels, so a frame allocates nothing. */
+    private static int[] drawnLabel = new int[0];
+    private static int[] drawnX = new int[0];
+    private static int[] drawnY = new int[0];
     /** Null until first read, then whatever the config said or the user last chose. */
     private static Boolean enabled;
 
     private static final Matrix4f VIEW_PROJECTION = new Matrix4f();
+    /** The GUI pose moved to one label's depth; reused every frame, render thread only. */
+    private static final Matrix4f LABEL_POSE = new Matrix4f();
     private static final Vector4f SCRATCH = new Vector4f();
     private static Vec3 cameraPos = Vec3.ZERO;
     private static boolean haveMatrices;
@@ -72,6 +89,8 @@ public final class WorldOverlay {
 
     private static BlockPos highlight;
     private static int highlightSize = 1;
+    /** The dimension of the row the highlight came from; it is drawn only there. */
+    private static String highlightDimension = "";
     private static long highlightUntilMillis;
 
     private WorldOverlay() {
@@ -104,6 +123,9 @@ public final class WorldOverlay {
             out.add(new Label(k.dimension(), k.centerX() + 0.5, k.centerY() + 0.5, k.centerZ() + 0.5, -1, text, Colors.YELLOW));
         }
         labels = List.copyOf(out);
+        drawnLabel = new int[labels.size()];
+        drawnX = new int[labels.size()];
+        drawnY = new int[labels.size()];
     }
 
     private static Label label(RankedEntry e, Set<ProfileKey> flagged, int frames, long sessionTotal,
@@ -146,15 +168,19 @@ public final class WorldOverlay {
         setEnabled(!isEnabled());
     }
 
-    /** Draw a wireframe box around the block on screen for ten seconds. */
-    public static void highlight(BlockPos pos) {
-        highlight(pos, 1);
+    /** Draw a wireframe box around the block, in {@code dimension} only, for ten seconds. */
+    public static void highlight(BlockPos pos, String dimension) {
+        highlight(pos, 1, dimension);
     }
 
-    /** Draw a wireframe box around the {@code size}-block cube whose minimum corner is {@code min}, for ten seconds. */
-    public static void highlight(BlockPos min, int size) {
+    /**
+     * Draw a wireframe box around the {@code size}-block cube whose minimum corner is {@code min}, for ten seconds,
+     * in {@code dimension} only: the dimension of the row it came from (spec addendum §P5.D7).
+     */
+    public static void highlight(BlockPos min, int size, String dimension) {
         highlight = min.immutable();
         highlightSize = Math.max(1, size);
+        highlightDimension = dimension;
         highlightUntilMillis = System.currentTimeMillis() + HIGHLIGHT_MILLIS;
     }
 
@@ -177,28 +203,43 @@ public final class WorldOverlay {
         if (!haveMatrices) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.options.hideGui) return;
-        Vec3 cam = cameraPos;
-        int guiW = g.guiWidth();
-        int guiH = g.guiHeight();
-
-        if (isEnabled() && !labels.isEmpty()) {
-            drawLabels(g, mc, cam, guiW, guiH);
-        }
-        drawHighlight(g, cam, guiW, guiH);
-    }
-
-    private static void drawLabels(GuiGraphics g, Minecraft mc, Vec3 cam, int guiW, int guiH) {
-        int maxDist = RenderableConfig.OVERLAY_MAX_DISTANCE.get();
-        double maxDistSq = (double) maxDist * maxDist;
-        int lineH = mc.font.lineHeight;
-
         ResourceKey<Level> dimKey = mc.level.dimension();
         if (dimKey != lastDimensionKey) {
             lastDimensionKey = dimKey;
             lastDimension = dimKey.location().toString();
         }
+        Vec3 cam = cameraPos;
+        int guiW = g.guiWidth();
+        int guiH = g.guiHeight();
 
-        for (Label l : labels) {
+        float highlightDepth = 0;
+        if (isEnabled() && !labels.isEmpty()) {
+            highlightDepth = drawLabels(g, mc, cam, guiW, guiH);
+        }
+        drawHighlight(g, cam, guiW, guiH, highlightDepth);
+    }
+
+    /**
+     * Draws the labels in two batches (spec addendum §P5.D8): every background, then every text. Drawn a label at
+     * a time, each background and each text was a batch of its own, 150 draws for 75 labels, because the GUI's fill
+     * and text render types share one buffer and every switch between them ends a batch; {@code drawManaged} alone
+     * does not change that. The buffer source is written to directly, as {@link #drawHighlight} does. Each label
+     * is drawn at its own depth, so where two overlap the later one hides the earlier one's text; drawn in turn,
+     * its translucent background only dimmed it.
+     *
+     * @return the depth one step above the last label drawn, for the highlight; 0 when no label is in view
+     */
+    private static float drawLabels(GuiGraphics g, Minecraft mc, Vec3 cam, int guiW, int guiH) {
+        int maxDist = RenderableConfig.OVERLAY_MAX_DISTANCE.get();
+        double maxDistSq = (double) maxDist * maxDist;
+        int lineH = mc.font.lineHeight;
+        Matrix4f pose = g.pose().last().pose();
+        List<Label> all = labels;
+
+        VertexConsumer backgrounds = null; // opened at the first label in view, so a frame with none opens nothing
+        int drawn = 0;
+        for (int i = 0; i < all.size(); i++) {
+            Label l = all.get(i);
             if (!lastDimension.equals(l.dimension())) continue;
             double x;
             double y;
@@ -228,9 +269,23 @@ public final class WorldOverlay {
 
             int tw = mc.font.width(l.text());
             int left = sx - tw / 2;
-            g.fill(left - 2, sy - 1, left + tw + 2, sy + lineH, BACKGROUND);
-            g.drawString(mc.font, l.text(), left, sy, l.color(), false);
+            if (backgrounds == null) backgrounds = g.bufferSource().getBuffer(RenderType.gui());
+            quad(backgrounds, pose, left - 2, sy - 1, left + tw + 2, sy + lineH, drawn * LABEL_DEPTH_STEP, BACKGROUND);
+            drawnLabel[drawn] = i;
+            drawnX[drawn] = left;
+            drawnY[drawn] = sy;
+            drawn++;
         }
+        if (drawn == 0) return 0;
+        // Asking for the text's render type ends the backgrounds' batch; the flush below ends the text's.
+        for (int d = 0; d < drawn; d++) {
+            Label l = all.get(drawnLabel[d]);
+            LABEL_POSE.set(pose).translate(0, 0, d * LABEL_DEPTH_STEP);
+            mc.font.drawInBatch(l.text(), drawnX[d], drawnY[d], l.color(), false, LABEL_POSE, g.bufferSource(),
+                    Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT);
+        }
+        g.flush();
+        return drawn * LABEL_DEPTH_STEP;
     }
 
     /**
@@ -253,19 +308,21 @@ public final class WorldOverlay {
 
     /**
      * Projects the highlighted cube's eight corners and draws its twelve edges over everything (spec
-     * addendum §P4.C5). An edge that crosses the camera's near plane is clipped at that plane, so a box the
-     * camera stands inside still shows its edges. Each edge is drawn as one two-pixel-wide quad, and the
-     * whole box is one flush. A wholly visible cube that projects smaller than {@link #MIN_HIGHLIGHT} falls
-     * back to a small square instead, so a distant block stays findable. Renderable's own code allocates
+     * addendum §P4.C5), in the highlight's dimension only. An edge that crosses the camera's near plane is
+     * clipped at that plane, so a box the camera stands inside still shows its edges. Each edge is drawn as one
+     * two-pixel-wide quad, and the whole box is one flush. A wholly visible cube that projects smaller than
+     * {@link #MIN_HIGHLIGHT} falls back to a small square instead, so a distant block stays findable. It is drawn
+     * at {@code depth}, above every label, as when it was drawn after them. Renderable's own code allocates
      * nothing per frame.
      */
-    private static void drawHighlight(GuiGraphics g, Vec3 cam, int guiW, int guiH) {
+    private static void drawHighlight(GuiGraphics g, Vec3 cam, int guiW, int guiH, float depth) {
         BlockPos p = highlight;
         if (p == null) return;
         if (System.currentTimeMillis() > highlightUntilMillis) {
             highlight = null;
             return;
         }
+        if (!lastDimension.equals(highlightDimension)) return;
         int inFront = 0;
         float minX = Float.MAX_VALUE;
         float minY = Float.MAX_VALUE;
@@ -298,13 +355,13 @@ public final class WorldOverlay {
             float cx = (minX + maxX) * 0.5f;
             float cy = (minY + maxY) * 0.5f;
             float h = MIN_HIGHLIGHT * 0.5f - 1.0f;
-            line(vc, pose, cx - h, cy - h, cx + h, cy - h);
-            line(vc, pose, cx + h, cy - h, cx + h, cy + h);
-            line(vc, pose, cx + h, cy + h, cx - h, cy + h);
-            line(vc, pose, cx - h, cy + h, cx - h, cy - h);
+            line(vc, pose, cx - h, cy - h, cx + h, cy - h, depth);
+            line(vc, pose, cx + h, cy - h, cx + h, cy + h, depth);
+            line(vc, pose, cx + h, cy + h, cx - h, cy + h, depth);
+            line(vc, pose, cx - h, cy + h, cx - h, cy - h, depth);
         } else {
             for (int e = 0; e < EDGES.length; e += 2) {
-                edge(vc, pose, EDGES[e], EDGES[e + 1], guiW, guiH);
+                edge(vc, pose, EDGES[e], EDGES[e + 1], guiW, guiH, depth);
             }
         }
         g.flush(); // what fill() does after every rectangle, once for the whole box
@@ -314,7 +371,7 @@ public final class WorldOverlay {
      * One edge of the cube. An endpoint behind the near plane is moved along the edge onto it; the move is
      * made in clip space, where the edge is still a straight line, so the part in front is exact.
      */
-    private static void edge(VertexConsumer vc, Matrix4f pose, int a, int b, int guiW, int guiH) {
+    private static void edge(VertexConsumer vc, Matrix4f pose, int a, int b, int guiW, int guiH, float depth) {
         float ax = CLIP_X[a];
         float ay = CLIP_Y[a];
         float aw = CLIP_W[a];
@@ -333,7 +390,8 @@ public final class WorldOverlay {
             by = ay + t * (by - ay);
             bw = NEAR_W;
         }
-        line(vc, pose, screenX(ax, aw, guiW), screenY(ay, aw, guiH), screenX(bx, bw, guiW), screenY(by, bw, guiH));
+        line(vc, pose, screenX(ax, aw, guiW), screenY(ay, aw, guiH), screenX(bx, bw, guiW), screenY(by, bw, guiH),
+                depth);
     }
 
     private static float screenX(float clipX, float w, int guiW) {
@@ -349,7 +407,7 @@ public final class WorldOverlay {
      * it, so it costs the same however long it is and however far off screen it runs. The corners go round
      * the same way as {@link GuiGraphics#fill}'s, which the GUI's y-down projection keeps front-facing.
      */
-    private static void line(VertexConsumer vc, Matrix4f pose, float x0, float y0, float x1, float y1) {
+    private static void line(VertexConsumer vc, Matrix4f pose, float x0, float y0, float x1, float y1, float depth) {
         float dx = x1 - x0;
         float dy = y1 - y0;
         float len = (float) Math.sqrt(dx * dx + dy * dy);
@@ -364,15 +422,27 @@ public final class WorldOverlay {
         float sy = y0 - uy;
         float ex = x1 + ux;
         float ey = y1 + uy;
-        vertex(vc, pose, sx - uy, sy + ux);
-        vertex(vc, pose, ex - uy, ey + ux);
-        vertex(vc, pose, ex + uy, ey - ux);
-        vertex(vc, pose, sx + uy, sy - ux);
+        vertex(vc, pose, sx - uy, sy + ux, depth, HIGHLIGHT_COLOR);
+        vertex(vc, pose, ex - uy, ey + ux, depth, HIGHLIGHT_COLOR);
+        vertex(vc, pose, ex + uy, ey - ux, depth, HIGHLIGHT_COLOR);
+        vertex(vc, pose, sx + uy, sy - ux, depth, HIGHLIGHT_COLOR);
     }
 
-    private static void vertex(VertexConsumer vc, Matrix4f pose, float x, float y) {
-        pose.transformPosition(x, y, 0.0f, VERTEX);
-        vc.addVertex(VERTEX.x, VERTEX.y, VERTEX.z).setColor(HIGHLIGHT_COLOR);
+    /**
+     * A filled rectangle as one quad, its corners in the order {@link GuiGraphics#fill} gives them once it has put
+     * them in order. The caller must pass {@code x0 < x1} and {@code y0 < y1}: the GUI's render type culls back
+     * faces, so a reversed rectangle would not show.
+     */
+    private static void quad(VertexConsumer vc, Matrix4f pose, float x0, float y0, float x1, float y1, float z, int color) {
+        vertex(vc, pose, x0, y0, z, color);
+        vertex(vc, pose, x0, y1, z, color);
+        vertex(vc, pose, x1, y1, z, color);
+        vertex(vc, pose, x1, y0, z, color);
+    }
+
+    private static void vertex(VertexConsumer vc, Matrix4f pose, float x, float y, float z, int color) {
+        pose.transformPosition(x, y, z, VERTEX);
+        vc.addVertex(VERTEX.x, VERTEX.y, VERTEX.z).setColor(color);
     }
 
     private static <T> List<T> head(List<T> list, int n) {

@@ -169,9 +169,10 @@ public final class ResultsScreen extends Screen {
     private void highlightSelected() {
         if (selected == null || selected.pos() == null) return;
         if (selected.key() instanceof SectionKey k) {
-            WorldOverlay.highlight(new BlockPos(k.x() * 16, k.y() * 16, k.z() * 16), 16);
+            WorldOverlay.highlight(new BlockPos(k.x() * 16, k.y() * 16, k.z() * 16), 16, k.dimension());
         } else {
-            WorldOverlay.highlight(selected.pos());
+            // A row with a position is a block entity's, and its key carries its dimension (Task 5).
+            WorldOverlay.highlight(selected.pos(), selected.key().dimension());
         }
         onClose();
     }
