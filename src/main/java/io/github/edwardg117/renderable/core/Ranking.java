@@ -56,6 +56,22 @@ public final class Ranking {
         return sort(out, Sort.TOTAL);
     }
 
+    /**
+     * {@link #membersOf} for every type of the category, keyed by type id, in one pass over the session. For a
+     * caller that needs the members of many types: calling {@code membersOf} once per type reads every
+     * accumulator of the session once per type.
+     */
+    public static Map<String, List<RankedEntry>> membersByType(SessionResult r, ProfileKey.Category category) {
+        Map<String, List<RankedEntry>> out = new LinkedHashMap<>();
+        for (Accumulator a : r.accumulators().values()) {
+            if (a.key.category() == category) {
+                out.computeIfAbsent(a.key.typeId(), k -> new ArrayList<>()).add(RankedEntry.of(a));
+            }
+        }
+        out.replaceAll((typeId, rows) -> sort(rows, Sort.TOTAL));
+        return out;
+    }
+
     /** Mesh rows of one category, descending by the chosen column, ties broken by label. */
     public static List<MeshEntry> mesh(SessionResult r, ProfileKey.Category category, MeshSort sort) {
         return mesh(r, category, sort, false);

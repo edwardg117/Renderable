@@ -276,6 +276,18 @@ class RankingTest {
         return rows.stream().map(MeshEntry::key).toList();
     }
 
+    @Test
+    void membersByTypeHoldsEachTypesMembersOf() {
+        for (SessionResult s : List.of(sample(), phase5(), manyMods())) {
+            for (ProfileKey.Category c : ProfileKey.Category.values()) {
+                var all = Ranking.membersByType(s, c);
+                assertEquals(Ranking.byType(s, c).stream().map(RankedEntry::typeId).sorted().toList(),
+                        all.keySet().stream().sorted().toList(), c.name());
+                all.forEach((type, rows) -> assertEquals(Ranking.membersOf(s, c, type), rows, type));
+            }
+        }
+    }
+
     private static List<ProfileKey> keys(List<RankedEntry> rows) {
         return rows.stream().map(RankedEntry::key).toList();
     }

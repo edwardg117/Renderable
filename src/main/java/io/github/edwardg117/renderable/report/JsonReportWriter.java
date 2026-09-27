@@ -252,12 +252,13 @@ public final class JsonReportWriter {
      * array of its members. Not {@code members}: the ranked row already has a {@code members} count.
      */
     private static void mods(JsonWriter w, SessionResult r, int frames) throws IOException {
+        Map<String, List<RankedEntry>> members = Ranking.membersByType(r, ProfileKey.Category.MOD);
         w.beginArray();
         for (RankedEntry m : Ranking.byType(r, ProfileKey.Category.MOD)) {
             w.beginObject();
             rankedFields(w, m, frames);
             w.name("entries");
-            ranked(w, Ranking.membersOf(r, ProfileKey.Category.MOD, m.typeId()), frames);
+            ranked(w, members.getOrDefault(m.typeId(), List.of()), frames);
             w.endObject();
         }
         w.endArray();
