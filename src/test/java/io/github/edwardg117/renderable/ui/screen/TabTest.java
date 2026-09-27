@@ -37,7 +37,7 @@ class TabTest {
     @Test
     void sortableColumnsMatchTheKindOfRowsTheTabHolds() {
         // Frames and Hitches are a narrative, not a table: nothing on them sorts.
-        for (Tab t : new Tab[]{Tab.FRAMES, Tab.HITCHES}) {
+        for (Tab t : new Tab[]{Tab.ADVICE, Tab.FRAMES, Tab.HITCHES}) {
             for (Tab.Column col : t.columns().all()) assertFalse(col.sort().sortable(), t + " must not sort");
         }
         // Ranked rows carry ranked sorts only. The Flywheel tab reuses two of them for its class names and
@@ -64,6 +64,12 @@ class TabTest {
         assertTrue(ColumnSort.of(Ranking.MeshSort.LABEL).ascendingFirst());
         assertFalse(ColumnSort.of(Ranking.Sort.VERTICES).ascendingFirst());
         assertFalse(ColumnSort.of(Ranking.MeshSort.TIME).ascendingFirst());
+    }
+
+    @Test
+    void theScreenOpensOnAdviceAndTenTabsFitTwoRows() {
+        assertEquals(Tab.ADVICE, Tab.values()[0], "a new result opens on it");
+        assertEquals(10, Tab.values().length);
     }
 
     @Test

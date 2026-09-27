@@ -11,8 +11,9 @@ import java.util.regex.Pattern;
 
 import static io.github.edwardg117.renderable.ui.screen.ColumnSort.NONE;
 
-/** Tabs of the results screen and the column layout each one uses. Nine tabs, five per row on the screen. */
+/** Tabs of the results screen and the column layout each one uses. Ten tabs, five per row on the screen. */
 public enum Tab {
+    ADVICE("Advice", Columns.TEXT),
     FRAMES("Frames", Columns.METRIC_VALUE),
     HITCHES("Hitches", Columns.HITCH),
     MODS("Mods", Columns.MODS),
@@ -66,6 +67,8 @@ public enum Tab {
 
         private static final Pattern DECIMALS = Pattern.compile("\\d+\\.\\d+");
 
+        /** One unnamed column of wrapped text: the Advice tab (spec addendum §P5.B5). */
+        static final Columns TEXT = of(NONE, left("", 1, NONE));
         static final Columns METRIC_VALUE = of(NONE,
                 left("metric", 2, NONE),
                 left("value", 3, NONE));

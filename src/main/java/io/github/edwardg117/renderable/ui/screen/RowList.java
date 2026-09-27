@@ -79,7 +79,9 @@ public final class RowList extends ObjectSelectionList<RowList.Entry> {
             if (row.expandable()) first = (screen.isExpanded(row.typeId()) ? "v " : "> ") + first;
             // A single-cell row (a heading or full-width note) spans the whole row width instead of just column 0.
             int firstWidth = row.cells().length == 1 ? width - 8 - indentPx : colW[0] - indentPx;
-            g.drawString(font, font.plainSubstrByWidth(first, firstWidth), left + 4 + indentPx, top + 2, color, false);
+            // Font.width skips a name's § codes, as drawing does; plainSubstrByWidth counts them, so cut only what does not fit.
+            String shown = font.width(first) <= firstWidth ? first : font.plainSubstrByWidth(first, firstWidth);
+            g.drawString(font, shown, left + 4 + indentPx, top + 2, color, false);
 
             for (int i = 1; i < row.cells().length && i < colX.length && i < columns.size(); i++) {
                 int cx = left + 4 + colX[i];

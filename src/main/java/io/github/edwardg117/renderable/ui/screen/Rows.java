@@ -20,6 +20,8 @@ import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.Splits;
 import io.github.edwardg117.renderable.core.TopEntry;
 import io.github.edwardg117.renderable.core.Window;
+import io.github.edwardg117.renderable.core.advice.Advisor;
+import io.github.edwardg117.renderable.core.advice.Recommendation;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /** Builds the rows for each tab from a finished session. */
 public final class Rows {
@@ -41,12 +44,14 @@ public final class Rows {
     }
 
     /**
-     * Rows for one tab. {@code sort} is always the active column's sort ({@link ColumnSort#NONE} on Frames and
-     * Hitches, which ignore it); {@code ascending} its direction.
+     * Rows for one tab. {@code sort} is always the active column's sort ({@link ColumnSort#NONE} on Advice,
+     * Frames and Hitches, which ignore it); {@code ascending} its direction. {@code wrap} splits a paragraph
+     * into lines that fit the list, for the Advice tab.
      */
     public static List<Row> build(Tab tab, SessionResult r, Environment env, ColumnSort sort, boolean ascending,
-                                  Set<String> expanded) {
+                                  Set<String> expanded, Function<String, List<String>> wrap) {
         return switch (tab) {
+            case ADVICE -> advice(Advisor.advise(r, env), wrap);
             case FRAMES -> frames(r);
             case HITCHES -> hitches(r);
             case MODS -> mods(r, env, sort, ascending, expanded);
@@ -67,6 +72,28 @@ public final class Rows {
     /** The mesh sort a clicked column means, or {@code fallback}, the report's order for that table. */
     private static Ranking.MeshSort meshSort(ColumnSort sort, Ranking.MeshSort fallback) {
         return sort.mesh() == null ? fallback : sort.mesh();
+    }
+
+    /** Spec addendum §P5.B5 Advice tab: every recommendation, the player's first, wrapped to the list's width. */
+    static List<Row> advice(List<Recommendation> advice, Function<String, List<String>> wrap) {
+        List<Row> rows = new ArrayList<>();
+        if (advice.isEmpty()) {
+            rows.add(Row.plain(EmptyStates.advice()));
+            return rows;
+        }
+        for (Recommendation.Audience audience : Recommendation.Audience.values()) {
+            List<Recommendation> theirs = advice.stream().filter(a -> a.audience() == audience).toList();
+            if (theirs.isEmpty()) continue;
+            rows.add(Row.heading(audience == Recommendation.Audience.PLAYER ? "For you" : "For the pack author"));
+            for (Recommendation a : theirs) {
+                String title = a.atStake().isEmpty() ? a.title() : a.title() + "  (" + a.atStake() + ")";
+                for (String line : wrap.apply(title)) rows.add(new Row(new String[]{line}, null, null, true, false, 1, null, -1));
+                for (String line : wrap.apply(a.finding())) rows.add(new Row(new String[]{line}, null, null, false, false, 2, null, -1));
+                for (String line : wrap.apply(a.action())) rows.add(new Row(new String[]{line}, null, null, false, false, 2, null, -1));
+                rows.add(Row.plain(""));
+            }
+        }
+        return rows;
     }
 
     static List<Row> frames(SessionResult r) {

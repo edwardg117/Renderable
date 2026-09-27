@@ -37,7 +37,7 @@ public final class ResultsScreen extends Screen {
     private final SessionResult result;
     private final Environment environment;
 
-    private Tab tab = Tab.FRAMES;
+    private Tab tab = Tab.ADVICE;
     private final SortState sorts = new SortState();
     private final Set<String> expanded = new HashSet<>();
     private Row selected;
@@ -107,7 +107,10 @@ public final class ResultsScreen extends Screen {
         colX = layout[0];
         colW = layout[1];
         list.setLayout(colX, colW);
-        list.setRows(tab, Rows.build(tab, result, environment, sorts.sort(tab), sorts.ascending(tab), expanded));
+        // A body line is drawn two indents (24 px) in, and a single-cell row loses 8 px of margin.
+        int wrapWidth = Math.max(40, list.getRowWidth() - 8 - 24);
+        list.setRows(tab, Rows.build(tab, result, environment, sorts.sort(tab), sorts.ascending(tab), expanded,
+                text -> TextWrap.wrap(text, wrapWidth, font::width)));
         if (selected != null && !list.reselect(selected)) selected = null;
         updateButtons();
     }
