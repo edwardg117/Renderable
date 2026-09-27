@@ -118,6 +118,14 @@ public final class Probe {
         return out;
     }
 
+    /**
+     * Records that a hook fired, for work that is not a Probe call: event timing swaps listener arrays rather
+     * than calling in (spec addendum §P5.A3). Render thread only, like every other SEEN write.
+     */
+    public static void markFired(Hook hook) {
+        SEEN[hook.ordinal()] = true;
+    }
+
     public static void beginBlockEntity(BlockEntity be) {
         Session s = session;
         if (s == null) return;
@@ -180,6 +188,36 @@ public final class Probe {
         Session s = session;
         if (s == null || Thread.currentThread() != renderThread) return;
         s.end();
+    }
+
+    /** {@code Minecraft.runAllTasks}: packets and other queued work (spec addendum §P5.A1). Render thread only. */
+    public static void beginTasks() {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return;
+        SEEN[Hook.TASKS.ordinal()] = true;
+        s.onTasksBegin();
+    }
+
+    /** Ends {@link #beginTasks()}, with the same thread decision so the pair stays balanced. */
+    public static void endTasks() {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return;
+        s.onTasksEnd();
+    }
+
+    /** {@code RenderSystem.limitDisplayFPS}: the frame-rate cap's wait (spec addendum §P5.A1). Render thread only. */
+    public static void beginFrameCap() {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return;
+        SEEN[Hook.FRAME_CAP.ordinal()] = true;
+        s.onCapBegin();
+    }
+
+    /** Ends {@link #beginFrameCap()}, with the same thread decision. */
+    public static void endFrameCap() {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return;
+        s.onCapEnd();
     }
 
     /** Ends the innermost keyed call. Safe to call when no session is running. */

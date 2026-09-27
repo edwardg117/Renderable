@@ -368,7 +368,8 @@ public final class Session {
     }
 
     /**
-     * Called at RenderFrameEvent.Pre with the JVM's cumulative GC count and pause time.
+     * Called just before NeoForge posts RenderFrameEvent.Pre (spec addendum §P5.A2), with the JVM's cumulative
+     * GC count and pause time.
      * Closes the previous frame, if any, and opens a new one.
      *
      * @return true when the configured duration has elapsed and the caller should finish the session
@@ -415,19 +416,19 @@ public final class Session {
         return done;
     }
 
-    /** Called at RenderFrameEvent.Post. */
+    /** Called just after NeoForge posts RenderFrameEvent.Post. */
     public void onRenderPost() {
         if (frameStartNanos < 0) return;
         renderNanos += clock.getAsLong() - renderStartNanos;
         renderOpen = false;
     }
 
-    /** Called at ClientTickEvent.Pre. */
+    /** Called just before NeoForge posts ClientTickEvent.Pre. */
     public void onTickPre() {
         tickStartNanos = clock.getAsLong();
     }
 
-    /** Called at ClientTickEvent.Post. Ticks before the first frame are ignored. */
+    /** Called just after NeoForge posts ClientTickEvent.Post. Ticks before the first frame are ignored. */
     public void onTickPost() {
         if (tickStartNanos < 0) return;
         long elapsed = clock.getAsLong() - tickStartNanos;

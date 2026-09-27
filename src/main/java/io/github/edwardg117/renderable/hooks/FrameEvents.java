@@ -1,50 +1,16 @@
 package io.github.edwardg117.renderable.hooks;
 
-import io.github.edwardg117.renderable.core.Session;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 
-/** Feeds frame and tick boundaries into the running session. Registered on the NeoForge game bus. */
+/**
+ * Ends a running session when its world goes away. Registered on the NeoForge game bus. The frame and tick
+ * boundaries that were listeners here moved to {@link FrameBoundaries} (spec addendum §P5.A2).
+ */
 public final class FrameEvents {
-    private static final GcSampler GC = new GcSampler();
 
     private FrameEvents() {
-    }
-
-    @SubscribeEvent
-    public static void onRenderPre(RenderFrameEvent.Pre event) {
-        Session s = Probe.session();
-        if (s == null) return;
-        GC.sample();
-        boolean done = s.onRenderPre(GC.count(), GC.millis());
-        Probe.Listener l = Probe.listener();
-        if (l == null) return;
-        if (done) {
-            l.onFinishRequested();
-        } else {
-            l.onFrameStarted(s);
-        }
-    }
-
-    @SubscribeEvent
-    public static void onRenderPost(RenderFrameEvent.Post event) {
-        Session s = Probe.session();
-        if (s != null) s.onRenderPost();
-    }
-
-    @SubscribeEvent
-    public static void onTickPre(ClientTickEvent.Pre event) {
-        Session s = Probe.session();
-        if (s != null) s.onTickPre();
-    }
-
-    @SubscribeEvent
-    public static void onTickPost(ClientTickEvent.Post event) {
-        Session s = Probe.session();
-        if (s != null) s.onTickPost();
     }
 
     @SubscribeEvent

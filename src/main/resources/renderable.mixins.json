@@ -13,7 +13,9 @@
     "LevelLightEngineMixin",
     "BufferBuilderMixin",
     "BlockEntityAccumulatorMixin",
-    "EntityAccumulatorMixin"
+    "EntityAccumulatorMixin",
+    "MinecraftMixin",
+    "GuiMixin"
   ],
   "injectors": {
     "defaultRequire": 1
