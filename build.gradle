@@ -106,6 +106,7 @@ dependencies {
     // is added: an unrouted "no SLF4J providers" notice on stderr is harmless for a unit test run.
     testImplementation "org.slf4j:slf4j-api:${slf4j_version}"
     testImplementation "net.neoforged:bus:${bus_version}"
+    testImplementation "org.ow2.asm:asm-tree:${asm_version}"
 
     packModJars "maven.modrinth:sodium:${sodium_version}"
     packModJars "maven.modrinth:iris:${iris_version}"

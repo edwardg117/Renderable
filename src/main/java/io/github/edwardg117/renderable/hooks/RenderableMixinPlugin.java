@@ -2,6 +2,8 @@ package io.github.edwardg117.renderable.hooks;
 
 import net.neoforged.fml.loading.LoadingModList;
 import org.objectweb.asm.tree.ClassNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
@@ -12,8 +14,13 @@ import java.util.Set;
 /**
  * Spec §4.5: mixins in a sub-package named after a mod apply only when that mod is loaded.
  * Vanilla mixins live directly in {@code hooks.mixin} and always apply.
+ *
+ * <p>Attached to both configs. {@link #postApply} also records which hooks found their targets, for the report's
+ * installed and failed hook lists (spec addendum §P5.D1).
  */
 public final class RenderableMixinPlugin implements IMixinConfigPlugin {
+    private static final Logger LOGGER = LoggerFactory.getLogger("Renderable");
+
     private static final Map<String, String> REQUIRED_MOD = Map.of(
             "sodium", "sodium",
             "iris", "iris",
@@ -50,7 +57,16 @@ public final class RenderableMixinPlugin implements IMixinConfigPlugin {
     public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
     }
 
+    /**
+     * Records whether each of the mixin's hooks found its target in the class it was just applied to (spec addendum
+     * §P5.D1). A failed check must never fail the class it ran on, whose mixins have applied either way.
+     */
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
+        try {
+            HookInstalls.check(mixinClassName, mixinInfo.getClassNode(0), targetClass);
+        } catch (RuntimeException | LinkageError e) {
+            LOGGER.warn("Renderable could not check the hooks {} applied to {}", mixinClassName, targetClassName, e);
+        }
     }
 }
