@@ -19,6 +19,7 @@ import io.github.edwardg117.renderable.report.ReportFiles;
 import io.github.edwardg117.renderable.report.TextReportWriter;
 import io.github.edwardg117.renderable.ui.WorldOverlay;
 import io.github.edwardg117.renderable.ui.screen.ResultsScreen;
+import io.github.edwardg117.renderable.ui.screen.ResultsView;
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -51,6 +52,8 @@ public final class ProfilerController implements Probe.Listener {
     private String sessionDimension = "";
 
     private SessionResult lastResult;
+    /** Where the reader is on the results screen for {@link #lastResult} (spec addendum §P5.D6). */
+    private ResultsView resultsView;
     private boolean resultWorldGone;
     private Environment lastEnvironment;
     private String lastReportText;
@@ -76,8 +79,9 @@ public final class ProfilerController implements Probe.Listener {
     }
 
     /**
-     * True when the last result was taken in a world the client has since left, so its positions and entity
-     * ids no longer mean anything (spec addendum §P4.B6). The report itself is still worth copying.
+     * True when the player has logged out since the last result was taken, so its positions and entity ids no
+     * longer mean anything (spec addendum §P4.B6). A change of dimension does not set it: the results screen
+     * checks each row's own dimension instead (spec addendum §P5.D7). The report itself is still worth copying.
      */
     public boolean resultWorldGone() {
         return resultWorldGone;
@@ -211,6 +215,7 @@ public final class ProfilerController implements Probe.Listener {
         }
 
         lastResult = result;
+        resultsView = new ResultsView(sessionDimension);
         resultWorldGone = false;
         lastEnvironment = env;
         lastReportText = text;
@@ -281,7 +286,7 @@ public final class ProfilerController implements Probe.Listener {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        mc.tell(() -> mc.setScreen(new ResultsScreen(lastResult, lastEnvironment)));
+        mc.tell(() -> mc.setScreen(new ResultsScreen(lastResult, lastEnvironment, resultsView)));
     }
 
     /** Debug: sleep the render thread inside a fake block entity on the next frame (spec §5.1). */

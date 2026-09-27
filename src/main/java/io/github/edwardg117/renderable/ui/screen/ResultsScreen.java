@@ -19,9 +19,7 @@ import net.minecraft.world.entity.Pose;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.HashSet;
 import java.util.Locale;
-import java.util.Set;
 
 /** Spec §5.3. */
 public final class ResultsScreen extends Screen {
@@ -36,29 +34,29 @@ public final class ResultsScreen extends Screen {
 
     private final SessionResult result;
     private final Environment environment;
-
-    private Tab tab = Tab.ADVICE;
-    private final SortState sorts = new SortState();
-    private final Set<String> expanded = new HashSet<>();
-    private Row selected;
+    /** The reader's place, which outlives this screen (spec addendum §P5.D6). */
+    private final ResultsView view;
 
     private RowList list;
     private Button highlightButton;
     private Button teleportButton;
-    /** Shown on Highlight and Teleport while they are disabled because the session's world is gone. */
+    /** Shown on Highlight and Teleport while they are disabled because the player has logged out since the session. */
     private final Tooltip worldGoneTooltip =
-            Tooltip.create(Component.literal("You have left the world or dimension this session was taken in"));
+            Tooltip.create(Component.literal("You have left the world this session was taken in"));
     private int[] colX = {0};
     private int[] colW = {100};
 
-    public ResultsScreen(SessionResult result, Environment environment) {
+    public ResultsScreen(SessionResult result, Environment environment, ResultsView view) {
         super(Component.literal("Renderable results"));
         this.result = result;
         this.environment = environment;
+        this.view = view;
     }
 
     @Override
     protected void init() {
+        // A resize runs init again with the list in place; opening the screen starts where the view left off.
+        double scroll = list != null ? list.getScrollAmount() : view.scroll;
         int tabPitch = Math.min(88, (width - 8) / TABS_PER_ROW);   // 4 px margin each side
         int tabWidth = tabPitch - 4;
         Tab[] tabs = Tab.values();
@@ -67,7 +65,7 @@ public final class ResultsScreen extends Screen {
             int x = 4 + (i % TABS_PER_ROW) * tabPitch;
             int y = TAB_Y + (i / TABS_PER_ROW) * TAB_ROW_HEIGHT;
             Button b = Button.builder(Component.literal(t.title()), btn -> selectTab(t)).bounds(x, y, tabWidth, 20).build();
-            b.active = t != tab;
+            b.active = t != view.tab;
             addRenderableWidget(b);
         }
         list = new RowList(minecraft, this, width, height - LIST_Y - BOTTOM_BAR, LIST_Y, ROW_HEIGHT);
@@ -94,40 +92,52 @@ public final class ResultsScreen extends Screen {
                 .bounds(bx, by, bw, 20).build());
 
         rebuild();
+        list.setScrollAmount(scroll);
     }
 
+    /** A new tab starts at the top, with nothing selected. */
     private void selectTab(Tab t) {
-        tab = t;
-        selected = null;
+        view.tab = t;
+        view.selected = null;
+        view.scroll = 0;
+        list = null;   // so init reads the view's scroll, not this list's
         rebuildWidgets();
     }
 
+    /** Keeps the scroll for the next time the screen opens on this result (spec addendum §P5.D6). */
+    @Override
+    public void removed() {
+        if (list != null) view.scroll = list.getScrollAmount();
+    }
+
     private void rebuild() {
-        int[][] layout = tab.columns().layout(list.getRowWidth());
+        Tab tab = view.tab;
+        int arrow = Math.max(font.width(" ^"), font.width(" v"));
+        int[][] layout = tab.columns().layout(list.getRowWidth(), font::width, arrow);
         colX = layout[0];
         colW = layout[1];
         list.setLayout(colX, colW);
         // A body line is drawn two indents (24 px) in, and a single-cell row loses 8 px of margin.
         int wrapWidth = Math.max(40, list.getRowWidth() - 8 - 24);
-        list.setRows(tab, Rows.build(tab, result, environment, sorts.sort(tab), sorts.ascending(tab), expanded,
-                text -> TextWrap.wrap(text, wrapWidth, font::width)));
-        if (selected != null && !list.reselect(selected)) selected = null;
+        list.setRows(tab, Rows.build(tab, result, environment, view.sorts.sort(tab), view.sorts.ascending(tab),
+                view.expanded, text -> TextWrap.wrap(text, wrapWidth, font::width)));
+        if (view.selected != null && !list.reselect(view.selected)) view.selected = null;
         updateButtons();
     }
 
     boolean isExpanded(String typeId) {
-        return typeId != null && expanded.contains(typeId);
+        return typeId != null && view.expanded.contains(typeId);
     }
 
     void onRowClicked(Row row) {
         if (row.expandable()) {
-            if (!expanded.add(row.typeId())) expanded.remove(row.typeId());
+            if (!view.expanded.add(row.typeId())) view.expanded.remove(row.typeId());
             double scroll = list.getScrollAmount();
             rebuild();
             list.setScrollAmount(scroll);   // opening a group should not jump the list back to the top
             return;
         }
-        selected = row;
+        view.selected = row;
         updateButtons();
     }
 
@@ -136,7 +146,7 @@ public final class ResultsScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0 && mouseY >= HEADER_Y - 2 && mouseY < HEADER_Y + font.lineHeight) {
             int clicked = columnAt(mouseX);
-            if (clicked >= 0 && sorts.click(tab, clicked)) {
+            if (clicked >= 0 && view.sorts.click(view.tab, clicked)) {
                 rebuild();
                 return true;
             }
@@ -144,35 +154,57 @@ public final class ResultsScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    /** The column index under a screen x, or -1 outside the row. */
+    /**
+     * The column index under a screen x, or -1 outside the row. A right-aligned header may start up to
+     * {@code PADDING - 1} px left of its column, as {@link #render} draws it, so that column's area starts there too.
+     */
     private int columnAt(double mouseX) {
         int left = list.getRowLeft() + 4;
         if (mouseX < left || mouseX >= left + list.getRowWidth()) return -1;
+        Tab.Columns columns = view.tab.columns();
         for (int i = colX.length - 1; i >= 0; i--) {
-            if (mouseX >= left + colX[i]) return i;
+            int reach = columns.get(i).rightAlign() ? Tab.Columns.PADDING - 1 : 0;
+            if (mouseX >= left + colX[i] - reach) return i;
         }
         return -1;
     }
 
+    /**
+     * Highlight and Teleport need a position or an entity, and the selected row's dimension must be the player's
+     * (spec addendum §P5.D7). After a logout nothing in the result points at anything in the world.
+     */
     private void updateButtons() {
+        Row selected = view.selected;
         boolean worldGone = ProfilerController.get().resultWorldGone();
         boolean hasPos = selected != null && selected.pos() != null;
         boolean hasEntity = selected != null && selected.entityId() >= 0;
-        highlightButton.active = hasPos && !worldGone;
-        teleportButton.active = (hasPos || hasEntity) && !worldGone;
-        Tooltip why = worldGone ? worldGoneTooltip : null;
+        String here = minecraft != null && minecraft.level != null ? minecraft.level.dimension().location().toString() : "";
+        String there = selected == null ? here : dimensionOf(selected);
+        boolean elsewhere = !there.equals(here);
+        highlightButton.active = hasPos && !worldGone && !elsewhere;
+        teleportButton.active = (hasPos || hasEntity) && !worldGone && !elsewhere;
+        Tooltip why = worldGone ? worldGoneTooltip
+                : elsewhere && (hasPos || hasEntity)
+                ? Tooltip.create(Component.literal("This row is in " + there + "; you are in " + here))
+                : null;
         highlightButton.setTooltip(why);
         teleportButton.setTooltip(why);
     }
 
-    /** Highlights the selected row's block, or the full section for a Sections-tab row. */
+    /** The dimension a row was measured in: its key's own, or for an entity the session's (spec addendum §P5.D7). */
+    private String dimensionOf(Row row) {
+        String own = row.key() == null ? null : row.key().dimension();
+        return own != null ? own : view.dimension;
+    }
+
+    /** Highlights the selected row's block, or the full section for a Sections-tab row, in the row's dimension. */
     private void highlightSelected() {
+        Row selected = view.selected;
         if (selected == null || selected.pos() == null) return;
         if (selected.key() instanceof SectionKey k) {
             WorldOverlay.highlight(new BlockPos(k.x() * 16, k.y() * 16, k.z() * 16), 16, k.dimension());
         } else {
-            // A row with a position is a block entity's, and its key carries its dimension (Task 5).
-            WorldOverlay.highlight(selected.pos(), selected.key().dimension());
+            WorldOverlay.highlight(selected.pos(), dimensionOf(selected));
         }
         onClose();
     }
@@ -183,6 +215,7 @@ public final class ResultsScreen extends Screen {
      * until the player fits (spec addendum §P4.C3); block entity rows go one block above the block.
      */
     private void teleportToSelected() {
+        Row selected = view.selected;
         if (selected == null || minecraft == null || minecraft.getConnection() == null) return;
         if (selected.pos() != null) {
             BlockPos p = selected.pos();
@@ -229,14 +262,18 @@ public final class ResultsScreen extends Screen {
         g.drawString(font, font.plainSubstrByWidth(summary, width - 8), 4, SUMMARY_Y, 0xE0E0E0, false);
 
         int left = list.getRowLeft();
+        Tab tab = view.tab;
         Tab.Columns columns = tab.columns();
-        int active = sorts.column(tab);
+        int active = view.sorts.column(tab);
         for (int i = 0; i < columns.size() && i < colX.length; i++) {
             Tab.Column column = columns.get(i);
             boolean sortable = column.sort().sortable();
-            String arrow = i == active && sortable ? (sorts.ascending(tab) ? " ^" : " v") : "";
-            // Truncate the name, never the arrow: the arrow is the only sign of how the list is sorted.
-            String h = font.plainSubstrByWidth(column.name(), Math.max(0, colW[i] - font.width(arrow))) + arrow;
+            String arrow = i == active && sortable ? (view.sorts.ascending(tab) ? " ^" : " v") : "";
+            // A right-aligned header may reach PADDING - 1 px left, as a number may; the layout widened its column
+            // for the header and an arrow where it could (spec addendum §P5.D9). Truncate the name, never the arrow:
+            // the arrow is the only sign of how the list is sorted.
+            int room = colW[i] + (column.rightAlign() ? Tab.Columns.PADDING - 1 : 0);
+            String h = font.plainSubstrByWidth(column.name(), Math.max(0, room - font.width(arrow))) + arrow;
             int colour = !sortable ? 0xA0A0A0 : i == active ? 0xFFFFFF : 0xC0C0C0;
             int cx = left + 4 + colX[i];
             if (column.rightAlign()) {

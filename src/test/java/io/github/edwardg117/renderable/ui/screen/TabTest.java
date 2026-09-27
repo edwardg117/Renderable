@@ -123,7 +123,8 @@ class TabTest {
 
     @Test
     void theScreenOpensOnAdviceAndTenTabsFitTwoRows() {
-        assertEquals(Tab.ADVICE, Tab.values()[0], "a new result opens on it");
+        assertEquals(Tab.ADVICE, Tab.values()[0], "first in the tab row");
+        assertEquals(Tab.ADVICE, new ResultsView("minecraft:overworld").tab, "a new result opens on it");
         assertEquals(10, Tab.values().length);
     }
 

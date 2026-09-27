@@ -19,11 +19,16 @@ public final class FrameEvents {
         worldGone();
     }
 
+    /**
+     * A client level unloads on every change of dimension, not only on logout. A running session is discarded
+     * either way, but a finished result's rows stay good after a change of dimension: the results screen compares
+     * each row's own dimension with the player's (spec addendum §P5.D7). So only {@link #onLoggingOut} marks the
+     * result's world as gone.
+     */
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (!event.getLevel().isClientSide()) return;
         discard("level unloaded");
-        worldGone();
     }
 
     private static void discard(String reason) {
