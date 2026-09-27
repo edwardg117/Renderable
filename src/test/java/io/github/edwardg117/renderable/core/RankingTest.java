@@ -291,4 +291,30 @@ class RankingTest {
     private static List<ProfileKey> keys(List<RankedEntry> rows) {
         return rows.stream().map(RankedEntry::key).toList();
     }
+
+    @Test
+    void theLabelSortReadsNumbersAsNumbersAndIgnoresCase() {
+        List<RankedEntry> rows = List.of(named("section -1 4 0"), named("Section -10 4 0"), named("section -2 4 0"));
+        assertEquals(List.of("Section -10 4 0", "section -2 4 0", "section -1 4 0"),
+                Ranking.sort(rows, Ranking.Sort.LABEL, true).stream().map(RankedEntry::label).toList());
+        assertEquals(List.of("Cow", "cow"), Ranking.sort(List.of(named("cow"), named("Cow")), Ranking.Sort.LABEL, false)
+                        .stream().map(RankedEntry::label).toList(),
+                "Cow and cow tie, so the plain tie-break puts Cow first in both directions");
+
+        SessionResult base = TestSessions.phase3();
+        List<MeshEntry> sections = List.of(
+                new MeshEntry(new SectionKey("minecraft:overworld", -1, 4, 0), 1, MS),
+                new MeshEntry(new SectionKey("minecraft:overworld", -10, 4, 0), 1, MS),
+                new MeshEntry(new SectionKey("minecraft:overworld", -2, 4, 0), 1, MS));
+        SessionResult r = new SessionResult(base.config(), base.wallStartMillis(), base.frames(), base.accumulators(),
+                base.stats(), base.hitchThresholdNanos(), base.hitches(), base.timedCalls(), base.vertexCalls(),
+                base.selfNanos(), base.overheadEstimateMs(), base.unbalancedFrames(), base.flywheel(), sections);
+        assertEquals(List.of("section -10 4 0", "section -2 4 0", "section -1 4 0"),
+                Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.LABEL, true).stream()
+                        .map(e -> e.key().label()).toList());
+    }
+
+    private static RankedEntry named(String label) {
+        return new RankedEntry(label, null, label, ProfileKey.Category.BLOCK_ENTITY, 1, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
 }

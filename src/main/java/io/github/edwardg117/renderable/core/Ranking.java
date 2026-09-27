@@ -80,6 +80,8 @@ public final class Ranking {
     /**
      * Mesh rows of one category sorted by the chosen column, smallest first when {@code ascending}. Ties go
      * A to Z by label in both directions, as in {@link #sort(List, Sort, boolean)}.
+     * A {@code LABEL} sort compares in {@link NaturalOrder}; ties still go by plain string order
+     * (spec addendum §P5.D5).
      */
     public static List<MeshEntry> mesh(SessionResult r, ProfileKey.Category category, MeshSort sort,
                                        boolean ascending) {
@@ -91,7 +93,7 @@ public final class Ranking {
             case TIME -> Comparator.comparingLong(MeshEntry::nanos);
             case CALLS -> Comparator.comparingLong(MeshEntry::calls);
             case PER_CALL -> Comparator.comparingDouble(MeshEntry::usPerCall);
-            case LABEL -> Comparator.comparing(e -> e.key().label());
+            case LABEL -> Comparator.comparing((MeshEntry e) -> e.key().label(), NaturalOrder.INSTANCE);
         };
         out.sort((ascending ? by : by.reversed()).thenComparing(e -> e.key().label()));
         return out;
@@ -105,6 +107,8 @@ public final class Ranking {
     /**
      * Returns a new list sorted by the chosen column, smallest first when {@code ascending}. Ties go A to Z
      * by label in both directions, so flipping a column never reorders the rows it ties.
+     * A {@code LABEL} sort compares in {@link NaturalOrder}; ties still go by plain string order
+     * (spec addendum §P5.D5).
      */
     public static List<RankedEntry> sort(List<RankedEntry> entries, Sort sort, boolean ascending) {
         Comparator<RankedEntry> by = switch (sort) {
@@ -118,7 +122,7 @@ public final class Ranking {
             // The shadow column shows shadow time as a share of the row's own render time, not nanoseconds.
             case SHADOW -> Comparator.comparingDouble(RankedEntry::shadowPercent);
             case GC_FRAMES -> Comparator.comparingLong(RankedEntry::gcFrames);
-            case LABEL -> Comparator.comparing(RankedEntry::label);
+            case LABEL -> Comparator.comparing(RankedEntry::label, NaturalOrder.INSTANCE);
         };
         List<RankedEntry> copy = new ArrayList<>(entries);
         copy.sort((ascending ? by : by.reversed()).thenComparing(RankedEntry::label));

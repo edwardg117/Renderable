@@ -11,6 +11,7 @@ import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.FrameStats;
 import io.github.edwardg117.renderable.core.MeshEntry;
 import io.github.edwardg117.renderable.core.ModKey;
+import io.github.edwardg117.renderable.core.NaturalOrder;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.RankedTable;
@@ -281,7 +282,7 @@ public final class Rows {
         List<Map.Entry<String, Double>> ordered = new ArrayList<>(fw.byAverageDesc());
         boolean byName = sort.ranked() == Ranking.Sort.LABEL;
         Comparator<Map.Entry<String, Double>> by = byName
-                ? Comparator.comparing(e -> names.get(e.getKey()))
+                ? Comparator.comparing((Map.Entry<String, Double> e) -> names.get(e.getKey()), NaturalOrder.INSTANCE)
                 : Comparator.comparingDouble(Map.Entry::getValue);
         ordered.sort(ascending ? by : by.reversed());
 

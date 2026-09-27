@@ -1,19 +1,26 @@
 package io.github.edwardg117.renderable.ui.screen;
 
 import io.github.edwardg117.renderable.core.EmptyStates;
+import io.github.edwardg117.renderable.core.Environment;
+import io.github.edwardg117.renderable.core.FlywheelStats;
+import io.github.edwardg117.renderable.core.Ranking;
+import io.github.edwardg117.renderable.core.SessionResult;
+import io.github.edwardg117.renderable.core.TestSessions;
 import io.github.edwardg117.renderable.core.advice.Recommendation;
 import io.github.edwardg117.renderable.core.advice.Recommendation.Audience;
 import io.github.edwardg117.renderable.core.advice.Recommendation.Kind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * The Advice tab's rows. {@code Rows} imports {@code BlockPos}, which the test classpath lacks, so a test here must
- * never call {@link Row#pos()}; building rows that leave it null loads fine.
+ * Rows the screen builds: the Advice tab's, and the order of the Flywheel tab's names. {@code Rows} imports
+ * {@code BlockPos}, which the test classpath lacks, so a test here must never call {@link Row#pos()}; building rows
+ * that leave it null loads fine.
  */
 class RowsTest {
 
@@ -47,5 +54,20 @@ class RowsTest {
             assertFalse(r.expandable());
         }
         assertEquals(List.of("0 - " + EmptyStates.advice()), describe(Rows.advice(List.of(), oneLine)));
+    }
+
+    @Test
+    void theFlywheelNameColumnReadsNumbersAsNumbersAndIgnoresCase() {
+        // Two PressVisuals collide, so they read by package, in lower case.
+        FlywheelStats fw = new FlywheelStats(3, 0, 0, 0, Map.of("a.Visual10", 1.0, "a.Visual2", 2.0,
+                "x.press.PressVisual", 3.0, "y.other.PressVisual", 4.0, "z.ShaftVisual", 5.0));
+        SessionResult base = TestSessions.phase3();
+        SessionResult r = new SessionResult(base.config(), base.wallStartMillis(), base.frames(), base.accumulators(),
+                base.stats(), base.hitchThresholdNanos(), base.hitches(), base.timedCalls(), base.vertexCalls(),
+                base.selfNanos(), base.overheadEstimateMs(), base.unbalancedFrames(), fw, base.mesh());
+        Environment env = Environment.of(Map.of("flywheelBackend", "flywheel:indirect"), List.of());
+        List<String> names = Rows.flywheel(r, env, ColumnSort.of(Ranking.Sort.LABEL), true).stream()
+                .filter(row -> row.indent() == 1).map(row -> row.cells()[0]).toList();
+        assertEquals(List.of("other.PressVisual", "press.PressVisual", "ShaftVisual", "Visual2", "Visual10"), names);
     }
 }
