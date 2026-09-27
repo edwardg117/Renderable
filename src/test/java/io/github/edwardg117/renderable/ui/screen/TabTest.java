@@ -5,12 +5,66 @@ import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.Ranking;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.ToIntFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class TabTest {
+
+    /** The vanilla font's advances for the characters the headers use. */
+    static int vanillaWidth(String s) {
+        int w = 0;
+        for (char c : s.toCharArray()) {
+            w += switch (c) {
+                case 'i', '.', ',' -> 2;
+                case 'l' -> 3;
+                case 't', ' ' -> 4;
+                case 'f', 'k' -> 5;
+                default -> 6;
+            };
+        }
+        return w;
+    }
+
+    @Test
+    void aHeaderThatDoesNotFitWidensItsColumnAtTheNameColumnsExpense() {
+        int arrow = vanillaWidth(" v");
+        assertEquals(63, vanillaWidth("render us/f"), "the header the spec measured at GUI scale 3 on a 2560 px window");
+        Tab.Columns ranked = Tab.BLOCK_ENTITIES.columns();
+
+        int[][] plain = ranked.layout(834);   // GUI 854
+        int[][] fitted = ranked.layout(834, TabTest::vanillaWidth, arrow);
+        assertEquals(60, plain[1][1], "render us/f's column was 60 px");
+        assertEquals(63 + arrow - (Tab.Columns.PADDING - 1), fitted[1][1], "now the header and its arrow fit");
+        assertEquals(plain[1][0] - (fitted[1][1] - plain[1][1]), fitted[1][0], "the name column paid for it");
+        for (int i = 2; i < ranked.size(); i++) {
+            assertEquals(plain[1][i], fitted[1][i], ranked.get(i).name() + " already fitted");
+            assertEquals(plain[0][i], fitted[0][i], ranked.get(i).name() + " did not move");
+        }
+
+        // GUI 427, Auto scale on 1440p: every header is short of room. The name gives at most a quarter, to the
+        // smallest shortfalls first, so the four that need least fit whole and render us/f is left to truncate.
+        int[][] narrowPlain = ranked.layout(407);
+        int[][] narrow = ranked.layout(407, TabTest::vanillaWidth, arrow);
+        assertTrue(narrow[1][0] >= narrowPlain[1][0] * 3 / 4, "the name keeps three quarters");
+        assertEquals(narrowPlain[1][1], narrow[1][1], "render us/f needs more than there is to give");
+        List<String> wholeHeaders = new ArrayList<>();
+        for (int i = 1; i < ranked.size(); i++) {
+            if (vanillaWidth(ranked.get(i).name()) + arrow <= narrow[1][i] + Tab.Columns.PADDING - 1) {
+                wholeHeaders.add(ranked.get(i).name());
+            } else {
+                assertEquals(narrowPlain[1][i], narrow[1][i], ranked.get(i).name() + " truncates as before");
+            }
+        }
+        assertEquals(List.of("share", "gc f", "shadow", "calls"), wholeHeaders);
+
+        // Only a column that sorts gets room for an arrow. At GUI 427 the Hitches tab's total ms, which does not
+        // sort, fits its column exactly with the 3 px a header may reach left, so nothing moves.
+        Tab.Columns hitches = Tab.HITCHES.columns();
+        assertArrayEquals(hitches.layout(407), hitches.layout(407, TabTest::vanillaWidth, arrow));
+    }
 
     @Test
     void layoutFitsTheRowAndNeverOverlaps() {
@@ -128,14 +182,16 @@ class TabTest {
     void layoutKeepsItsPaddingAfterEveryColumnAndEndsInsideTheRow() {
         for (Tab t : Tab.values()) {
             for (int rowWidth : new int[]{320, 407, 460, 620, 834, 1920}) {   // 407..834: GUI 427, 480, 640, 854
-                int[][] layout = t.columns().layout(rowWidth);
-                int[] x = layout[0];
-                int[] w = layout[1];
-                for (int i = 1; i < x.length; i++) {
-                    assertTrue(x[i] - (x[i - 1] + w[i - 1]) >= Tab.Columns.PADDING,
-                            t + " column " + (i - 1) + " leaves too little padding at " + rowWidth);
+                for (int[][] layout : List.of(t.columns().layout(rowWidth),
+                        t.columns().layout(rowWidth, TabTest::vanillaWidth, vanillaWidth(" v")))) {
+                    int[] x = layout[0];
+                    int[] w = layout[1];
+                    for (int i = 1; i < x.length; i++) {
+                        assertTrue(x[i] - (x[i - 1] + w[i - 1]) >= Tab.Columns.PADDING,
+                                t + " column " + (i - 1) + " leaves too little padding at " + rowWidth);
+                    }
+                    assertTrue(x[x.length - 1] + w[w.length - 1] <= rowWidth, t + " ends past the row at " + rowWidth);
                 }
-                assertTrue(x[x.length - 1] + w[w.length - 1] <= rowWidth, t + " ends past the row at " + rowWidth);
             }
         }
     }

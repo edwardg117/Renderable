@@ -182,4 +182,15 @@ class KeysTest {
         assertNotEquals(ModKey.layer("a", "a:y"), ModKey.packet("a", "a:y"), "the kind is part of identity");
         assertEquals("Event", ModKey.simpleEventName("Event"), "a class in the default package keeps its name");
     }
+
+    @Test
+    void blockEntityAndSectionKeysKnowTheirDimensionAndOthersDoNot() {
+        assertEquals("minecraft:the_nether",
+                new BlockEntityKey("create:mechanical_press", "minecraft:the_nether", 1, 2, 3).dimension());
+        assertEquals("minecraft:the_nether", new SectionKey("minecraft:the_nether", 1, 2, 3).dimension());
+        assertNull(new EntityKey("minecraft:cow", 7, "").dimension(), "an entity's is its session's");
+        assertNull(new ParticleKey("a.B").dimension());
+        assertNull(new BlockKey("minecraft:stone").dimension());
+        assertNull(ModKey.event("a", "b.C").dimension());
+    }
 }

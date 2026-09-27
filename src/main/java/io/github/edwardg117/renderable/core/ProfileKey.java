@@ -19,4 +19,12 @@ public interface ProfileKey {
 
     /** Stable string form for JSON (spec §6.2). */
     String serialize();
+
+    /**
+     * The dimension the key was measured in, for the kinds that record one: block entities and sections. Null for
+     * the rest; an entity's is its session's (spec addendum §P5.D7).
+     */
+    default String dimension() {
+        return null;
+    }
 }

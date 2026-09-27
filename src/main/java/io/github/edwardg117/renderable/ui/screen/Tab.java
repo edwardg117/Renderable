@@ -48,7 +48,8 @@ public enum Tab {
     }
 
     /**
-     * A tab's columns and the one it opens sorted by. {@link #layout(int)} turns weights into pixel offsets.
+     * A tab's columns and the one it opens sorted by. {@link #layout(int)} turns weights into pixel offsets, and
+     * {@link #layout(int, ToIntFunction, int)} then makes room for the headers.
      * Kept as a nested class so enum constants can reference the constants without a forward-reference error.
      * Frames and Hitches have no sortable column, so their {@code defaultSortColumn} of 0 means nothing, and
      * the screen only draws a sort arrow on a sortable column.
@@ -155,6 +156,50 @@ public enum Tab {
                 cursor += px;
             }
             return new int[][]{x, w};
+        }
+
+        /**
+         * {@link #layout(int)}, with each right-aligned column whose header does not fit widened until it does,
+         * with room for the sort arrow when the column sorts (spec addendum §P5.D9). A header may reach
+         * {@code PADDING - 1} px left of its column, as a number may. The pixels come from the first column, the
+         * name, which keeps at least three quarters of its width. The smallest shortfalls go first, so on a narrow
+         * screen as many headers as possible fit whole and the rest truncate as before.
+         */
+        public int[][] layout(int rowWidth, ToIntFunction<String> textWidth, int arrowWidth) {
+            int[][] layout = layout(rowWidth);
+            int[] x = layout[0];
+            int[] w = layout[1];
+            int[] need = new int[all.size()];
+            for (int i = 1; i < all.size(); i++) {
+                Column c = all.get(i);
+                if (!c.rightAlign()) continue;
+                int header = textWidth.applyAsInt(c.name()) + (c.sort().sortable() ? arrowWidth : 0);
+                need[i] = Math.max(0, header - (w[i] + PADDING - 1));
+            }
+            // At most a quarter of the name, and never below layout(int)'s 8 px minimum for it.
+            int spare = Math.max(0, Math.min(w[0] / 4, w[0] - 8));
+            int[] grow = new int[all.size()];
+            // Grant the smallest shortfall that still fits, until none does; a granted column has grow > 0.
+            while (true) {
+                int pick = -1;
+                for (int i = 1; i < need.length; i++) {
+                    if (need[i] > 0 && grow[i] == 0 && need[i] <= spare && (pick < 0 || need[i] < need[pick])) pick = i;
+                }
+                if (pick < 0) break;
+                grow[pick] = need[pick];
+                spare -= need[pick];
+            }
+            // The name gives up the total. Each column moves left by what it and the columns after it gained, so it
+            // grows leftward and the last column's right edge stays put.
+            int shift = 0;
+            for (int g : grow) shift += g;
+            w[0] -= shift;
+            for (int i = 1; i < all.size(); i++) {
+                x[i] -= shift;
+                shift -= grow[i];
+                w[i] += grow[i];
+            }
+            return layout;
         }
 
         /**
