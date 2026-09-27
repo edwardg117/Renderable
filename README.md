@@ -28,6 +28,8 @@ time**, and what caused each hitch.
    loaded hill does not swallow you; a column it has not loaded keeps your height as it is.
    Highlight and Teleport are greyed out once you leave the world or dimension the session was taken in, and
    hovering over them says so.
+5. The **Mods** tab ranks mods by the time their event handlers, HUD layers and packets took; click a mod
+   to see its event types, layers and packets.
 
 Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `overlay [on|off]`.
 
@@ -36,16 +38,33 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
 - **Frames** gives the frame-time distribution. Trust p95 and p99 over the average.
 - **Time split** shows where the average frame went: client tick (with its block entity, entity
   and particle tick shares in brackets), block entities, entities, particles, Flywheel, light
-  updates, chunk upload, other render work, and swap/wait (vsync, the GPU, the driver). A big
-  swap/wait with a low GPU load is not a rendering problem in the world.
+  updates, chunk upload, the HUD, other render work, **tasks** (packets and other work queued for the
+  main thread), the **frame cap** (the wait for the fps limit, when one is set and reached), and swap/wait
+  (the buffer swap and vsync, the GPU and driver, and the rest of the frame loop). Tasks and the frame cap
+  are shown when they took time. `mods x` in brackets after tick, other render or tasks is the part of it the
+  **Mods** tab names. The Frames tab is the exception: it always lists tasks and the frame cap, and shows that
+  part as an **in the Mods tab** row under each. A big swap/wait with a low GPU load is not a rendering
+  problem in the world.
 - **Hitches** lists the frames that spiked, each with its split and the things that were most
   expensive in exactly that frame. GC pauses are shown per frame.
 - **Block entities** and **entities** are ranked by microseconds per frame; expand a type to see
-  each position. The **shadow** column is the share of a renderer's time spent in Iris's shadow
+  each position. A riding entity's own row carries its tick time, which its vehicle's row also counts.
+  The **shadow** column is the share of a renderer's time spent in Iris's shadow
   pass, which draws everything a second time. Shares can add up to more than 100% because a
   renderer's time also counts towards everything it is nested in.
 - **Particles** are ranked by class. **avg live** is the average number of that class rendered
   per frame; particles culled before rendering are not counted.
+- **Mods** ranks each mod by the time its event handlers, its HUD layers and the packets addressed to it
+  took, in microseconds per frame; expand a mod to see each event type, layer and packet type. Counting is
+  inclusive: a handler's time includes whatever it calls, so a handler that draws an entity counts that
+  entity too, and shares overlap with each other and with the other tables. Events are timed whoever posts
+  them: NeoForge, the game or another mod. A library that runs other mods' handlers for them, such as
+  Architectury, Balm or Puzzles Lib, carries their time. Vanilla layers and packets appear under `minecraft`
+  and NeoForge's own handlers under `neoforge`; a handler Renderable cannot tie to a mod shows under
+  `unknown` or its library's name. Handlers are timed by swapping the event bus's listener lists for timing
+  wrappers when a session starts and back when it ends, so none of it runs between sessions. A handler
+  counts a call whenever the bus reaches it, even when it skips an event another handler cancelled, so
+  **calls/f** includes those.
 - **Flywheel** shows the instancing bucket and how many visuals of each class were alive, sampled
   once a second. Machines drawn by Flywheel do not appear in the block entity tables. Classes read as
   simple class names on screen and in the text report, while the JSON keeps the fully-qualified names; two
@@ -53,10 +72,11 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   if that still leaves two alike.
 - **Hooks applied** lists the hooks that have fired at least once since the game started, not
   only during this session.
-- **Renderable's own in-frame work** is measured, not estimated: it is the sampling HUD plus the
-  once-a-second Flywheel visual sample, and it sits inside **other render**. The in-world overlay is
-  cleared when a session starts, so it costs nothing; a highlight left over from an earlier session
-  draws out the rest of its ten seconds unmeasured.
+- **Renderable's own in-frame work** is measured, not estimated: its HUD line, the once-a-second Flywheel
+  sample and the once-a-second event-list check, which starts timing event handlers registered during the
+  session. The HUD line sits inside **hud** and the other two inside **other render**. The in-world overlay
+  is cleared when a session starts, so it costs nothing; a highlight left over from an earlier session draws
+  out the rest of its ten seconds unmeasured.
 - **Blocks** ranks block types by the mesh-build time Sodium's workers spent on them, per
   second of session; **Sections** lists the chunk sections that were rebuilt, with rebuild
   counts. Mesh time is worker-thread time summed across Sodium's workers, so it can exceed 1000
@@ -87,8 +107,9 @@ class instead. Mesh timing needs Sodium; without it the Blocks and Sections tabs
 Sodium's translucency re-sorts are not timed. Each hook is a single branch when the mod is not
 sampling (Sodium's mesh hooks pass an argument array per block model on the worker threads, which
 the JIT removes in practice); while sampling, the report states its own overhead, which covers both
-timed calls and vertex counting, and separately the measured cost of its own HUD and sampling. The
-once-a-second Flywheel visual sample lands in that frame's other render time. Timing is CPU-side only;
+timed calls and vertex counting, and separately the measured cost of its own HUD line, Flywheel sample and
+event-list check. The HUD line lands in the hud bucket; the once-a-second Flywheel sample and event-list
+check land in that frame's other render time. Timing is CPU-side only;
 vertex counts stand in for GPU cost.
 
 ## Report files
@@ -101,7 +122,19 @@ flight costs disk space rather than heap. Every array is still complete: nothing
 
 The JSON report carries a `schema` number.
 
-Schema 4 (this version) adds `gcFrames` to every ranked row, `gc` to every entry of `frames[].top`,
+Schema 5 (this version) adds `tasksUs`, `capUs` and `namedUs` (`render`, `tick` and `tasks`, empty ones left out)
+to every frame; `avgTasksMs`, `avgCapMs` and `avgNamedMs` (all three windows, zeros kept) to `stats`; a `hud`
+bucket; `environment.eventTiming` (`on`, or `unavailable: ` and why);
+and a `mods` array, one ranked row per mod followed by an `entries` array of its event, layer and packet rows.
+As on every ranked row, a mod's `members` is a count and its `callsPerFrame` counts only `calls`; `calls`
+plus `tickCalls` is its total. A mod has no bucket to say which side it ran on, so its `tickUs` and
+`tickCalls` hold what ran inside the client tick, and its `renderUs` and `calls` everything else, packets
+included.
+`swapUs` no longer includes tasks or the frame cap, and tick and render now include every mod's handlers of
+the client-tick and frame events, so a reader that derived swap from the other fields must also subtract
+`tasksUs` and `capUs`, or read `swapUs`.
+
+Schema 4 added `gcFrames` to every ranked row, `gc` to every entry of `frames[].top`,
 `session.vertexCalls` and `session.selfMs`. `peakFrameUs` keeps its name but is now the largest **clean**
 frame: a value of `0` with `gcFrames > 0` means every frame the key appeared in was GC-suspect, which is
 what the text report prints as `-`.
@@ -125,6 +158,10 @@ Java 21. `./gradlew build` produces `build/libs/renderable-<version>.jar`.
 Create: Enchantable Machinery at the versions the Gears & Frontiers pack pins.
 Add `-PquickPlay="<save folder>"` to join a world under `run/saves` straight from launch, which is
 how the mixins that only load inside a level are checked with `-Dmixin.debug.export=true`.
+Add `-Drenderable.autostart=<seconds>` to the client's JVM arguments (for example through
+`JAVA_TOOL_OPTIONS`) to run one session of that length, once per launch, ten seconds after joining a world,
+with no key press. This is how an unattended dev client produces a report to check; it is a development aid,
+not a setting.
 
 CI builds every push to `main` and every pull request, and a `v*` tag builds and attaches
 `renderable-<version>.jar` to a GitHub Release. A release tag must match `mod_version` in

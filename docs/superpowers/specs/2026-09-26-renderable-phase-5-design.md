@@ -180,7 +180,8 @@ A frame still runs from one frame start to the next (§3.2). The tasks and ticks
   capped session.
 
 **User-visible change.** The time split and each hitch split gain `tasks`, `frame cap` and `hud`, and
-`swap/wait` shrinks by the same amount. JSON schema 5 (P5.A9).
+`swap/wait` shrinks by the same amount. Like the render buckets, each is printed only when it has time
+(plan 5a, deviation 3); the Frames tab lists tasks and the frame cap always. JSON schema 5 (P5.A9).
 
 **Acceptance check (A1).** In the dev client:
 
@@ -257,6 +258,9 @@ calls into `Session` are the same, and only their call site moves.
     Renderable.
   - It does not implement `IWrapperListener`.
   - Nothing is looked up on the call path, because the accumulator is already in the proxy.
+  - So every (owning mod, event class) pair with a listener has an accumulator from the start of the session,
+    whether or not its event is ever posted on the render thread. The session's result leaves out any
+    accumulator that completed no call, so a handler that never ran has no row anywhere (plan 5a, from review).
 - **Once a second,** at frame start, the lists are checked again. Any list whose array is not the one
   Renderable installed is wrapped afresh. That happens when the list was rebuilt because a listener was
   registered or unregistered, or when the first post of a new event class created it. The check compares
@@ -285,12 +289,13 @@ calls into `Session` are the same, and only their call site moves.
   `MethodHandles.privateLookupIn(<declaring class>, MethodHandles.lookup())`: `EventBus.listenerLists`,
   `LockHelper.getReadMap()`, `EventBus.listeners` and `ListenerList.listeners`. If any lookup fails, as it
   would with a different bus version, event timing is unavailable for the run. The Mods tab and the report
-  say so, and why.
+  say so, and why. Anything thrown while wrapping, re-checking or restoring the lists turns event timing off
+  the same way, for the rest of the run.
 - **Libraries that dispatch for other mods.** Architectury, Balm and Puzzles Lib are in the pack. Each
   registers NeoForge listeners on behalf of the mods built on it, so those mods' handler time is
   attributed to the library. The README says so.
-- **Debug check.** `/renderable debug` gains a line counting the lists that hold a Renderable array, which
-  must be zero outside a session.
+- **Debug check.** `/renderable debug events` counts the lists that hold a Renderable array, which must be
+  zero outside a session, and says whether event timing is on.
 
 **What this covers.** Every `post(Event)` to `NeoForge.EVENT_BUS` made while the session runs, whoever
 makes it: NeoForge, Minecraft's patched classes, common code, and mods posting their own events.
@@ -312,6 +317,13 @@ when an event is posted.
 - Another mod that reflects into `ListenerList` would see the proxies during a session.
 - A crash mid-session leaves the arrays swapped, which does not matter, because the bus goes down with the
   game. A discarded session restores them like a finished one.
+- While a session runs, a timed handler's stack trace, in a crash report too, has `TimedListener.invoke` one
+  frame above the handler.
+- The once-a-second check reads every list through `getListeners()`, so the render thread can build the cached
+  array of a list that only another thread posts to. A listener registered on another thread at that moment
+  can miss that rebuild until the list's next one, a race the bus already has between any two posting threads.
+  A check that runs between the bus adding a listener to its list and recording who registered it attributes
+  that listener to `unknown`.
 
 **Alternatives rejected.**
 
@@ -342,7 +354,7 @@ when an event is posted.
     at restore, and the next check re-wraps it;
   - registering and then unregistering a listener mid-session leaves no proxy behind.
 - *Dev client:* with `-PpackMods`, the Mods tab lists `neoforge` and the pack mods' handlers. After the
-  session, `/renderable debug` reports no list holding a Renderable array.
+  session, `/renderable debug events` reports no list holding a Renderable array.
 
 ## P5.A4 HUD layers
 
@@ -354,8 +366,9 @@ flattens a child manager into the list and keeps the names.
 
 **Design.** A `@WrapOperation` on `LayeredDraw$Layer.render` in `renderInner` (P5.A0 row 8), capturing the
 loop's `NamedLayer` with `@Local`. The key is the layer id, such as `xaerominimap:minimap`, and the mod is
-its namespace. Vanilla layers are timed too and appear under `minecraft`. Renderable's `renderable:sampling`
-layer is left out, since it is self time. The layers sit inside the HUD bucket.
+its namespace. Vanilla layers are timed too and appear under `minecraft`. Renderable's own layers are left
+out: `renderable:sampling` is self time, and the overlay's `renderable:labels` is cleared when a session
+starts. The layers sit inside the HUD bucket.
 
 Listeners of `RenderGuiLayerEvent` are timed by P5.A3 and belong to whichever mod registered them, which
 need not be the layer's owner. The Mods tab shows both.
@@ -425,7 +438,8 @@ With `-PpackMods`, Create's payloads appear under `create` in a world with a run
     attribution-only calls that no bucket-owning call encloses, less any bucket time credited inside
     them.
   - That is the part of other render, other tick and tasks that the Mods tab names.
-  - The time split prints it beside those three figures, and `unattributed-stall` (P5.B2) subtracts it.
+  - The time split prints it in brackets after those three figures, as `mods x`, and the Frames tab as an
+    `in the Mods tab` row under each; `unattributed-stall` (P5.B2) subtracts it.
   - Subtracting the nested bucket time stops a block entity drawn inside a listener from counting twice.
 
 One existing figure does move, by design. A bucketed call made inside the HUD is now inside a
@@ -452,20 +466,25 @@ contributors may now name mod handlers, which is what a stall needs.
 - **Mods tab.** One row per mod: `mod | share | us/f | peak ms | gc f | calls/f`.
   - A row expands to its members, each labelled with its kind: `event ClientTickEvent.Post`,
     `layer xaerominimap:minimap`, `packet somemod:sync_data`.
-  - The default sort is `us/f`, descending, and the columns sort like the other data tabs (P4.C7).
+  - The tab opens sorted by total time, largest first. `share` and `us/f` sort the same way, and the arrow
+    sits on `share`, the first of them, as on the other ranked tabs. The columns sort like the other data
+    tabs (P4.C7).
 - **Where the time ran** is not a column. The time split's named figures (P5.A6) give it per window.
   Listeners that run outside render, tick and tasks still count in the Mods tab. These are input events
   fired during the frame-cap wait or the buffer swap, and `ClientPauseChangeEvent`, posted after the
   yield. In the split, their time is in `frame cap` or `swap/wait`.
 - **Report section.** A `Mods` section after the hitch list lists the top mods by µs per frame, each with
   its top members indented, in the tab's columns.
-- **JSON.** A `mods` array holds every mod with every member, complete like every other array (P4.B1).
-- **Shares overlap,** with each other and with the ranked tables, because counting is inclusive. The tab's
-  summary line says so, and says that a library which dispatches events for other mods carries their
-  time (P5.A3).
+- **JSON.** A `mods` array holds every mod with every member that completed a call, complete like every
+  other array (P4.B1).
+- **Shares overlap,** with each other and with the ranked tables, because counting is inclusive. A note above
+  the tab's rows and above the report's table says so, and says that a library which dispatches events for
+  other mods carries their time (P5.A3).
 - **Empty states:**
-  - `(event timing unavailable: <reason>)` when the lookups failed (P5.A3);
-  - `(no mod handlers, HUD layers or packets were timed)` otherwise.
+  - `(event timing unavailable: <reason>)` when event timing is off (P5.A3);
+  - `(no mod handlers, HUD layers or packets were timed)` otherwise;
+  - above a table that has layers or packets while event timing is off, the line
+    `(event handlers were not timed: <reason>)` (plan 5a).
 
 **Acceptance check (A7).**
 
@@ -481,7 +500,8 @@ recurses. A rider never passes through `guardEntityTick`, so its tick folds into
 The 4b/4c flight showed it again: the player ticked 0.0 while riding the gyrodyne.
 
 **Design.** A `@WrapOperation` on `Entity.rideTick()` in `tickPassenger` (P5.A0 row 11) calls
-`Probe.beginEntityTick(rider)`. The rider's row gets its own tick time, and the vehicle's row still
+`Probe.beginRiderTick(rider)`, which times an ordinary entity tick but records its own hook, `RIDER_TICK`,
+so the environment shows whether it fired. The rider's row gets its own tick time, and the vehicle's row still
 includes it, as it does for every nested call. It is an ordinary entity tick, not attribution-only; being
 nested inside the vehicle's tick, it leaves the entity tick bucket credited once, by the vehicle.
 
@@ -495,11 +515,13 @@ time, and the vehicle's row is at least as large.
 
 - `schema` is 5.
 - **Frames.** Every `frames[]` entry gains `tasksUs`, `capUs`, and `namedUs` with `render`, `tick` and
-  `tasks` (P5.A6); `bucketsUs` gains `HUD`. `swapUs` now means `total − tick − render − tasks − cap`, and
-  tick and render move with their boundaries (P5.A2).
-- **Session.** `session` gains `avgTasksMs`, `avgCapMs` and `avgNamedMs`, and `avgBucketsMs` gains `HUD`.
-- **New arrays.** `mods` (P5.A7) and `recommendations` (P5.B5).
-- **Environment.** `environment` gains P5.B3's keys. `hooksApplied` becomes `hooksFired`, and
+  `tasks` (P5.A6), leaving out a window with no named time; `bucketsUs` gains `hud`. `swapUs` now means
+  `total − tick − render − tasks − cap`, and tick and render move with their boundaries (P5.A2).
+- **Stats.** `stats`, where every average already lives, gains `avgTasksMs`, `avgCapMs` and `avgNamedMs`
+  (`render`, `tick`, `tasks`), and `avgBucketsMs` gains `hud`. `session` is unchanged.
+- **New arrays.** `mods` (P5.A7), each mod a ranked row followed by an `entries` array of its members, and
+  `recommendations` (P5.B5).
+- **Environment.** `environment` gains `eventTiming` (P5.A3) and P5.B3's keys. `hooksApplied` becomes `hooksFired`, and
   `hooksInstalled` is added (P5.D1).
 
 The README gains a schema 5 paragraph. It says that a schema 4 reader which derived swap from the other
@@ -795,7 +817,7 @@ The README says so, but §4.5's "hook did not apply" state cannot be told from "
   3. **nothing happened:** it is installed, and no data arrived.
 - **README.** The "Hooks applied" paragraph is rewritten to match.
 - **Event timing** is not a mixin. Its state is reported by P5.A7's empty states and by
-  `/renderable debug` (P5.A3).
+  `/renderable debug events` (P5.A3).
 
 ## P5.D2 Empty-state sentences
 
@@ -885,6 +907,9 @@ tagged `v0.5.0`.
 
 The JFR run (P5.C1) is recorded separately in `docs/acceptance/phase-5-idle.md`.
 
+A dev-only system property, `-Drenderable.autostart=<seconds>`, runs one session after joining a world, so an
+unattended dev client can produce the reports that the dev-client checks above read (plan 5a Task 9).
+
 ## P5.3 Spec amendments collected
 
 Applied by the plan that implements each:
@@ -899,7 +924,7 @@ Applied by the plan that implements each:
 | §3.4 | Vertices credited to the innermost call that is not attribution-only | 5a |
 | §3.4 | Players' names dropped from `EntityKey` (P5.C3) | 5c |
 | §3.5 | Calibration through whole `Probe` calls, with three constants | 5c |
-| §3.5 | Self time: the HUD sampling part now sits in `hud`; the Flywheel sample and the proxy check stay in other render | 5a |
+| §3.5 | Self time: the HUD sampling part now sits in `hud`; the Flywheel sample and the event-list check stay in other render | 5a |
 | §4 | The P5.A0 hook table | 5a |
 | §4 | Event timing by per-session proxies, which is not a mixin | 5a |
 | §4.2 | The rider note replaced by the rider hook | 5a |

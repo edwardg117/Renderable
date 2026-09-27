@@ -27,6 +27,9 @@ Observable does for server tick time. Built for the Gears & Frontiers modpack
   hot paths while sampling; nothing at all when idle.
 - Sodium, Iris and Flywheel mixins are optional (`require = 0`) and gated by the mixin plugin.
   Vanilla mixins are required.
+- Mod event handlers are timed without a mixin: `hooks.events` swaps the game bus's listener arrays
+  for proxies only while a session runs (spec addendum §P5.A3). The bus loads in the boot module
+  layer, where no mixin reaches, so do not try to hook it.
 - New hook targets must be verified against the pinned jars (javap) before they go in a plan.
 
 ## Git

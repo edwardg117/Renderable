@@ -66,25 +66,29 @@ Every frame in the session produces one record:
 
 | Field | Source |
 | --- | --- |
-| `index`, `startNanos` | frame counter, `System.nanoTime()` at frame start |
+| `index`, `startNanos` | frame counter, `System.nanoTime()` at frame start, just before NeoForge posts `RenderFrameEvent.Pre` |
 | `totalNanos` | start of this frame to start of the next |
-| `tickNanos` | sum of client ticks that ran inside this frame (`ClientTickEvent.Pre` to `Post`) |
-| `renderNanos` | `RenderFrameEvent.Pre` to `RenderFrameEvent.Post` |
-| buckets | `BLOCK_ENTITY`, `ENTITY`, `PARTICLE_RENDER`, `PARTICLE_TICK`, `FLYWHEEL`, `CHUNK_UPLOAD`, `LIGHT`, `BE_TICK`, `ENTITY_TICK`, each a nanosecond sum for this frame |
+| `tickNanos` | sum of client ticks that ran inside this frame, each from just before `ClientTickEvent.Pre` is posted to just after `ClientTickEvent.Post` |
+| `renderNanos` | frame start to just after `RenderFrameEvent.Post` is posted |
+| `tasksNanos` | time in `Minecraft.runAllTasks`: packets and other queued main-thread work (phase 5) |
+| `capNanos` | time in `RenderSystem.limitDisplayFPS`: the wait for the fps limit (phase 5) |
+| buckets | `BLOCK_ENTITY`, `ENTITY`, `PARTICLE_RENDER`, `FLYWHEEL`, `CHUNK_UPLOAD`, `LIGHT`, `HUD`, `PARTICLE_TICK`, `BE_TICK`, `ENTITY_TICK`, each a nanosecond sum for this frame |
+| `namedNanos` | per window (render, tick, tasks), the time of the outermost attribution-only calls (§3.4) that no bucket-owning call encloses, less the bucket time inside them (phase 5) |
 | `gcCount`, `gcMillis` | delta of `GarbageCollectorMXBean` collection count and time since the previous frame |
 | `top` | up to `topContributorsPerFrame` (default 5) keys with the most nanoseconds in this frame, across all timed keys |
 
 Derived values, computed at report time and never stored twice:
 
-- `otherRenderNanos = renderNanos - (BLOCK_ENTITY + ENTITY + PARTICLE_RENDER + FLYWHEEL + CHUNK_UPLOAD + LIGHT)`
+- `otherRenderNanos = renderNanos - (BLOCK_ENTITY + ENTITY + PARTICLE_RENDER + FLYWHEEL + CHUNK_UPLOAD + LIGHT + HUD)`
 - `otherTickNanos = tickNanos - (PARTICLE_TICK + BE_TICK + ENTITY_TICK)`
-- `swapNanos = totalNanos - tickNanos - renderNanos` (window swap, vsync wait, input polling, everything outside tick and render)
+- `swapNanos = totalNanos - tickNanos - renderNanos - tasksNanos - capNanos` (the buffer swap and any vsync wait, the blit, the sound update, mouse turning and the yield)
 
 Render buckets nest inside `renderNanos` and tick buckets inside `tickNanos`. Nothing is
 counted in two buckets. When a timed call nests inside another timed call (an item rendered by
 a block entity renderer), the inner call is attributed to the innermost key and the outer key's
-time includes it; buckets are only incremented by the outermost call, tracked with a depth
-counter.
+time includes it; buckets are only incremented by the outermost call that owns a bucket, tracked with a depth
+counter. Attribution-only calls (§3.4) own none, so a block entity drawn inside an event handler is still
+block entity time.
 
 ### 3.3 Hitch detection
 
@@ -113,8 +117,17 @@ accumulators.
 | `ParticleKey` | particle class name | render and tick (phase 2) |
 | `BlockKey` | block id | Sodium mesh build (phase 3) |
 | `SectionKey` | dimension, section position | Sodium mesh build (phase 3) |
+| `ModKey` | kind (event, layer, packet), owning mod id, event class or id | event handlers, HUD layers, packets (phase 5); attribution-only |
 
 Flywheel visual counts are averaged per class in `FlywheelStats`, not keyed accumulators.
+
+A mod's event handlers, HUD layers and packets are **attribution-only** (phase 5, spec addendum §P5.A6):
+their keys (`ModKey`, category `MOD`, type id the mod's id) are timed, ranked, peaked and GC-flagged like any
+other, but they own no bucket, and vertices emitted inside one land on the innermost call that does own a
+bucket. The time the outermost attribution-only calls account for outside any bucket is recorded per frame
+window as `namedNanos`, so a `ChunkEvent.Load` handler run inside a chunk packet's handling is not counted
+twice. Having no bucket to say which side it ran on, an attribution-only call is tick time on its key inside
+the client tick and render time anywhere else, packets included.
 
 Each key's accumulator holds: `calls`, `totalNanos`, `shadowNanos` (Iris shadow pass share),
 `tickNanos`, `maxFrameNanos`, `vertices`, and a scratch `frameNanos` (render plus tick
@@ -143,6 +156,7 @@ accumulators (`BlockKey`, `SectionKey`) are written from Sodium worker threads a
 
 - Every hook first reads one `static boolean ACTIVE`. When false it returns. That is the entire
   idle cost.
+- Event timing (§4) has no idle cost at all: its proxies exist only while a session runs.
 - No allocation on hot paths while sampling: accumulators are created on first sight of a key
   and reused; the touched-list is a pre-sized array list of references.
 - Per-particle timing costs two clock reads per particle. With 10,000 particles that is roughly
@@ -154,8 +168,9 @@ accumulators (`BlockKey`, `SectionKey`) are written from Sodium worker threads a
   can discount it.
 - `BufferBuilder.beginVertex` (and Sodium's `push`, and Accelerated Rendering's builder) get one branch on
   the idle flag plus one increment while sampling.
-- The mod's own in-frame work — the sampling HUD and the once-a-second Flywheel visual sample — is timed
-  rather than estimated and reported separately; it is part of other render time, not of any bucket.
+- The mod's own in-frame work — the sampling HUD line, the once-a-second Flywheel visual sample and the
+  once-a-second event-list check — is timed rather than estimated and reported separately. The HUD line is
+  inside the `HUD` bucket and the rest is in other render.
 
 ## 4. Hooks
 
@@ -163,6 +178,10 @@ All mixins call into one static `Probe` class in `hooks`. `Probe` owns `ACTIVE`,
 attribution stack (a small array, depth counter), and forwards to the live session in `core`.
 Every timed hook is wrapped in try/finally so a renderer throwing never leaves a key on the
 stack.
+
+Mod event handlers are the exception: they are timed without a mixin, because NeoForge's event bus loads in
+the boot module layer, where no mixin reaches. While a session runs, every listener list of the game bus has
+its cached array swapped for timing proxies, and back when the session ends (§4.6, spec addendum §P5.A3).
 
 Block entity and entity accumulators are cached on the object itself through a `@Unique` field reached by a
 duck-typed interface, not in a map, so a running session never keeps a rendered object alive and cannot
@@ -178,8 +197,8 @@ this pack pins (Sodium 0.8.13, Iris 1.8.14-beta.1, Flywheel 1.0.6 bundled in Cre
 
 | Target | Kind | Records |
 | --- | --- | --- |
-| `RenderFrameEvent.Pre` / `Post` | NeoForge events | frame boundary, `renderNanos`, per-frame reset and top-N scan |
-| `ClientTickEvent.Pre` / `Post` | NeoForge events | `tickNanos` |
+| calls to `ClientHooks.fireRenderFramePre` / `fireRenderFramePost` inside `Minecraft#runTick(boolean)` | `@Inject` just before / just after (listeners of the two events until phase 5) | frame boundary, `renderNanos`, per-frame reset and top-N scan |
+| calls to `ClientHooks.fireClientTickPre` / `fireClientTickPost` inside `Minecraft#tick()` | `@Inject` just before / just after (listeners until phase 5) | `tickNanos` |
 | `GarbageCollectorMXBean` | read at frame start | `gcCount`, `gcMillis` |
 | `BlockEntityRenderDispatcher#render(BlockEntity, float, PoseStack, MultiBufferSource)` | `@WrapMethod` | `BlockEntityKey` render time, `BLOCK_ENTITY` bucket |
 | `EntityRenderDispatcher#render(Entity, double, double, double, float, float, PoseStack, MultiBufferSource, int)` | `@WrapMethod` | `EntityKey` render time, `ENTITY` bucket |
@@ -202,15 +221,11 @@ vanilla and Sodium.
 | Flywheel `VisualizationManagerImpl` storage, read directly by `FlywheelCompat` with a failure latch | once per second while sampling, no mixin | Flywheel visual totals and visual counts by class, averaged over samples |
 | Iris `ShadowRenderingState.areShadowsCurrentlyBeingRendered()` | static call through an `IrisCompat` class loaded only when Iris is present | routes the current call's nanoseconds into `shadowNanos` as well |
 
-**Known gap: a riding entity's tick is attributed to its vehicle.** `ClientLevel.tickEntities` routes only
-*non-passengers* through `guardEntityTick`; a passenger is ticked by its vehicle through
-`Entity.rideTick()`, which this hook never sees. So while a player is riding, their own tick disappears from
-the entity table and its cost is folded into the vehicle's inclusive tick time. Measured on 2026-09-20: in a
-flight session the player was rendered 4,983 times but ticked **zero** times, while
-`immersive_aircraft:gyrodyne` reported 600 ticks at 309.7 µs each — a figure that silently contains the
-player's tick. The cost is misattributed, not lost, and nothing in the report says so. Closing it needs a
-second hook on `Entity.rideTick()`, which is phase 5 scope; see the phase 4 addendum's "What phase 4 does
-not do".
+**A riding entity's tick.** `ClientLevel.tickEntities` routes only non-passengers through `guardEntityTick`;
+a passenger is ticked from its vehicle through `ClientLevel#tickPassenger`, which calls `Entity#rideTick()`.
+Until phase 5 that tick was folded into the vehicle's with nothing to say so: in a 2026-09-20 flight the
+player rendered 4,983 times and ticked zero times. Phase 5 hooks the call (§4.6), so the rider's own row
+carries its tick time, and the vehicle's row still includes it, nested inclusively like every other call.
 
 Iris's shadow pass renders block entities and entities a second time per frame. Both passes
 are real frame cost, so they are summed into `totalNanos`, and the shadow share is shown as
@@ -253,6 +268,21 @@ block like any other.
 - Vanilla mixins are required; if they fail the mod is not usable and should fail loudly.
 - `Probe` records which hooks applied. The report's environment header lists them.
 
+### 4.6 Phase 5: attribution
+
+| Target | Kind | Records |
+| --- | --- | --- |
+| call to `Minecraft#runAllTasks()` inside `Minecraft#runTick(boolean)` | `@WrapOperation` | `tasksNanos` |
+| call to `RenderSystem#limitDisplayFPS(int)` inside `Minecraft#runTick(boolean)` | `@WrapOperation` | `capNanos` |
+| `Gui#render(GuiGraphics, DeltaTracker)` | `@WrapMethod` | `HUD` bucket |
+| call to `LayeredDraw$Layer#render` inside `GuiLayerManager#renderInner`, with the loop's `NamedLayer` | `@WrapOperation` with `@Local` | `ModKey` layer time, attribution-only |
+| call to `Packet#handle(PacketListener)` inside `PacketUtils.lambda$ensureRunningOnSameThread$0` | `@WrapOperation` | `ModKey` packet time, attribution-only |
+| call to `IPayloadHandler#handle` inside `MainThreadPayloadHandler.lambda$handle$0` | `@WrapOperation` | `ModKey` packet time for mod payloads, attribution-only |
+| call to `Entity#rideTick()` inside `ClientLevel#tickPassenger(Entity, Entity)` | `@WrapOperation` | the rider's `EntityKey` tick time, nested in its vehicle's |
+| the cached array of every `ListenerList` on `NeoForge.EVENT_BUS` | swapped for `TimedListener` proxies while a session runs; not a mixin | `ModKey` event time per owning mod and event class, attribution-only |
+
+The spec addendum's §P5.A0 records the bytecode offsets these were verified at.
+
 ## 5. User interface
 
 ### 5.1 Trigger and control
@@ -270,6 +300,7 @@ block like any other.
 /renderable overlay [on|off]
 /renderable copy
 /renderable debug stall <ms>      (only when config debugCommands = true)
+/renderable debug events          (only when config debugCommands = true)
 ```
 
 The stall command sleeps the render thread inside a fake block-entity attribution named
@@ -294,6 +325,7 @@ Tabs and columns:
 | --- | --- | --- |
 | Frames | summary block plus a frame-time histogram | sampled seconds, frames, avg, p50, p95, p99, max, threshold, average bucket split |
 | Hitches | one per hitch | frame index, time into session, total ms, bucket split bar, GC delta, top contributors (a GC-suspect contributor's **split** cell reads `[gc]` in place of the bar, since the name cell is the one the list truncates) |
+| Mods | one row per mod, expandable to its event types, HUD layers and packets | share %, µs/frame, peak frame ms, gc f, calls/frame |
 | Block Entities | type rows, expandable to positions | render µs/frame, tick µs/frame, share %, peak frame ms, gc f, shadow %, vertices/frame, calls |
 | Entities | type rows, expandable to individuals | same |
 | Particles | class rows | render µs/frame, tick µs/frame, share %, avg live count, vertices/frame, gc f |
@@ -303,7 +335,7 @@ Tabs and columns:
 
 `peak ms` reads `-` when every frame was GC-suspect.
 
-The Block Entities, Entities, Particles, Blocks and Sections lists sort by any column; the Flywheel list
+The Mods, Block Entities, Entities, Particles, Blocks and Sections lists sort by any column; the Flywheel list
 sorts by name or average count only, its share column being the bucket's own share of frame time rather than
 a per-row value. Each opens in the order the text report uses; clicking a column header sorts by it (largest
 first for a number, A to Z for a name), clicking the active header reverses it, and the active header carries
@@ -355,21 +387,27 @@ Sections, in order:
    Distant Horizons present or not; dimension, player position, loaded section count; which
    Renderable hooks applied.
 3. **Frames**: frames, avg ms and FPS, p50, p95, p99, max; hitch threshold and count and total
-   hitch time as a share of wall time; average bucket split per frame including GC and swap; a
-   note beside the GC line, printed whenever the session saw a collection, explaining that `gc f`
-   counts frames a pause could account for, that those are left out of `peak ms`, and that `-`
-   means none was clean; Renderable's own estimated overhead.
+   hitch time as a share of wall time; average split per frame: tick, the buckets (the HUD among them),
+   other render, tasks, the frame cap and swap, leaving out a bucket, tasks or the frame cap that took no
+   time, with the part of tick, other render and tasks that the Mods section names in brackets; the GC count
+   and pause time, with a note under that line, printed whenever the session saw a collection, explaining that
+   `gc f` counts frames a pause could account for, that those are left out of `peak ms`, and that `-` means
+   none was clean; Renderable's own estimated overhead; and the measured time of its own in-frame work
+   (§3.5), when it had any.
 4. **Hitches**: up to 25 worst, each on two lines: frame and time, total, bucket split; then top
    contributors with their milliseconds in that frame, with a contributor at least as large as
    that frame's GC pause marked `[gc]`. A note under the section heading explains the marker,
    printed only when the session has at least one hitch.
-5. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames.
-6. **Entities by type** (top 20) and **individuals** (top 20), and the count of GC-suspect frames.
-7. **Particles** (top 20), and the count of GC-suspect frames.
-8. **Blocks** (top 20 by mesh ms/s) and **Sections** (top 20 by rebuilds), or one line saying why
+5. **Mods** (top 15, each with its top 3 event types, HUD layers or packets), under a note that counting is
+   inclusive and that a library carries the handlers it runs for other mods; or one line saying why there are
+   none, and a line above the table when event timing was off.
+6. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames.
+7. **Entities by type** (top 20) and **individuals** (top 20), and the count of GC-suspect frames.
+8. **Particles** (top 20), and the count of GC-suspect frames.
+9. **Blocks** (top 20 by mesh ms/s) and **Sections** (top 20 by rebuilds), or one line saying why
    there are none: Sodium hooks were not active, or, when a Sodium hook fired, nothing was meshed or
    rebuilt while sampling.
-9. **Flywheel**: bucket share and visual counts.
+10. **Flywheel**: bucket share and visual counts.
 
 Tables are fixed-width plain text so they survive being pasted into a GitHub issue inside a
 code fence.
@@ -378,15 +416,17 @@ code fence.
 
 ```
 {
-  "schema": 4,
-  "mod": { "version": "0.4.0" },
+  "schema": 5,
+  "mod": { "version": "0.5.0" },
   "environment": { ... same fields as the text header, typed ... },
   "session": { "startedAt": iso8601, "durationSeconds": 30.0, "frames": 2412,
                "hitchThresholdMs": 33.2, "overheadEstimateMs": 0.4, "timedCalls": 6947008,
                "vertexCalls": 1204331 },
-  "frames": [ { "i": 0, "totalUs": ..., "tickUs": ..., "renderUs": ..., "bucketsUs": { ... },
+  "frames": [ { "i": 0, "totalUs": ..., "tickUs": ..., "renderUs": ..., "tasksUs": ..., "capUs": ...,
+                "namedUs": { "render": ..., "tick": ..., "tasks": ... }, "bucketsUs": { ... },
                 "gcCount": 0, "gcMs": 0, "top": [ { "key": "...", "us": ..., "gc": false } ] }, ... ],
   "hitches": [ frame indices ],
+  "mods": [ { ...a ranked row for the mod..., "entries": [ ...ranked rows... ] } ],
   "blockEntities": { "byType": [ ... ], "byPosition": [ ... ] },
   "entities": { "byType": [ ... ], "individuals": [ ... ] },
   "particles": [ ... ],
@@ -400,12 +440,13 @@ code fence.
 ```
 
 JSON is complete, not truncated to top-N. Keys serialise as strings of the form
-`type@dim:x,y,z`, `type#entityId`, `particle:ClassName`, `block:id`, `section@dim:x,y,z`.
+`type@dim:x,y,z`, `type#entityId`, `particle:ClassName`, `block:id`, `section@dim:x,y,z`,
+`event@mod:class`, `layer@mod:id`, `packet@mod:id`.
 
-Every row of `blockEntities`, `entities` and `particles` carries `gcFrames`, the count of frames the key
-appeared in that were GC-suspect; its `peakFrameUs` is the largest **clean** frame, `0` when `gcFrames`
-covers all of them. Every entry of `frames[].top` carries `gc`, set when that entry's nanoseconds are
-GC-suspect for the frame it belongs to.
+Every row of `blockEntities`, `entities`, `particles` and `mods`, and of each mod's `entries`, carries
+`gcFrames`, the count of frames the key appeared in that were GC-suspect; its `peakFrameUs` is the largest
+**clean** frame, `0` when `gcFrames` covers all of them. Every entry of `frames[].top` carries `gc`, set when
+that entry's nanoseconds are GC-suspect for the frame it belongs to.
 
 The JSON is streamed to the file a row at a time; the report is never held in memory as a tree or as a
 string. Every array is complete, as above.
@@ -508,7 +549,11 @@ Each phase is its own implementation plan and its own release tag.
 | 2 | particle render and tick, block entity and entity client tick, Flywheel bucket and counts, light bucket, Iris shadow split, Particles and Flywheel tabs | in-game check 3 |
 | 3 | Sodium mesh per block and per section, chunk upload bucket, vertex counts, Blocks and Sections tabs | in-game check 4 |
 | 4a | GC-suspect values excluded from per-key and per-type peaks and flagged in every output, type peaks taken from the type's worst frame, Accelerated Rendering vertices counted, the overhead estimate extended to vertex calls and its calibration corrected, JSON schema 4 | in-game checks 1 to 4; check 5 (idle cost) still not run |
+| 5a | frame components (tasks, frame cap, HUD), frame and tick boundaries at the `Minecraft` call sites, mod event handlers through per-session listener proxies, HUD layers, packets and payloads, rider ticks, attribution-only calls and named time, the Mods tab and report section, JSON schema 5 | spec addendum §P5.A's checks, in the in-pack acceptance at the end of phase 5 |
 
 Phase 4 is four independently executable plans rather than one. Group A ships alone as `v0.4.0`; groups B
 (robustness and cost), C (screen and overlay) and D (hygiene and CI) follow in any order, each with its own
 commits, and are described in `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md`.
+
+Phase 5 is four plans, 5a (attribution), 5b (recommendations), 5d (polish) and 5c (readiness), run in that
+order and released together as `v0.5.0`; see `docs/superpowers/specs/2026-09-26-renderable-phase-5-design.md`.
