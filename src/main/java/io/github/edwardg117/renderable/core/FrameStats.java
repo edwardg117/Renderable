@@ -13,8 +13,11 @@ public record FrameStats(int frames,
                          long maxNanos,
                          long avgTickNanos,
                          long avgRenderNanos,
+                         long avgTasksNanos,
+                         long avgCapNanos,
                          long avgSwapNanos,
                          long[] avgBucketNanos,
+                         long[] avgNamedNanos,
                          long avgOtherRenderNanos,
                          long avgOtherTickNanos,
                          int gcCount,
@@ -23,14 +26,17 @@ public record FrameStats(int frames,
     public static FrameStats of(List<FrameRecord> frames) {
         int n = frames.size();
         long[] avgBuckets = new long[Bucket.COUNT];
+        long[] avgNamed = new long[Window.COUNT];
         if (n == 0) {
-            return new FrameStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, avgBuckets, 0, 0, 0, 0);
+            return new FrameStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, avgBuckets, avgNamed, 0, 0, 0, 0);
         }
 
         long[] sorted = new long[n];
-        long total = 0, tick = 0, render = 0, swap = 0, otherRender = 0, otherTick = 0, gcMillis = 0;
+        long total = 0, tick = 0, render = 0, tasks = 0, cap = 0, swap = 0, otherRender = 0, otherTick = 0;
+        long gcMillis = 0;
         int gcCount = 0;
         long[] bucketSums = new long[Bucket.COUNT];
+        long[] namedSums = new long[Window.COUNT];
 
         for (int i = 0; i < n; i++) {
             FrameRecord f = frames.get(i);
@@ -38,6 +44,8 @@ public record FrameStats(int frames,
             total += f.totalNanos();
             tick += f.tickNanos();
             render += f.renderNanos();
+            tasks += f.tasksNanos();
+            cap += f.capNanos();
             swap += f.swapNanos();
             otherRender += f.otherRenderNanos();
             otherTick += f.otherTickNanos();
@@ -45,13 +53,17 @@ public record FrameStats(int frames,
             gcMillis += f.gcMillis();
             long[] b = f.buckets();
             for (int k = 0; k < Bucket.COUNT; k++) bucketSums[k] += b[k];
+            long[] named = f.namedNanos();
+            for (int k = 0; k < Window.COUNT; k++) namedSums[k] += named[k];
         }
         Arrays.sort(sorted);
         for (int k = 0; k < Bucket.COUNT; k++) avgBuckets[k] = bucketSums[k] / n;
+        for (int k = 0; k < Window.COUNT; k++) avgNamed[k] = namedSums[k] / n;
 
         return new FrameStats(n, total, total / n,
                 percentile(sorted, 50), percentile(sorted, 95), percentile(sorted, 99), sorted[n - 1],
-                tick / n, render / n, swap / n, avgBuckets, otherRender / n, otherTick / n, gcCount, gcMillis);
+                tick / n, render / n, tasks / n, cap / n, swap / n, avgBuckets, avgNamed,
+                otherRender / n, otherTick / n, gcCount, gcMillis);
     }
 
     /** Nearest-rank percentile of an ascending array. */
@@ -62,6 +74,11 @@ public record FrameStats(int frames,
 
     public long avgBucket(Bucket b) {
         return avgBucketNanos[b.ordinal()];
+    }
+
+    /** The average named time in window {@code w} (spec addendum §P5.A6). */
+    public long avgNamed(Window w) {
+        return avgNamedNanos[w.ordinal()];
     }
 
     public double avgFps() {

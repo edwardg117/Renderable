@@ -561,4 +561,41 @@ class SessionTest {
 
         assertEquals(4 * MS, s.finish().selfNanos(), "a balanced nesting must not truncate the outer interval");
     }
+
+    @Test
+    void tasksAndTheFrameCapAreFrameComponentsOutsideSwap() {
+        Session s = session(10_000);
+        at(0);  s.onRenderPre(0, 0);
+        at(4);  s.onRenderPost();
+        at(5);  s.onCapBegin();
+        at(9);  s.onCapEnd();
+        at(10); s.onTasksBegin();
+        at(13); s.onTasksEnd();
+        at(14); s.onTickPre();
+        at(16); s.onTickPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(4 * MS, f.renderNanos());
+        assertEquals(4 * MS, f.capNanos());
+        assertEquals(3 * MS, f.tasksNanos());
+        assertEquals(2 * MS, f.tickNanos());
+        assertEquals(7 * MS, f.swapNanos(), "20 total - 4 render - 4 cap - 3 tasks - 2 tick");
+    }
+
+    @Test
+    void tasksAndTheCapOutsideAFrameAreIgnored() {
+        Session s = session(10_000);
+        at(0); s.onTasksBegin(); at(2); s.onTasksEnd();     // before the first frame
+        at(2); s.onCapBegin();   at(3); s.onCapEnd();
+        at(3); s.onRenderPre(0, 0);
+        at(4); s.onTasksEnd();                              // an end with nothing open
+        at(5); s.onCapEnd();
+        at(10); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(0, f.tasksNanos());
+        assertEquals(0, f.capNanos());
+        assertEquals(7 * MS, f.swapNanos());
+    }
 }

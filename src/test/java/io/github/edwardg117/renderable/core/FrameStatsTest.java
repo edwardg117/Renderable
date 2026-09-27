@@ -56,4 +56,23 @@ class FrameStatsTest {
         assertEquals(0.0, st.avgFps());
         assertEquals(Bucket.COUNT, st.avgBucketNanos().length);
     }
+
+    @Test
+    void averagesCoverTasksTheCapAndNamedTime() {
+        long[] named = new long[Window.COUNT];
+        named[Window.RENDER.ordinal()] = 2 * MS;
+        named[Window.TASKS.ordinal()] = 1 * MS;
+        FrameRecord a = new FrameRecord(0, 0, 30 * MS, 2 * MS, 10 * MS, 4 * MS, 6 * MS,
+                new long[Bucket.COUNT], named, 0, 0, List.of());
+        FrameRecord b = new FrameRecord(1, 30 * MS, 30 * MS, 2 * MS, 10 * MS, 2 * MS, 0,
+                new long[Bucket.COUNT], new long[Window.COUNT], 0, 0, List.of());
+        FrameStats st = FrameStats.of(List.of(a, b));
+        assertEquals(3 * MS, st.avgTasksNanos());
+        assertEquals(3 * MS, st.avgCapNanos());
+        assertEquals(1 * MS, st.avgNamed(Window.RENDER));
+        assertEquals(500_000, st.avgNamed(Window.TASKS));
+        assertEquals(0, st.avgNamed(Window.TICK));
+        assertEquals(12 * MS, st.avgSwapNanos(), "a: 30-2-10-4-6 = 8, b: 30-2-10-2-0 = 16");
+        assertEquals(Window.COUNT, FrameStats.of(List.of()).avgNamedNanos().length);
+    }
 }

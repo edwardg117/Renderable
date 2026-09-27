@@ -11,6 +11,8 @@ public enum Bucket {
     FLYWHEEL(true),
     CHUNK_UPLOAD(true),
     LIGHT(true),
+    /** {@code Gui.render}: every HUD layer and the HUD's own events (spec addendum §P5.A1). */
+    HUD(true),
     PARTICLE_TICK(false),
     BE_TICK(false),
     ENTITY_TICK(false);

@@ -33,6 +33,17 @@ public final class Session {
     private long tickStartNanos = -1;
     private long renderNanos;
     private long tickNanos;
+    private long tasksStartNanos = -1;
+    private long capStartNanos = -1;
+    /** True from a frame's start to its render end: the render window (spec addendum §P5.A6). */
+    private boolean renderOpen;
+    private long tasksNanos;
+    private long capNanos;
+    /**
+     * Nanoseconds per {@link Window} that an outermost attribution-only call accounts for in the current frame
+     * (spec addendum §P5.A6).
+     */
+    private final long[] named = new long[Window.COUNT];
     private final long[] buckets = new long[Bucket.COUNT];
     private long lastGcCount = -1;
     private long lastGcMillis;
@@ -328,6 +339,10 @@ public final class Session {
         renderNanos = 0;
         tickNanos = 0;
         Arrays.fill(buckets, 0L);
+        tasksNanos = 0;
+        capNanos = 0;
+        Arrays.fill(named, 0L);
+        renderOpen = true;
         return done;
     }
 
@@ -335,6 +350,7 @@ public final class Session {
     public void onRenderPost() {
         if (frameStartNanos < 0) return;
         renderNanos += clock.getAsLong() - renderStartNanos;
+        renderOpen = false;
     }
 
     /** Called at ClientTickEvent.Pre. */
@@ -350,6 +366,32 @@ public final class Session {
         if (frameStartNanos >= 0) {
             tickNanos += elapsed;
         }
+    }
+
+    /** Called just before {@code Minecraft.runAllTasks}: packets and other queued work (spec addendum §P5.A1). */
+    public void onTasksBegin() {
+        tasksStartNanos = clock.getAsLong();
+    }
+
+    /** Called just after {@code Minecraft.runAllTasks}. Tasks before the first frame are ignored. */
+    public void onTasksEnd() {
+        if (tasksStartNanos < 0) return;
+        long elapsed = clock.getAsLong() - tasksStartNanos;
+        tasksStartNanos = -1;
+        if (frameStartNanos >= 0) tasksNanos += elapsed;
+    }
+
+    /** Called just before {@code RenderSystem.limitDisplayFPS}: the frame-rate cap's wait (spec addendum §P5.A1). */
+    public void onCapBegin() {
+        capStartNanos = clock.getAsLong();
+    }
+
+    /** Called just after {@code RenderSystem.limitDisplayFPS}. A wait before the first frame is ignored. */
+    public void onCapEnd() {
+        if (capStartNanos < 0) return;
+        long elapsed = clock.getAsLong() - capStartNanos;
+        capStartNanos = -1;
+        if (frameStartNanos >= 0) capNanos += elapsed;
     }
 
     private void closeFrame(long now, int gcCount, long gcMillis) {
@@ -426,6 +468,7 @@ public final class Session {
         touched.clear();
 
         frames.add(new FrameRecord(frames.size(), frameStartNanos - sessionStartNanos, now - frameStartNanos,
-                tickNanos, renderNanos, buckets.clone(), gcCount, gcMillis, List.copyOf(top)));
+                tickNanos, renderNanos, tasksNanos, capNanos, buckets.clone(), named.clone(), gcCount, gcMillis,
+                List.copyOf(top)));
     }
 }

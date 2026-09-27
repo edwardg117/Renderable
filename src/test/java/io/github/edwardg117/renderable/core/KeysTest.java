@@ -45,6 +45,8 @@ class KeysTest {
         assertFalse(Bucket.BE_TICK.isRender());
         assertFalse(Bucket.PARTICLE_TICK.isRender());
         assertEquals("block entity", Bucket.BLOCK_ENTITY.label());
+        assertTrue(Bucket.HUD.isRender(), "the HUD is drawn inside the render window");
+        assertEquals("hud", Bucket.HUD.label());
         assertEquals(Bucket.values().length, Bucket.COUNT);
     }
 
