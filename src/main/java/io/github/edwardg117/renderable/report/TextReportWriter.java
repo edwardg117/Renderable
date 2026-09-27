@@ -73,7 +73,7 @@ public final class TextReportWriter {
                 r.overheadEstimateMs(), Fmt.count(r.timedCalls()), Fmt.count(r.vertexCalls())));
         if (r.selfNanos() > 0) {
             sb.append(String.format(Locale.ROOT,
-                    "  Renderable's own in-frame work (HUD and Flywheel sampling): %s ms measured, inside other render.\n",
+                    "  Renderable's own in-frame work (its HUD line, the Flywheel sample and the event-list check): %s ms measured, inside hud and other render.\n",
                     Fmt.ms2(r.selfNanos())));
         }
         if (r.unbalancedFrames() > 0) {

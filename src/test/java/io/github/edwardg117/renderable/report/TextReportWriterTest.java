@@ -265,7 +265,7 @@ class TextReportWriterTest {
                 none.timedCalls(), none.vertexCalls(), 12_400_000L, none.overheadEstimateMs(),
                 none.unbalancedFrames(), none.flywheel(), none.mesh());
         assertTrue(TextReportWriter.write(some, env, "0.4.0").contains(
-                "  Renderable's own in-frame work (HUD and Flywheel sampling): 12.40 ms measured, inside other render.\n"),
+                "  Renderable's own in-frame work (its HUD line, the Flywheel sample and the event-list check): 12.40 ms measured, inside hud and other render.\n"),
                 TextReportWriter.write(some, env, "0.4.0"));
     }
 

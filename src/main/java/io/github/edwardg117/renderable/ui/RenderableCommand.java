@@ -4,6 +4,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.github.edwardg117.renderable.ProfilerController;
 import io.github.edwardg117.renderable.RenderableConfig;
+import io.github.edwardg117.renderable.hooks.events.EventTiming;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
@@ -71,7 +72,12 @@ public final class RenderableCommand {
                                         .executes(ctx -> {
                                             c.debugStall(IntegerArgumentType.getInteger(ctx, "ms"));
                                             return 1;
-                                        }))));
+                                        })))
+                        .then(Commands.literal("events").executes(ctx -> {
+                            ProfilerController.chat("Renderable: " + EventTiming.listsHoldingProxies()
+                                    + " event lists hold timing proxies; event timing is " + EventTiming.status() + ".");
+                            return 1;
+                        })));
 
         event.getDispatcher().register(root);
     }

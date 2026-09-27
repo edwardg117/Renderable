@@ -53,7 +53,8 @@ public final class RenderableConfig {
         b.pop();
 
         b.push("debug");
-        DEBUG_COMMANDS = b.comment("Enables /renderable debug stall <ms>, which sleeps the render thread to test hitch attribution.")
+        DEBUG_COMMANDS = b.comment("Enables /renderable debug stall <ms>, which sleeps the render thread to test hitch attribution,",
+                        "and /renderable debug events, which counts the event lists holding timing proxies.")
                 .define("debugCommands", false);
         b.pop();
 

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.LongSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -894,5 +895,36 @@ class SessionTest {
         for (Window w : Window.VALUES) named += f.named(w);
         assertEquals(0, named);
         assertEquals(1 * MS, packet.renderNanos, "it still counts for its key, like any call before the first frame");
+    }
+
+    @Test
+    void aKeyWithNoCompletedCallIsLeftOutOfTheResult() {
+        Session s = session(10_000);
+        // Event timing resolves each proxy's accumulator when it builds the proxy (spec addendum §P5.A3), so a
+        // session holds keys for handlers that never run on the render thread.
+        Accumulator stage = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        Accumulator tick = s.accumulator(ModKey.event("somemod", "a.ClientTickEvent$Post"));
+        s.accumulator(ModKey.event("somemod", "a.ServerTickEvent$Post"));
+        s.accumulator(ModKey.event("servermod", "a.ServerTickEvent$Post"));
+        Accumulator open = s.accumulator(ModKey.event("latemod", "a.RenderLevelStageEvent"));
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.beginAttribution(stage);
+        at(2);  s.end();
+        at(4);  s.onRenderPost();
+        at(5);  s.onTickPre();
+        at(5);  s.beginAttribution(tick);             // a tick call is a completed call too
+        at(6);  s.end();
+        at(7);  s.onTickPost();
+        at(10); s.onRenderPre(0, 0);
+        at(11); s.beginAttribution(open);             // still running when the session finishes
+        SessionResult r = s.finish();
+
+        List<RankedEntry> mods = Ranking.byType(r, ProfileKey.Category.MOD);
+        assertEquals(List.of("somemod"), mods.stream().map(RankedEntry::typeId).toList(),
+                "a mod none of whose handlers completed a call has no row");
+        assertEquals(2, mods.get(0).members(), "only the handlers that ran are counted");
+        assertEquals(2, Ranking.membersOf(r, ProfileKey.Category.MOD, "somemod").size());
+        assertEquals(Set.of(ModKey.event("somemod", "a.RenderLevelStageEvent"),
+                ModKey.event("somemod", "a.ClientTickEvent$Post")), r.accumulators().keySet());
     }
 }

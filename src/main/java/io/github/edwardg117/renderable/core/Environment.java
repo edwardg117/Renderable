@@ -20,6 +20,12 @@ public record Environment(Map<String, String> entries, List<String> hooksApplied
      */
     public static final String ABSENT = "absent";
 
+    /** The key saying whether event handlers were timed (spec addendum §P5.A3): "on", or {@link #UNAVAILABLE} and why. */
+    public static final String EVENT_TIMING = "eventTiming";
+
+    /** Starts the {@link #EVENT_TIMING} value when the event bus could not be reached; the reason follows it. */
+    public static final String UNAVAILABLE = "unavailable: ";
+
     /**
      * Copies both collections so the record is really immutable, however it is built. The entries copy is a
      * {@link LinkedHashMap}, not {@code Map.copyOf}, because {@code Map.copyOf} does not keep order.

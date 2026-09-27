@@ -10,6 +10,7 @@ import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.hooks.Probe;
 import io.github.edwardg117.renderable.hooks.compat.FlywheelCompat;
+import io.github.edwardg117.renderable.hooks.events.EventTiming;
 import io.github.edwardg117.renderable.report.EnvironmentCollector;
 import io.github.edwardg117.renderable.report.JsonReportWriter;
 import io.github.edwardg117.renderable.report.ReportFiles;
@@ -113,6 +114,7 @@ public final class ProfilerController implements Probe.Listener {
         WorldOverlay.clear();
         Probe.setListener(this);
         Probe.attach(session, sessionDimension);
+        EventTiming.start(session);
         chat("Renderable: sampling for " + seconds + " s. Press the key again or run /renderable stop to end early.");
     }
 
@@ -138,6 +140,7 @@ public final class ProfilerController implements Probe.Listener {
     }
 
     private void discard(String reason) {
+        EventTiming.stop();
         Probe.detach();
         session = null;
         pendingStallMs = 0;
@@ -148,6 +151,7 @@ public final class ProfilerController implements Probe.Listener {
     public void finish() {
         Session s = session;
         if (s == null) return;
+        EventTiming.stop();
         Probe.detach();
         session = null;
 
@@ -268,6 +272,7 @@ public final class ProfilerController implements Probe.Listener {
             s.beginSelf();
             try {
                 sampleFlywheel(s);
+                EventTiming.recheck();
             } finally {
                 s.endSelf();
             }

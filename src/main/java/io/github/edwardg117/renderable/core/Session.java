@@ -146,14 +146,16 @@ public final class Session {
     }
 
     /**
-     * Starts timing work the mod does for itself inside a frame: the sampling HUD and the Flywheel visual
-     * sample (spec addendum §P4.B3). It is not attributed to any key or bucket, because it really is part of
-     * other render time; the report states it so a reader can subtract it. Pair with {@link #endSelf()}.
+     * Starts timing work the mod does for itself inside a frame: the sampling HUD line, the Flywheel visual
+     * sample (spec addendum §P4.B3) and the once-a-second event-list check (spec addendum §P5.A3). It is not
+     * attributed to any key: the HUD line is inside the HUD bucket and the other two are in other render, and
+     * the report states the total so a reader can subtract it. Pair with {@link #endSelf()}.
      *
      * <p>Nests: an inner begin/end pair inside an outer one does not truncate the outer interval, matching
      * {@link #begin} and {@link #end}. Everything timed here must be named in the self-time line printed by
-     * {@code TextReportWriter} and {@code Rows} ("HUD and Flywheel sampling" as of this writing); wrapping a
-     * third region without updating both labels (and the README) makes that text silently false.
+     * {@code TextReportWriter} and {@code Rows} ("its HUD line, the Flywheel sample and the event-list check"
+     * as of this writing); wrapping another region without updating both labels (and the README) makes that
+     * text silently false.
      */
     public void beginSelf() {
         if (selfDepth++ == 0) selfStartNanos = clock.getAsLong();
@@ -205,9 +207,20 @@ public final class Session {
                 Map.copyOf(avg));
     }
 
-    /** Snapshot of all accumulators; safe to call after the session is finished. */
+    /**
+     * Snapshot of the accumulators with at least one completed call; safe to call after the session is finished.
+     * An accumulator can exist without one: event timing resolves each proxy's accumulator when it builds the
+     * proxy (spec addendum §P5.A3), whether or not that handler ever runs on the render thread, and a call that
+     * never ends (still open at the finish, or reset after a hook threw) completes nothing. Such a key has no time
+     * to report, so it gets no row in any table, report section or JSON array.
+     */
     public Map<ProfileKey, Accumulator> accumulators() {
-        return Map.copyOf(accumulators);
+        HashMap<ProfileKey, Accumulator> called = new HashMap<>();
+        for (Map.Entry<ProfileKey, Accumulator> e : accumulators.entrySet()) {
+            Accumulator a = e.getValue();
+            if (a.calls > 0 || a.tickCalls > 0) called.put(e.getKey(), a);
+        }
+        return Map.copyOf(called);
     }
 
     /** Returns the accumulator for a key, creating it on first sight. Hooks cache the result per instance. */

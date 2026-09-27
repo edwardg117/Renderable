@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.GlStateManager;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.hooks.compat.FlywheelCompat;
 import io.github.edwardg117.renderable.hooks.compat.IrisCompat;
+import io.github.edwardg117.renderable.hooks.events.EventTiming;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
@@ -54,6 +55,7 @@ public final class EnvironmentCollector {
         m.put("flywheelBackend", safe(FlywheelCompat::backendName));
         m.put("acceleratedrendering", modVersion("acceleratedrendering"));
         m.put("distanthorizons", modVersion("distanthorizons"));
+        m.put(Environment.EVENT_TIMING, EventTiming.status());
 
         if (mc.level != null) {
             m.put("dimension", mc.level.dimension().location().toString());
