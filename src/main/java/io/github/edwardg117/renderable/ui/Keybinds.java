@@ -9,10 +9,13 @@ import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import org.lwjgl.glfw.GLFW;
 
-/** F7 starts or stops a session; the overlay key is unbound by default (spec §5.1). */
+/**
+ * F6 starts or stops a session (until phase 5 it was F7, which clashed with Lighty in the pack; spec addendum §P5.C4);
+ * the overlay key is unbound by default (spec §5.1).
+ */
 public final class Keybinds {
     public static final KeyMapping TOGGLE = new KeyMapping("key.renderable.toggle", KeyConflictContext.IN_GAME,
-            InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F7, "key.categories.renderable");
+            InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F6, "key.categories.renderable");
     public static final KeyMapping OVERLAY = new KeyMapping("key.renderable.overlay", KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), "key.categories.renderable");
 

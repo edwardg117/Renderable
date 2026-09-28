@@ -6,8 +6,9 @@ time**, and what caused each hitch.
 
 ## Using it
 
-1. Press **F7** (or run `/renderable start [seconds]`). A line at the top of the screen counts the
-   session's elapsed seconds; default 30 s.
+1. Press **F6** (or run `/renderable start [seconds]`). A line at the top of the screen counts the
+   session's elapsed seconds; default 30 s. The key can be changed in Options, Controls, Key Binds,
+   under Renderable.
 2. When it ends, a results screen opens on the **Advice** tab (what to change, drawn from what was measured)
    and a chat message offers **Open results**, **Copy report** and **Open folder**. Two files land in
    `<game dir>/renderable/`: a text report you can paste into an issue, and a JSON file with everything.

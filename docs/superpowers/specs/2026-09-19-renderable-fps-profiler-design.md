@@ -299,8 +299,8 @@ The spec addendum's §P5.A0 records the bytecode offsets these were verified at.
 
 ### 5.1 Trigger and control
 
-- Keybind **F7** (rebindable): idle starts a session with the default duration; sampling stops
-  it early.
+- Keybind **F6** (rebindable; until phase 5 it was F7, which clashed with Lighty's key in the pack): idle
+  starts a session with the default duration; sampling stops it early.
 - Keybind **overlay toggle**, unbound by default.
 - Client commands, registered through `RegisterClientCommandsEvent`:
 
