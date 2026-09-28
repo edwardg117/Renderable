@@ -53,6 +53,18 @@ neoForge {
             if (project.hasProperty('quickPlay')) {
                 programArguments.addAll('--quickPlaySingleplayer', project.property('quickPlay').toString())
             }
+
+            // Dev only, for the idle-cost protocol (docs/acceptance/phase-5-idle.md). -PwithoutRenderable runs the
+            // same client without this mod (runClient below does the rest). -PclientJvmArgs="..." adds JVM arguments
+            // to the game alone, such as a Flight Recorder recording; JAVA_TOOL_OPTIONS would reach Gradle's own JVMs
+            // too, and they would record as well. The value is split at whitespace, so no argument, such as a
+            // recording's filename, can contain a space.
+            if (project.hasProperty('withoutRenderable')) {
+                loadedMods.set([])
+            }
+            if (project.hasProperty('clientJvmArgs')) {
+                jvmArguments.addAll(project.property('clientJvmArgs').toString().trim().split('\\s+').toList())
+            }
         }
     }
 
@@ -187,6 +199,12 @@ var installPackMods = tasks.register('installPackMods', InstallPackMods) {
 
 tasks.named('runClient') {
     dependsOn installPackMods
+    // -PwithoutRenderable: an empty loadedMods only empties fml.modFolders. FML's userdev locator also scans the
+    // classpath for META-INF/neoforge.mods.toml and would load build/resources/main as a class-less "renderable"
+    // mod with both mixin configs, so the mod's own output comes off the game's classpath as well.
+    if (project.hasProperty('withoutRenderable')) {
+        classpathProvider.setFrom(sourceSets.main.runtimeClasspath.minus(sourceSets.main.output))
+    }
 }
 tasks.named('prepareClientRun') {
     dependsOn installPackMods
