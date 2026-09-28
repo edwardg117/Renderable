@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -37,6 +38,22 @@ class SourceGuardsTest {
                 String src = Files.readString(p);
                 assertFalse(src.contains("\"absent\""),
                         p + " spells the absent sentinel; use Environment.ABSENT");
+            }
+        }
+    }
+
+    @Test
+    void noSourceReadsAPlayersName() throws IOException {
+        // Spec addendum §P5.C3: a report never carries a player's own name. Each of these calls reads one;
+        // KeyFactory's getGameProfile().getName() was how names used to reach the report.
+        List<String> calls = List.of("getGameProfile(", "getScoreboardName(", "getDisplayName(", "getPlayerInfo(",
+                "getTabListDisplayName(", "getUser(");
+        try (Stream<Path> files = Files.walk(MAIN)) {
+            for (Path p : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                String src = Files.readString(p);
+                for (String call : calls) {
+                    assertFalse(src.contains(call), p + " calls " + call + "), which reads a player's name");
+                }
             }
         }
     }

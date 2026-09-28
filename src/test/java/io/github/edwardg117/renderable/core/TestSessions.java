@@ -20,7 +20,7 @@ public final class TestSessions {
     public static final BlockEntityKey PRESS2 = new BlockEntityKey("create:mechanical_press", "minecraft:overworld", 103, 64, -20);
     public static final BlockEntityKey MIXER = new BlockEntityKey("create:mechanical_mixer", "minecraft:overworld", 90, 65, -22);
     public static final EntityKey COW = new EntityKey("minecraft:cow", 7, "");
-    public static final EntityKey PLAYER = new EntityKey("minecraft:player", 1, "Steve");
+    public static final EntityKey PLAYER = EntityKey.player("minecraft:player", 1, true);
     public static final ParticleKey FLAME = new ParticleKey("net.minecraft.client.particle.FlameParticle");
     public static final String PRESS_VISUAL = "com.simibubi.create.content.kinetics.press.PressVisual";
     public static final BlockKey STONE = new BlockKey("minecraft:stone");

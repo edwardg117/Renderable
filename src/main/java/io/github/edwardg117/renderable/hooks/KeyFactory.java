@@ -5,6 +5,7 @@ import io.github.edwardg117.renderable.core.BlockKey;
 import io.github.edwardg117.renderable.core.EntityKey;
 import io.github.edwardg117.renderable.core.ParticleKey;
 import io.github.edwardg117.renderable.core.SectionKey;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -18,7 +19,10 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.material.Fluid;
 
-/** Turns Minecraft objects into core keys. Called once per object per session, so it may allocate. */
+/**
+ * Turns Minecraft objects into core keys. Called once per object per session, so it may allocate.
+ * A player's key never carries a player's name (spec addendum §P5.C3).
+ */
 final class KeyFactory {
 
     private KeyFactory() {
@@ -35,14 +39,12 @@ final class KeyFactory {
 
     static EntityKey entity(Entity e) {
         String typeId = EntityType.getKey(e.getType()).toString();
-        String name;
-        if (e instanceof Player player) {
-            name = player.getGameProfile().getName();
-        } else if (e.hasCustomName() && e.getCustomName() != null) {
-            name = e.getCustomName().getString();
-        } else {
-            name = "";
+        if (e instanceof Player) {
+            // Spec addendum §P5.C3: never a player's name; the local player is "you". Entity keys are made on the
+            // render thread only, so reading Minecraft's player is safe.
+            return EntityKey.player(typeId, e.getId(), e == Minecraft.getInstance().player);
         }
+        String name = e.hasCustomName() && e.getCustomName() != null ? e.getCustomName().getString() : "";
         return new EntityKey(typeId, e.getId(), name);
     }
 

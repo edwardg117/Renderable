@@ -193,4 +193,12 @@ class KeysTest {
         assertNull(new BlockKey("minecraft:stone").dimension());
         assertNull(ModKey.event("a", "b.C").dimension());
     }
+
+    @Test
+    void aPlayersKeyCarriesNoNameExceptTheLocalPlayersYou() {
+        assertEquals("minecraft:player #1234", EntityKey.player("minecraft:player", 1234, false).label());
+        assertEquals("minecraft:player #118098 (you)", EntityKey.player("minecraft:player", 118098, true).label());
+        assertEquals("minecraft:player#118098", EntityKey.player("minecraft:player", 118098, true).serialize(),
+                "the JSON key has no name either way");
+    }
 }
