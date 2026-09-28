@@ -63,9 +63,11 @@ python docs/acceptance/phase-5-idle-numbers.py run/idle-run1.jfr run/idle-run2.j
 ```
 
 For each run the script prints:
-- **allocation:** the summed weight of `jdk.ObjectAllocationSample`, and the part whose site, or one of the two
-  calls above it, is Renderable's code;
-- **mean CPU load:** `jdk.CPULoad` `jvmUser + jvmSystem`;
+- **allocation:** the summed weight of `jdk.ObjectAllocationSample` without each thread's first sample (JFR weighs
+  that one from the thread's start, so it carries what the thread allocated before the recording), and the part
+  whose site, or one of the two calls above it, is Renderable's code;
+- **mean CPU load:** `jdk.CPULoad` `jvmUser + jvmSystem`, without the recording's first reading, which is often
+  0% or a stray figure rather than a measurement;
 - **execution samples:** how many, and how many have Renderable's code on top: a class in its package, or a
   mixin handler, which Mixin merges into the hooked class under a name that contains `renderable$`
   (`renderable$timeEntityTick` runs as `wrapMethod$zza000$renderable$timeEntityTick`, for example).
@@ -93,8 +95,10 @@ Then it judges three checks:
 **If a check fails,** `jfr view --width 200 hot-methods run/idle-run2.jfr` and
 `jfr view --width 200 allocation-by-site run/idle-run2.jfr` name the code: look for `renderable$` or
 `io.github.edwardg117.renderable`. The allocation view names only the method that allocates, so a box a handler
-makes for its arguments shows there as `java.lang.Integer.valueOf` or the like. To see the calls above each site,
-search the output of `jfr print --stack-depth 3 --events jdk.ObjectAllocationSample run/idle-run2.jfr` for
+makes for its arguments shows there as `java.lang.Integer.valueOf` or the like. It also counts each thread's first
+sample, which carries what the thread allocated before the recording (the script leaves these out), so one such
+sample can put a site high on the list. To see the calls above each site, and each sample's weight, search the
+output of `jfr print --stack-depth 3 --events jdk.ObjectAllocationSample run/idle-run2.jfr` for
 `renderable$`. A failure is a defect to fix before rollout. Event timing cannot be the cause: none of it exists
 outside a session.
 

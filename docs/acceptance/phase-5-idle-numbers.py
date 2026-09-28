@@ -55,9 +55,24 @@ def ours(frame):
     return cls.startswith(PACKAGE) or HANDLER in (method.get("name") or "")
 
 
+def after_first(allocations):
+    """Each thread's allocation samples after its first. A sample weighs what its thread allocated since the one
+    before, but JFR weighs a thread's first sample in a recording from the thread's start, so it carries all the
+    thread allocated before the recording. In a dev-client recording that began 30 s after launch, the first
+    samples came to 12 GiB, over a third of the total. jfr print lists events in time order."""
+    seen, kept = set(), []
+    for e in allocations:
+        thread = e["values"]["eventThread"]["javaThreadId"]
+        if thread in seen:
+            kept.append(e)
+        seen.add(thread)
+    return kept
+
+
 def numbers(recording):
-    allocations = events(recording, "jdk.ObjectAllocationSample", 3)
-    loads = [e["values"]["jvmUser"] + e["values"]["jvmSystem"] for e in events(recording, "jdk.CPULoad", 0)]
+    allocations = after_first(events(recording, "jdk.ObjectAllocationSample", 3))
+    # Every reading but the first, which is often 0% or a stray figure rather than a measurement.
+    loads = [e["values"]["jvmUser"] + e["values"]["jvmSystem"] for e in events(recording, "jdk.CPULoad", 0)[1:]]
     samples = events(recording, "jdk.ExecutionSample", 1)
     return {
         "allocatedMiB": sum(e["values"]["weight"] for e in allocations) / 1048576,
