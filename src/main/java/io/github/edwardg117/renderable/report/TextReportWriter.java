@@ -194,7 +194,7 @@ public final class TextReportWriter {
         sb.append(t.render("  ")).append('\n');
     }
 
-    /** Spec §6.1 item 7. Particles have no peak or shadow of interest; the average live count replaces them. */
+    /** Spec §6.1 item 9. Particles have no peak or shadow of interest; the average live count replaces them. */
     static void appendParticles(StringBuilder sb, SessionResult r, Environment env, int frames, long total) {
         sb.append("Particles (top ").append(TOP).append(")\n");
         List<RankedEntry> entries = Ranking.particles(r);
@@ -209,7 +209,7 @@ public final class TextReportWriter {
         sb.append(t.render("  ")).append('\n');
     }
 
-    /** Spec §6.1 item 9 and §4.4: the Flywheel bucket plus visual counts, or the exact reason there are none. */
+    /** Spec §6.1 item 11 and §4.4: the Flywheel bucket plus visual counts, or the exact reason there are none. */
     static void appendFlywheel(StringBuilder sb, SessionResult r, Environment env, int frames, long total) {
         sb.append("Flywheel\n");
         FlywheelStats fw = r.flywheel();
@@ -245,7 +245,7 @@ public final class TextReportWriter {
         sb.append(t.render("  ")).append('\n');
     }
 
-    /** Spec §6.1 item 8: blocks by mesh time per second of session. */
+    /** Spec §6.1 item 10: blocks by mesh time per second of session. */
     static void appendBlocks(StringBuilder sb, SessionResult r, Environment env) {
         sb.append("Blocks (mesh build, top ").append(TOP).append(" by mesh ms/s)\n");
         List<MeshEntry> rows = Ranking.mesh(r, ProfileKey.Category.BLOCK, Ranking.MeshSort.TIME);
@@ -261,7 +261,7 @@ public final class TextReportWriter {
         sb.append(t.render("  ")).append('\n');
     }
 
-    /** Spec §6.1 item 8: sections by rebuild count, followed by a note on what mesh time means. */
+    /** Spec §6.1 item 10: sections by rebuild count, followed by a note on what mesh time means. */
     static void appendSections(StringBuilder sb, SessionResult r, Environment env) {
         sb.append("Sections (mesh rebuilds, top ").append(TOP).append(" by rebuilds)\n");
         List<MeshEntry> rows = Ranking.mesh(r, ProfileKey.Category.SECTION, Ranking.MeshSort.CALLS);

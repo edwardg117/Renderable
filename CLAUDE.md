@@ -30,6 +30,10 @@ Observable does for server tick time. Built for the Gears & Frontiers modpack
 - Mod event handlers are timed without a mixin: `hooks.events` swaps the game bus's listener arrays
   for proxies only while a session runs (spec addendum §P5.A3). The bus loads in the boot module
   layer, where no mixin reaches, so do not try to hook it.
+- Every mixin injector is listed in `HookInstalls.HOOKS` (or `BOUNDARIES`), which the report's installed
+  and failed hook lists come from. `HookInstallsTest` fails for one that is not, and for a method selector or
+  `@At` target that `InjectionCheck` cannot read: write a name or a name with a descriptor, and a target as
+  `Lowner;name(desc)`.
 - New hook targets must be verified against the pinned jars (javap) before they go in a plan.
 
 ## Git

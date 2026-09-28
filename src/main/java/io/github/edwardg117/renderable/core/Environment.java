@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Plain environment description for reports (spec §6.1 item 2). Built by the Minecraft-aware collector in
+ * Plain environment description for reports (spec §6.1 item 3). Built by the Minecraft-aware collector in
  * {@code report}; the core only carries it. Entries keep insertion order.
  *
  * <p>Three hook lists (spec addendum §P5.D1): {@code hooksFired}, the hooks that have run while a session was

@@ -5,7 +5,7 @@ import io.github.edwardg117.renderable.core.Ranking;
 /**
  * What clicking a column header sorts by (spec §5.3). A tab's rows are either ranked entries or mesh entries,
  * so at most one of the two is set; {@link #NONE} marks a column that is not sortable, which is every column
- * of the Frames and Hitches tabs, and the Flywheel tab's {@code share} column.
+ * of the Advice, Frames and Hitches tabs, and the Flywheel tab's {@code share} column.
  *
  * <p>The Flywheel tab's rows are neither: they are class names and average counts. It reuses
  * {@link Ranking.Sort#LABEL} for the class column and {@link Ranking.Sort#TOTAL} for the count, which

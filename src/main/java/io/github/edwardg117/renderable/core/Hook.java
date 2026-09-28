@@ -1,8 +1,9 @@
 package io.github.edwardg117.renderable.core;
 
 /**
- * Every hook the mod can install. A hook is "applied" once it has fired at least once in this client run;
- * {@code Probe} records that and the report's environment header lists it (spec §4.5).
+ * Every hook the mod can install. A hook has "fired" once it has run while a session was sampling, at least
+ * once in this client run, and {@code Probe} records that. The report's environment header lists the hooks
+ * installed, fired and that did not apply (spec §4.5, spec addendum §P5.D1).
  *
  * <p>Lives in {@code core} rather than {@code hooks} so the report writers and the results screen can name
  * a hook by its constant instead of retyping its name (spec addendum §P4.D1). The enum has no imports, so

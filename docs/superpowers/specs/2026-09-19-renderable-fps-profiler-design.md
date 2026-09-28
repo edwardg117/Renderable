@@ -262,11 +262,23 @@ block like any other.
 ### 4.5 Mixin gating and failure policy
 
 - A mixin config plugin applies Sodium, Iris and Flywheel mixins only when that mod is loaded.
-- Third-party mixins are `require = 0`. If one fails to apply after a version bump, the client
-  keeps running, the log carries a warning, and the affected tab shows "hook did not apply for
-  <mod> <version>".
+- Third-party mixins are `require = 0`. If one of their injectors misses its target after a version bump, the
+  client keeps running and nothing is logged, but the report lists the hook among those that did not apply,
+  and a table it leaves empty says so. Mixin does log a third-party mixin it rejects as a whole, whose hooks
+  then read as never loaded (phase 5, below).
 - Vanilla mixins are required; if they fail the mod is not usable and should fail loudly.
-- `Probe` records which hooks applied. The report's environment header lists them.
+- The report's environment header lists hooks three ways (phase 5, spec addendum §P5.D1).
+  - **Installed.** As each hooked class loads, `RenderableMixinPlugin.postApply` checks that every injector's
+    target method is in it and, for an `INVOKE` injection point, that the call is too. It checks the target
+    rather than the handler, because MixinExtras applies `@WrapOperation` and `@WrapMethod` after `postApply`.
+  - **Fired.** `Probe` records each hook the first time it runs while a session is sampling.
+  - **Did not apply.** An injector's target was missing.
+
+  A hook whose classes never loaded is in none of the three; nor are `IRIS_SHADOW` and `EVENTS`, which are not
+  mixins, until they fire. Sodium's empty tables tell "the hook did not apply", "the code never ran" and
+  "nothing happened" apart; the ranked and particle tables tell only the first (spec addendum §P5.D2).
+  `HookInstalls.HOOKS` maps each injector to its hook, apart from the four frame and tick boundaries in
+  `HookInstalls.BOUNDARIES`, which are not checked; `HookInstallsTest` fails for an injector in neither.
 
 ### 4.6 Phase 5: attribution
 
@@ -339,20 +351,27 @@ Tabs and columns:
 The Mods, Block Entities, Entities, Particles, Blocks and Sections lists sort by any column; the Flywheel list
 sorts by name or average count only, its share column being the bucket's own share of frame time rather than
 a per-row value. Each opens in the order the text report uses; clicking a column header sorts by it (largest
-first for a number, A to Z for a name), clicking the active header reverses it, and the active header carries
-an arrow. The Frames and Hitches tabs have a fixed order. A number too wide for its column is rounded to a
-whole number and, if it still does not fit, drawn as `#`s; it is never cut short. Position and
-individual rows have **Highlight** (draw a wireframe box at the position for 10 s, the whole 16-block section
-for a Sections row) and **Teleport** (sends `/tp @s x y z` as chat; for a section row, at the player's own
+first for a number, A to Z for a name, ignoring case and reading digit runs as numbers since phase 5),
+clicking the active header reverses it, and the active header carries an arrow. The Advice, Frames and Hitches
+tabs have a fixed order. A number too wide for its column is rounded to a whole number and, if it still does
+not fit, drawn as `#`s; it is never cut short. Position rows have **Highlight** (draw a wireframe box at the
+position for 10 s, the whole 16-block section for a Sections row), and position and individual rows have
+**Teleport** (sends `/tp @s x y z` as chat; for a section row, at the player's own
 height raised to the first height at which the player fits in that column, so they do not arrive inside
 loaded terrain, and at the player's own height where the client has not loaded that column; if the player
 lacks permission the server's error is what they see). Both are disabled, with a
-tooltip saying why, once the player leaves the world or dimension the session was taken in. A
+tooltip saying why, while the selected row's dimension (a block entity's or section's own, an entity's the
+session's) is not the player's, and for good once the player logs out of the world the session was taken in;
+a highlight is drawn only in its row's dimension. The screen keeps its tab, each tab's sort, the open groups,
+the selected row and the scroll position for the latest result, so closing it for Highlight or Teleport does
+not lose the reader's place; a new result opens on Advice (phase 5). A
 **Copy report** button copies the text report; **Open folder** opens the report directory. The Sections list
 shows at most 200 sections, the first 200 in its current order, and a trailing row saying how many it left out
 and that the JSON has them all. The ranked and particle cell text is defined once, in `core/RankedTable`, and
-shared with the text report; the screen writes its column names out in `Tab`, and `TabTest` holds them equal
-to `RankedTable`'s.
+shared with the text report, as the Blocks and Sections cell text is in `core/MeshTable` (phase 5); the screen
+writes its column names out in `Tab`, and `TabTest` holds them equal to those classes'. A header too wide for
+its column widens it into the name column, which gives up at most a quarter of its width in all; a header that
+still does not fit is cut short (phase 5).
 
 ### 5.4 In-world overlay
 
@@ -389,7 +408,7 @@ Sections, in order:
    mode, vsync, FPS limit, particles setting, entity distance, fullscreen resolution and GUI
    scale; Sodium, Iris (and active shader pack), Flywheel (and backend), Accelerated Rendering,
    Distant Horizons present or not; dimension, player position, loaded section count; which
-   Renderable hooks applied.
+   Renderable hooks are installed, which fired and which did not apply.
 4. **Frames**: frames, avg ms and FPS, p50, p95, p99, max; hitch threshold and count and total
    hitch time as a share of wall time; average split per frame: tick, the buckets (the HUD among them),
    other render, tasks, the frame cap and swap, leaving out a bucket, tasks or the frame cap that took no
@@ -405,13 +424,17 @@ Sections, in order:
 6. **Mods** (top 15, each with its top 3 event types, HUD layers or packets), under a note that counting is
    inclusive and that a library carries the handlers it runs for other mods; or one line saying why there are
    none, and a line above the table when event timing was off.
-7. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames.
-8. **Entities by type** (top 20) and **individuals** (top 20), and the count of GC-suspect frames.
-9. **Particles** (top 20), and the count of GC-suspect frames.
+7. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames. The
+   shadow column is left out of a table in which no row has shadow time (phase 5).
+8. **Entities by type** (top 20) and **individuals** (top 20), and the count of GC-suspect frames, with the
+   shadow column as for block entities.
+9. **Particles** (top 20), by short class name as the Flywheel table names classes (phase 5; the JSON keeps
+   full names), and the count of GC-suspect frames.
 10. **Blocks** (top 20 by mesh ms/s) and **Sections** (top 20 by rebuilds), or one line saying why
-   there are none: Sodium hooks were not active, or, when a Sodium hook fired, nothing was meshed or
-   rebuilt while sampling.
-11. **Flywheel**: bucket share and visual counts.
+   there are none: Sodium is not installed, its mesh hook did not apply or never loaded, or nothing was
+   meshed or rebuilt while sampling.
+11. **Flywheel**: bucket share and visual totals, then visual counts by class or a line saying the samples
+    found no visuals alive; or one line saying why there is no data.
 
 Tables are fixed-width plain text so they survive being pasted into a GitHub issue inside a
 code fence.
@@ -445,6 +468,9 @@ code fence.
                 "avgEntities": ..., "avgEffects": ..., "visualCounts": { "class": avg } }
 }
 ```
+
+The environment's `hooksInstalled`, `hooksFired` and `hooksFailed` arrays list hooks by name; schema 4 called
+`hooksFired` `hooksApplied` (phase 5).
 
 JSON is complete, not truncated to top-N. Keys serialise as strings of the form
 `type@dim:x,y,z`, `type#entityId`, `particle:ClassName`, `block:id`, `section@dim:x,y,z`,
@@ -504,7 +530,7 @@ have no Minecraft imports; `EnvironmentCollector` is the only Minecraft-aware cl
 - `HitchDetector`: threshold maths at several medians, sorting, top contributors carried
   through.
 - `Ranking`: type roll-ups equal the sum of their positions; sort stability.
-- `TextReportWriter`: fixed-width alignment, top-N truncation, "Sodium hooks not active" path.
+- `TextReportWriter`: fixed-width alignment, top-N truncation, and each table's empty-state sentence.
 - `JsonReportWriter`: schema field presence, key string round trip through a parser.
 
 **In-game (dev client with this pack's pinned Sodium, Iris, Create, Enchantable Machinery):**

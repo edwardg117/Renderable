@@ -522,7 +522,7 @@ time, and the vehicle's row is at least as large.
 - **New arrays.** `mods` (P5.A7), each mod a ranked row followed by an `entries` array of its members, and
   `recommendations` (P5.B5).
 - **Environment.** `environment` gains `eventTiming` (P5.A3) and P5.B3's keys. `hooksApplied` becomes `hooksFired`, and
-  `hooksInstalled` is added (P5.D1).
+  `hooksInstalled` and `hooksFailed` are added (P5.D1).
 
 The README gains a schema 5 paragraph. It says that a schema 4 reader which derived swap from the other
 fields must now subtract tasks and cap, or read `swapUs`.
@@ -854,15 +854,27 @@ The README says so, but §4.5's "hook did not apply" state cannot be told from "
   configs, records two facts per hook: that its target class has loaded, and whether the hook's injection
   point is present in it.
 - **Why it checks the target, not the handler.** MixinExtras applies `@WrapOperation` and `@WrapMethod`
-  in a later pass than `postApply`. At `postApply` no call to their handlers exists yet, so searching for
-  one would report every such hook as not installed. Instead the plugin checks two things: that the
-  hook's target method exists in the class and, for an `INVOKE` injection point, that the target
-  instruction is in it. A plain `@Inject` leaves its target instruction in place, so the same check serves
-  it.
+  in a later pass than `postApply` (verified in MixinExtras 0.5.0: `@WrapOperation` is a late injection, and
+  `@WrapMethod` only offers a wrapper, which its applicator extension applies after the class's mixins). At
+  `postApply` no call to their handlers exists yet, so searching for one would report every such hook as not
+  installed. Instead the plugin checks two things: that the hook's target method exists in the class and, for
+  an `INVOKE` injection point, that the target instruction is in it. A plain `@Inject` leaves its target
+  instruction in place, so the same check serves it.
 - **Installed** means that check passed.
-- **Two lists.** The environment carries `hooksInstalled` and `hooksFired`; `hooksFired` is the old list,
-  renamed.
-- **Empty states.** They use the two lists to tell three cases apart:
+- **Three lists.** The environment carries `hooksInstalled`, `hooksFired` (the old list, renamed) and
+  `hooksFailed`, the hooks with an injector whose target was missing (plan 5d, deviation 1). Without the
+  third, "did not apply" could not be told from "never loaded". A failed injector outweighs a firing: a hook
+  in both lists applied only in part.
+- **Mapping.** `HookInstalls.HOOKS` maps each injector, by mixin and handler, to its hook; the four frame and
+  tick boundaries, which every session needs, are in `HookInstalls.BOUNDARIES` instead and are not checked.
+  `HookInstallsTest` reads every mixin's class file and fails for an injector in neither table, and for an
+  entry that names no injector.
+- **Limit.** A third-party mixin that Mixin rejects as a whole, for a shadow or accessor that no longer
+  matches, never reaches `postApply`. Its hooks read as never loaded, and Sodium's empty tables then point at
+  the game log. A check that throws is logged too; it never fails the class it ran on, and it leaves its hooks
+  unrecorded.
+- **Empty states.** The three lists tell three cases apart, all named by Sodium's empty tables and only the
+  first by the ranked and particle tables (P5.D2):
   1. **the hook did not apply:** its target loaded, and the check failed;
   2. **the code never ran:** its target class never loaded;
   3. **nothing happened:** it is installed, and no data arrived.
@@ -877,6 +889,13 @@ The README says so, but §4.5's "hook did not apply" state cannot be told from "
 - **A Block Entities tab that holds only Flywheel's heading** gets the same sentence under it.
 - **A Flywheel table with no rows** says "Flywheel sampled N times and found no visuals alive" instead of
   printing a header and dashes.
+- **Sodium's tables** tell four cases apart: "(no data: Sodium is not installed)", "(no data: Sodium's mesh
+  hook did not apply)", "(no data: Sodium's mesh hook never loaded; the game log says why)", and "(no data:
+  no blocks were meshed)" or "(no data: no sections were rebuilt)" (plan 5d).
+- **Particles** keep "(no particles were rendered)", or say "(hook not installed)".
+- **Wording.** The Flywheel sentence is "(Flywheel sampled 3 times and found no visuals alive)", or "sampled
+  once". It is said only when the samples found nothing alive; visuals counted but not by class show their
+  totals alone.
 
 ## P5.D3 Blocks and Sections cells are written once
 
@@ -888,19 +907,26 @@ class shaped like `RankedTable`. The only difference between the two surfaces st
 
 - **Particle classes** print simple names by the rule Flywheel's names already follow
   (`FlywheelStats.displayNames`), moved to a shared `core` helper. On a collision a class gets its last
-  package segment, and the full name if that still collides. The JSON keeps full names.
+  package segment, and the full name if that still collides. The JSON keeps full names. The short names are
+  for the particle tables: a hitch's contributor lines and the recommendations keep each key's own label, as
+  for every other kind of key (plan 5d, deviation 4).
+  The particle rows are sorted again under their short names, so an exact tie reads A to Z by the name shown,
+  in the report as on the screen.
 - **The text report drops `shadow`** from a ranked table when no row in it has shadow time. The screen and
   the JSON keep it.
 
 ## P5.D5 Natural, case-insensitive name sort
 
 Name columns compare case-insensitively. Digit runs, with a leading minus sign, compare as numbers, so
-section labels sort `-10`, `-2`, `-1` in ascending order rather than as text. The tie-break is unchanged,
-and the report, which never sorts by name, is unaffected.
+section labels sort `-10`, `-2`, `-1` in ascending order rather than as text. A minus sign is a sign only at
+the start of a name or after a space, so `mod-2` still comes before `mod-10`, and `-0` sorts with the
+negatives, which keeps the order transitive (plan 5d). The tie-break is unchanged, and the report, which never
+sorts by name, is unaffected.
 
 ## P5.D6 The screen remembers its view
 
-The tab, each tab's sort and the open groups live in `ProfilerController`, keyed to the current result, so
+The tab, each tab's sort, the open groups, the selected row and the scroll position live in a `ResultsView`
+that `ProfilerController` keeps for the current result (plan 5d, deviation 3), so
 Highlight and Teleport no longer cost the reader their place. A new result clears them and opens on Advice
 (P5.B5).
 
@@ -914,14 +940,21 @@ Highlight and Teleport no longer cost the reader their place. A new result clear
 
 ## P5.D8 Labels drawn managed
 
-The overlay's labels are drawn inside `GuiGraphics.drawManaged`, so 75 labels batch instead of costing
-150 draws a frame. Check the draw order of overlapping labels when doing it.
+The overlay's labels are drawn in two batches, every background and then every text, instead of costing 150
+draws a frame for 75 labels. `drawManaged` alone would not do it: the GUI's fill and text render types share
+one buffer, and each switch between them ends a batch. Each label is drawn at its own depth, so where two
+overlap the later one hides the earlier one's text instead of dimming it through its translucent background
+(plan 5d, deviation 2).
 
 ## P5.D9 `render us/f` fits its column
 
 At GUI scale 3 on a 2560 px window the header is 63 px of text in a 60 px column, and truncates to
-`render us/`. The screen widens that column until the header fits. The header text stays the same as the
-report's.
+`render us/`. The screen widens a number column until its header fits, with room for the sort arrow in every
+sortable column, sorted or not, so the columns do not move when the sort changes; a header may reach 3 px
+left, as a number may. The pixels come from the name column, which gives at most a quarter of its width, to
+the smallest shortfalls first. A header they do not cover still truncates; at the Auto GUI scale on 1080p and
+1440p screens, some of the ranked tabs' headers do (plan 5d, deviation 5). The header text stays the same as
+the report's.
 
 **Acceptance for group D.** Unit tests in `core` for D3, D4 and D5. D1's target check is tested against
 small ASM class nodes. The rest is covered by the in-pack checks in P5.2.

@@ -20,14 +20,18 @@ time**, and what caused each hitch.
    and the command is what changes it after that.
 4. On the results screen, click a column header to sort by it; click it again to reverse. Each list opens in
    the same order as the text report, the active column carries `v` (descending) or `^` (ascending), and a
-   name column sorts A to Z on its first click. Frames and Hitches have a fixed order. A number too wide for
-   its column is rounded to a whole number, and shows as `###` only if it still does not fit; widen the window
-   or lower the GUI scale to read it. **Highlight** draws a wireframe box around the selected block, or around
-   the whole 16-block section for a Sections row, for ten seconds and through walls. **Teleport** from a
-   Sections row keeps your height, raised until you fit in that column if the game has it loaded, so a
-   loaded hill does not swallow you; a column it has not loaded keeps your height as it is.
-   Highlight and Teleport are greyed out once you leave the world or dimension the session was taken in, and
-   hovering over them says so.
+   name column sorts A to Z on its first click, ignoring case and reading numbers as numbers, so section -10
+   comes before section -2. Advice, Frames and Hitches have a fixed order. A header too wide for its column
+   widens it a little, at the name column's expense, and is cut short if that is not enough. A number too wide
+   for its column is rounded to a whole number, and shows as `###` only if it still does not fit; widen the
+   window or lower the GUI scale to read either. **Highlight** draws a wireframe box around the selected
+   block, or around the whole 16-block section for a Sections row, for ten seconds and through walls, in that
+   row's dimension only. **Teleport** from a Sections row keeps your height, raised until you fit in that
+   column if the game has it loaded, so a loaded hill does not swallow you; a column it has not loaded keeps
+   your height as it is. Highlight and Teleport are greyed out while the selected row is in another dimension,
+   and for good once you log out of the world the session was taken in; hovering over them says which. They
+   close the screen, but reopening it with `/renderable results` comes back to the same tab, sort, open
+   groups, selection and scroll position, until the next session finishes.
 5. The **Mods** tab ranks mods by the time their event handlers, HUD layers and packets took; click a mod
    to see its event types, layers and packets.
 
@@ -66,10 +70,11 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
 - **Block entities** and **entities** are ranked by microseconds per frame; expand a type to see
   each position. A riding entity's own row carries its tick time, which its vehicle's row also counts.
   The **shadow** column is the share of a renderer's time spent in Iris's shadow
-  pass, which draws everything a second time. Shares can add up to more than 100% because a
+  pass, which draws everything a second time; the text report leaves the column out of a table in which no row
+  has any, as when no shader pack is on. Shares can add up to more than 100% because a
   renderer's time also counts towards everything it is nested in.
-- **Particles** are ranked by class. **avg live** is the average number of that class rendered
-  per frame; particles culled before rendering are not counted.
+- **Particles** are ranked by class, named as the Flywheel classes are (see **Flywheel** below). **avg live**
+  is the average number of that class rendered per frame; particles culled before rendering are not counted.
 - **Mods** ranks each mod by the time its event handlers, its HUD layers and the packets addressed to it
   took, in microseconds per frame; expand a mod to see each event type, layer and packet type. Counting is
   inclusive: a handler's time includes whatever it calls, so a handler that draws an entity counts that
@@ -86,8 +91,14 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   simple class names on screen and in the text report, while the JSON keeps the fully-qualified names; two
   classes with the same simple name are both prefixed with their last package segment, and shown in full
   if that still leaves two alike.
-- **Hooks applied** lists the hooks that have fired at least once since the game started, not
-  only during this session.
+- **Hooks** are listed three ways in the environment. **Installed** hooks are in place: each class they hook
+  has loaded and still has the method and the call the hook needs. **Fired** hooks have run while a session
+  was sampling, in any session since the game started, not only this one. A hook that **did not apply** found
+  its target changed, usually by a mod update; a table it leaves empty says so. A hook can be both fired and
+  not applied when only part of it applied, such as Sodium's mesh hook when one of its three injectors misses
+  its target. A hook in none of the lists hooks code that has not loaded in this client run, belongs to a hook
+  class Mixin rejected as a whole, or failed its check with an error; the game log records the last two.
+  `IRIS_SHADOW` and `EVENTS` are not mixins, so they only ever appear as fired.
 - **Renderable's own in-frame work** is measured, not estimated: its HUD line, the once-a-second Flywheel
   sample and the once-a-second event-list check, which starts timing event handlers registered during the
   session. The HUD line sits inside **hud** and the other two inside **other render**. The in-world overlay
@@ -152,7 +163,8 @@ plus `tickCalls` is its total. A mod has no bucket to say which side it ran on, 
 included.
 `swapUs` no longer includes tasks or the frame cap, and tick and render now include every mod's handlers of
 the client-tick and frame events, so a reader that derived swap from the other fields must also subtract
-`tasksUs` and `capUs`, or read `swapUs`.
+`tasksUs` and `capUs`, or read `swapUs`. `environment.hooksApplied` is renamed `hooksFired`, and
+`hooksInstalled` and `hooksFailed` join it.
 
 Schema 4 added `gcFrames` to every ranked row, `gc` to every entry of `frames[].top`,
 `session.vertexCalls` and `session.selfMs`. `peakFrameUs` keeps its name but is now the largest **clean**

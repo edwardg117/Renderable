@@ -51,7 +51,7 @@ public enum Tab {
      * A tab's columns and the one it opens sorted by. {@link #layout(int)} turns weights into pixel offsets, and
      * {@link #layout(int, ToIntFunction, int)} then makes room for the headers.
      * Kept as a nested class so enum constants can reference the constants without a forward-reference error.
-     * Frames and Hitches have no sortable column, so their {@code defaultSortColumn} of 0 means nothing, and
+     * Advice, Frames and Hitches have no sortable column, so their {@code defaultSortColumn} of 0 means nothing, and
      * the screen only draws a sort arrow on a sortable column.
      */
     public record Columns(List<Column> all, int defaultSortColumn) {
@@ -160,7 +160,8 @@ public enum Tab {
 
         /**
          * {@link #layout(int)}, with each right-aligned column whose header does not fit widened until it does,
-         * with room for the sort arrow when the column sorts (spec addendum §P5.D9). A header may reach
+         * with room for the sort arrow on every sortable column, sorted or not, so the columns do not move when the
+         * sort changes (spec addendum §P5.D9). A header may reach
          * {@code PADDING - 1} px left of its column, as a number may. The pixels come from the first column, the
          * name, which keeps at least three quarters of its width. The smallest shortfalls go first, so on a narrow
          * screen as many headers as possible fit whole and the rest truncate as before.

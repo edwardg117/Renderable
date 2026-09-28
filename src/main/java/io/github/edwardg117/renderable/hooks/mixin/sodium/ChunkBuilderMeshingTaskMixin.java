@@ -51,7 +51,7 @@ public abstract class ChunkBuilderMeshingTaskMixin {
      * {@code instanceof} degrades to null instead, and the caller skips the timing when it does.
      *
      * <p>Spec §P4.B5: with the accessor skipped, {@code renderable$timeBlock}/{@code renderable$timeFluid}
-     * still apply and still mark {@code SODIUM_MESH} as an applied hook, so the report cannot tell "no
+     * still apply and still mark {@code SODIUM_MESH} as fired, so the report cannot tell "no
      * sections were rebuilt" apart from "sections were rebuilt but the timing was dropped here" — the two read
      * identically in the Sections table. The log line is the only place that distinction can still be made.
      */
