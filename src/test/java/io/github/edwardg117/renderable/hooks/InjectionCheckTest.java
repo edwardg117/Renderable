@@ -2,6 +2,7 @@ package io.github.edwardg117.renderable.hooks;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -16,6 +17,7 @@ class InjectionCheckTest {
     static final String PARTICLE_ENGINE_MIXIN = "io.github.edwardg117.renderable.hooks.mixin.ParticleEngineMixin";
     static final String ACCELERATED_MIXIN =
             "io.github.edwardg117.renderable.hooks.mixin.acceleratedrendering.AcceleratedBufferBuilderMixin";
+    static final String GUI_LAYER_MANAGER_MIXIN = "io.github.edwardg117.renderable.hooks.mixin.GuiLayerManagerMixin";
     static final String ENGINE = "net/minecraft/client/particle/ParticleEngine";
     static final String PARTICLE = "net/minecraft/client/particle/Particle";
     /** NeoForge's ParticleEngine.render, with the frustum and predicate it adds. */
@@ -89,5 +91,30 @@ class InjectionCheckTest {
         assertTrue(InjectionCheck.present(head, target(builder, method("addVertex", "(FFFIFFIIFFF)V"))));
         assertFalse(InjectionCheck.present(head,
                 target(builder, method("addVertex", "(FFF)Lcom/mojang/blaze3d/vertex/VertexConsumer;"))));
+    }
+
+    @Test
+    void anInjectorThatMixinExtrasSugarHasWrappedIsStillRead() throws IOException {
+        // The mixin as MixinExtras' preApply leaves a handler with a @Local parameter by the time the plugin's
+        // postApply sees it: its injector annotation moved into @SugarWrapper(original = ...). The descriptor is
+        // spelled out, not taken from InjectionCheck, so that a wrong one there fails here.
+        ClassNode plain = HookInstallsTest.classNode(GUI_LAYER_MANAGER_MIXIN);
+        ClassNode wrapped = HookInstallsTest.classNode(GUI_LAYER_MANAGER_MIXIN);
+        int wraps = 0;
+        for (MethodNode m : wrapped.methods) {
+            if (m.visibleAnnotations == null) continue;
+            for (int k = 0; k < m.visibleAnnotations.size(); k++) {
+                AnnotationNode a = m.visibleAnnotations.get(k);
+                if (!InjectionCheck.INJECTORS.contains(a.desc)) continue;
+                AnnotationNode wrapper = new AnnotationNode("Lcom/llamalad7/mixinextras/sugar/impl/SugarWrapper;");
+                wrapper.visit("original", a);
+                wrapper.visit("signature", "");
+                wrapper.visit("sugars", List.of());
+                m.visibleAnnotations.set(k, wrapper);
+                wraps++;
+            }
+        }
+        assertEquals(1, wraps, "the mixin has one injector");
+        assertEquals(InjectionCheck.injectors(plain), InjectionCheck.injectors(wrapped));
     }
 }

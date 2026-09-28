@@ -30,6 +30,16 @@ final class InjectionCheck {
             "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;",
             "Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;");
 
+    /**
+     * MixinExtras' wrapper around the injector annotation of a handler with a sugar parameter, such as {@code @Local}.
+     * Its {@code preApply} extension moves the injector annotation into this wrapper's {@code original} on the
+     * mixin's cached class node before any mixin applies, and {@code IMixinInfo.getClassNode} copies that node, so
+     * the plugin's {@code postApply} sees the wrapper; the class file, which the tests read, has the plain
+     * annotation. Only a {@code @WrapMethod} keeps its annotation, which gains a {@code sugars} value that
+     * {@link #injectors} does not read.
+     */
+    private static final String SUGAR_WRAPPER = "Lcom/llamalad7/mixinextras/sugar/impl/SugarWrapper;";
+
     private InjectionCheck() {
     }
 
@@ -48,7 +58,8 @@ final class InjectionCheck {
     static List<Injector> injectors(ClassNode mixin) {
         List<Injector> out = new ArrayList<>();
         for (MethodNode m : mixin.methods) {
-            for (AnnotationNode a : annotations(m)) {
+            for (AnnotationNode found : annotations(m)) {
+                AnnotationNode a = unwrapSugar(found);
                 if (!INJECTORS.contains(a.desc)) continue;
                 List<String> methods = new ArrayList<>();
                 List<String> calls = new ArrayList<>();
@@ -106,6 +117,17 @@ final class InjectionCheck {
             if ("target".equals(at.values.get(i))) target = (String) at.values.get(i + 1);
         }
         return "INVOKE".equals(value) ? target : null;
+    }
+
+    /** The injector annotation itself: a sugar wrapper's {@code original}, or the annotation as it is. */
+    private static AnnotationNode unwrapSugar(AnnotationNode a) {
+        if (!SUGAR_WRAPPER.equals(a.desc) || a.values == null) return a;
+        for (int i = 0; i + 1 < a.values.size(); i += 2) {
+            if ("original".equals(a.values.get(i)) && a.values.get(i + 1) instanceof AnnotationNode original) {
+                return original;
+            }
+        }
+        return a;
     }
 
     private static List<AnnotationNode> annotations(MethodNode m) {

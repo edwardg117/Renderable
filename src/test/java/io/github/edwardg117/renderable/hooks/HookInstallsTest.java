@@ -69,6 +69,11 @@ class HookInstallsTest {
                     boolean notAnInjector = a.desc.endsWith("/Group;") || a.desc.endsWith("/Surrogate;");
                     assertTrue(!injectorPackage || notAnInjector || InjectionCheck.INJECTORS.contains(a.desc),
                             simple + "." + m.name + " uses " + a.desc + ", which InjectionCheck does not read: add it there");
+                    // MixinExtras moves an @Expression handler's injector annotation into @ExpressionInjectorWrapper
+                    // before postApply, as it moves a sugar handler's into @SugarWrapper, and InjectionCheck unwraps
+                    // only the latter: this class file would pass while a real client read no injector.
+                    assertFalse(a.desc.startsWith("Lcom/llamalad7/mixinextras/expression/"), simple + "." + m.name
+                            + " uses " + a.desc + ": make InjectionCheck unwrap @ExpressionInjectorWrapper first");
                 }
             }
             for (InjectionCheck.Injector in : InjectionCheck.injectors(node)) {

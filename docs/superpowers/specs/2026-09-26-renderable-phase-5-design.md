@@ -860,6 +860,11 @@ The README says so, but §4.5's "hook did not apply" state cannot be told from "
   installed. Instead the plugin checks two things: that the hook's target method exists in the class and, for
   an `INVOKE` injection point, that the target instruction is in it. A plain `@Inject` leaves its target
   instruction in place, so the same check serves it.
+- **Sugar.** Before any mixin applies, MixinExtras moves the injector annotation of a handler with a sugar
+  parameter, such as `@Local`, into the `original` of a `@SugarWrapper` on the mixin's cached class node, which
+  `IMixinInfo.getClassNode` copies for `postApply`. Only a `@WrapMethod` keeps its annotation. The check reads
+  the wrapper's `original`. The class file, which the unit tests read, has the plain annotation, so the wrapper
+  showed only in a real client (plan 5d Task 9).
 - **Installed** means that check passed.
 - **Three lists.** The environment carries `hooksInstalled`, `hooksFired` (the old list, renamed) and
   `hooksFailed`, the hooks with an injector whose target was missing (plan 5d, deviation 1). Without the
