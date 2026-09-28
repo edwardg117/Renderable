@@ -4,6 +4,25 @@ A client-side render profiler for NeoForge 1.21.1. Observable tells you which bl
 server tick time; Renderable tells you which block entities, entities and effects cost **frame
 time**, and what caused each hitch.
 
+## For players
+
+Renderable finds what is costing your frame rate: which machines, entities, particles and mods take the time,
+and what caused each stutter. It changes nothing in the game.
+
+1. Go where the game feels slow, press **F6**, and keep playing normally for 30 seconds. The key can be changed
+   in Options, Controls, Key Binds, under Renderable.
+2. When it finishes, a results screen opens on the **Advice** tab: what to change, drawn from what was measured.
+   Suggestions under **For you** are yours to try; those under **For the pack author** are for whoever maintains
+   the pack.
+3. To ask for help, send the pack author the text report: **Copy report** puts it on the clipboard, and
+   **Open folder** shows the files in `<game dir>/renderable/`. Send it privately: it holds your position in
+   the world. Other players show in it only as numbers, and you as "you"; a mob or statue keeps its name tag.
+4. Coloured labels over machines show what the last session measured. `/renderable overlay off` hides them
+   until you run `/renderable overlay on` or restart the game. To keep them off, set `overlayEnabled` to false
+   in `config/renderable-client.toml`.
+
+When it is not sampling, each of its hooks checks one flag and returns.
+
 ## Using it
 
 1. Press **F6** (or run `/renderable start [seconds]`). A line at the top of the screen counts the
@@ -133,8 +152,9 @@ Create machines rendered through Flywheel instancing never reach the vanilla ren
 cannot be timed one by one; the Flywheel tab shows the instancing bucket and visual counts by
 class instead. Mesh timing needs Sodium; without it the Blocks and Sections tabs say so, and
 Sodium's translucency re-sorts are not timed. Each hook is a single branch when the mod is not
-sampling (Sodium's mesh hooks pass an argument array per block model on the worker threads, which
-the JIT removes in practice); while sampling, the report states its own overhead, which covers both
+sampling (a hook that wraps a call also hands that call its arguments in an array, for the JIT's escape
+analysis to remove; the idle-cost check in `docs/acceptance/phase-5-idle.md` measures what is left); while
+sampling, the report states its own overhead, which covers both
 timed calls and vertex counting, and separately the measured cost of its own HUD line, Flywheel sample and
 event-list check. The HUD line lands in the hud bucket; the once-a-second Flywheel sample and event-list
 check land in that frame's other render time. Timing is CPU-side only;

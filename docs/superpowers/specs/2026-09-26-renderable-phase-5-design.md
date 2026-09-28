@@ -747,18 +747,30 @@ kills every entity, so the per-entity hooks, which are the busiest, never run in
 
 **Design.**
 
-- **When.** After 5a, 5b and 5d have merged, on the phase 5 jar. The user runs it, since it needs the game
-  in the foreground. The results go in `docs/acceptance/phase-5-idle.md`.
+- **When.** After 5a, 5b and 5d, on 5c's branch, before anything merges to `main`. The user runs it, since it
+  needs the game in the foreground. The results go in `docs/acceptance/phase-5-idle.md`.
 - **Scene.** P4.A4's, with one change so that the entity render and tick hooks run in every frame: after
   `/kill @e[type=!player]`, twenty villagers are summoned with `NoAI` in view of the fixed camera. Their
   positions are written into the protocol. They stand still, so the scene stays static.
-- **Runs and numbers.** P4.A4's four runs and acceptance numbers, unchanged.
+- **Runs and numbers.** P4.A4's four runs and acceptance numbers, with what counts as Renderable's and the
+  control changed as below.
+- **Where.** In the dev client, as P4.A4 planned, with the pack's rendering mods.
+  - `-PwithoutRenderable` gives the jar-absent runs, and `-PclientJvmArgs` passes the recording options to the
+    game alone.
+  - The scene is a datapack function in `docs/acceptance/phase-5-idle-scene/`.
+  - `docs/acceptance/phase-5-idle-numbers.py` computes the numbers (plan 5c, deviation 4).
+- **What counts as Renderable's.** A sample counts when its top frame is Renderable's code, not when that code
+  is anywhere on the stack, since Mixin merges handlers into the classes they hook and a wrapper is on the
+  stack of everything it wraps.
+- **The control.** It reads the allocation in Renderable's own frames, which the client's total allocation
+  would hide. A third check requires that, with escape analysis on, the hooks allocate at most a tenth of that
+  (plan 5c, deviation 5).
 - **Pass.** The README states the measured result and its scene.
 - **Fail.** The allocation and execution samples name the hook responsible, and that is a defect to fix
   before rollout. Event timing cannot be the cause, since none of it is installed outside a session
   (P5.A3).
 
-**Acceptance check (C1).** `docs/acceptance/phase-5-idle.md` exists, with P4.A4's acceptance numbers and a
+**Acceptance check (C1).** `docs/acceptance/phase-5-idle.md` exists, with the acceptance numbers above and a
 verdict.
 
 ## P5.C2 Overhead calibration covers the hook side
@@ -781,11 +793,18 @@ milliseconds the report does not claim. Phase 5 adds proxy, layer and packet cal
 - **Fired-hook flags.** `Probe`'s `SEEN[]` flags and `seenVertices` are saved before calibration and
   restored after, so calibration does not mark hooks as fired (P5.D1).
 - **Javadocs.** The boundary paragraphs in `Calibration`'s javadocs go, and the log records the three
-  constants at startup.
+  constants when calibration runs, before the first session.
+- **Warm figures.** Each constant is the fastest of five rounds of 10,000 calls: one round mostly times the
+  interpreter, not compiled code (plan 5c, deviation 6).
+- **Beside them in the log.** Calibration also times `Session` alone for a pair and a vertex, phase 4's way,
+  and logs those beside the three constants, so C2's check reads off one log line (plan 5c, deviation 1). The
+  timed pair is driven through `Probe.beginEntity` on the local player, the busiest real hook (deviation 2).
 
-**Acceptance check (C2).** The logged constants for a timed pair and a vertex call exceed phase 4's
-`Session`-only figures by a few nanoseconds each. That is the cost of a guard: a volatile read, a thread
-comparison and a branch.
+**Acceptance check (C2).** The calibration line logs the timed pair and the vertex call beside `Session` alone.
+The vertex costs at least what `Session` alone does, and at most a few nanoseconds more: its guard is a
+volatile read, a thread comparison and a branch. The timed pair comes within a few nanoseconds of `Session`
+alone, either way: what it adds, the guard, `Probe`'s checks, the entity's accumulator lookup and the shadow
+check, is lost in the jitter of its two clock reads (plan 5c, deviations 1 and 2).
 
 ## P5.C3 Privacy: player names
 
@@ -804,7 +823,7 @@ player online shows no names in the files.
 
 **Observed.** The pack instance's `options.txt` binds both `key_key.lighty.enable` and
 `key_key.renderable.toggle` to `key.keyboard.f7`. F2, F5, F7, F8, F9 and F11 are bound in the pack, and F1
-and F3 are fixed by vanilla. F4, F6, F10 and F12 are free.
+and F3 are fixed by vanilla, as is F4, which toggles a spectator's view effect. F6, F10 and F12 are free.
 
 **Design.** Change the default to **F6**. A saved binding is kept by the game, so only new installs get
 F6. Nobody has the mod yet, so nobody is affected. The README says F6 and that it can be changed in

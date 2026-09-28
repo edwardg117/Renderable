@@ -112,7 +112,7 @@ accumulators.
 | --- | --- | --- |
 | `BlockEntityKey` | block entity type id, dimension, packed block position | render (phase 1), client tick (phase 2) |
 | `BlockEntityTypeKey` | block entity type id | roll-up of the above |
-| `EntityKey` | entity type id, entity id, display name for report | render (phase 1), client tick (phase 2) |
+| `EntityKey` | entity type id, entity id; for the report, a non-player entity's custom name, "you" for the local player, and no name for another player (phase 5) | render (phase 1), client tick (phase 2) |
 | `EntityTypeKey` | entity type id | roll-up |
 | `ParticleKey` | particle class name | render and tick (phase 2) |
 | `BlockKey` | block id | Sodium mesh build (phase 3) |
@@ -154,18 +154,20 @@ accumulators (`BlockKey`, `SectionKey`) are written from Sodium worker threads a
 
 ### 3.5 Overhead policy
 
-- Every hook first reads one `static boolean ACTIVE`. When false it returns. That is the entire
-  idle cost.
+- Every hook first reads one `static volatile boolean ACTIVE`. When it is false, the hook returns, and a
+  hook that wraps a call makes it at once, handing it the arguments in an array for the JIT's escape analysis
+  to remove. §9 check 5 measures what is left.
 - Event timing (§4) has no idle cost at all: its proxies exist only while a session runs.
 - No allocation on hot paths while sampling: accumulators are created on first sight of a key
   and reused; the touched-list is a pre-sized array list of references.
 - Per-particle timing costs two clock reads per particle. With 10,000 particles that is roughly
-  0.5 ms per frame while sampling. The report states the session's own estimated overhead:
-  `timedCalls * calibratedCallNanos + vertexCalls * calibratedVertexNanos`. Each constant is
-  calibrated at session start — `calibratedCallNanos` by timing a loop of 10,000 empty begin/end
-  pairs, `calibratedVertexNanos` by timing a loop of 10,000 vertex-counting calls the same way —
-  so both what a timed call costs and what a vertex-counting call costs are covered. The reader
-  can discount it.
+  0.5 ms per frame while sampling. The report states the session's own estimated overhead, each kind of
+  call at its own measured cost: timed pairs that own a bucket, attribution-only pairs (event handlers, HUD
+  layers, packets) and vertex-counting calls. The three constants are calibrated once, before the first
+  session, against a scratch session (phase 5, spec addendum §P5.C2). Each is the fastest of five rounds of
+  10,000 whole calls, guards included: timed pairs and vertices through the same static `Probe` methods the
+  mixins call, and attribution-only pairs through an event-timing proxy. The log records them beside what
+  `Session` alone costs. The reader can discount the estimate.
 - `BufferBuilder.beginVertex` (and Sodium's `push`, and Accelerated Rendering's builder) get one branch on
   the idle flag plus one increment while sampling.
 - The mod's own in-frame work — the sampling HUD line, the once-a-second Flywheel visual sample and the
@@ -532,6 +534,12 @@ have no Minecraft imports; `EnvironmentCollector` is the only Minecraft-aware cl
 - `Ranking`: type roll-ups equal the sum of their positions; sort stability.
 - `TextReportWriter`: fixed-width alignment, top-N truncation, and each table's empty-state sentence.
 - `JsonReportWriter`: schema field presence, key string round trip through a parser.
+- Phase 5: event timing's listener swap against a real `net.neoforged:bus`; each recommendation rule against
+  `Facts` built in the test, the facts a session yields, and the ranking; the four collectors' bean names and
+  the JVM flags the environment keeps; the mixin plugin's target check against small ASM class nodes and our
+  own mixins' class files; natural name order, short class names, the mesh table cells, the column layout and
+  the Advice tab's rows and wrapping; the calibration loop with a fake clock; and a player's key never
+  carrying another player's name.
 
 **In-game (dev client with this pack's pinned Sodium, Iris, Create, Enchantable Machinery):**
 
@@ -543,18 +551,18 @@ have no Minecraft imports; `EnvironmentCollector` is the only Minecraft-aware cl
    renderers rank first.
 4. Flying into unloaded terrain produces hitches attributed mostly to chunk upload, with the
    Sections tab showing the newly built sections (phase 3).
-5. Idle cost: measured with Java Flight Recorder in a static superflat scene, four runs of 120 s (jar
-   absent and present, each with and without `-XX:-DoEscapeAnalysis`). With escape analysis on, allocation
-   and mean CPU load with the jar must be within 2% of without it, and fewer than 0.1% of execution samples
-   may contain a `io.github.edwardg117.renderable` frame. With escape analysis off, the jar's run must
-   allocate more than 2% above the jar-free run, which is the control proving the measurement is sensitive
-   enough to support the first claim.
+5. Idle cost: measured with Java Flight Recorder in a static superflat scene with twenty `NoAI` villagers in
+   view, so the entity hooks, the busiest, run every frame, and with the pack's rendering mods (phase 5, spec
+   addendum §P5.C1). Four runs of 120 s: Renderable absent and loaded, each with and without
+   `-XX:-DoEscapeAnalysis`.
+   - With escape analysis on, allocation and mean CPU load with Renderable must be within 2% of without it.
+   - Fewer than 0.1% of execution samples may have Renderable's code on top: a class in its package, or a mixin
+     handler, which Mixin merges into the hooked class under a name that contains `renderable$`.
+   - With escape analysis off, the handlers must allocate, which is the control proving the measurement sees
+     them. With it on, they must allocate at most a tenth of that.
 
-   **Still not run, as of `v0.4.0`.** This check has been outstanding since phase 1, which recorded it as
-   NOT VERIFIED because frame time at the pack's base fluctuates more than the effect being looked for.
-   Phase 4a replaced the criterion with the protocol above but did not execute it, so the README's
-   "costs nothing when it is not sampling" remains a design claim rather than a measured one. When it is
-   run, the results belong in `docs/acceptance/phase-4-idle.md`.
+   The protocol, the scene and the numbers script are in `docs/acceptance/phase-5-idle.md`, whose Results
+   section records the runs.
 
 ## 10. Repository, build, release
 
