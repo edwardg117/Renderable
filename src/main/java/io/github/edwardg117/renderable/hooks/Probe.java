@@ -150,6 +150,25 @@ public final class Probe {
         SEEN[hook.ordinal()] = true;
     }
 
+    /** The fired-hook flags at one moment (spec addendum §P5.C2). */
+    record Fired(boolean[] seen, boolean seenVertices, boolean seenAcceleratedVertices) {
+    }
+
+    /**
+     * A copy of the fired-hook flags, which calibration puts back when it is done, so driving calls through
+     * {@code Probe} marks no hook as fired. Render thread only, like every write to them.
+     */
+    static Fired fired() {
+        return new Fired(SEEN.clone(), seenVertices, seenAcceleratedVertices);
+    }
+
+    /** Puts the fired-hook flags back as {@link #fired()} found them. Render thread only. */
+    static void restore(Fired f) {
+        System.arraycopy(f.seen(), 0, SEEN, 0, SEEN.length);
+        seenVertices = f.seenVertices();
+        seenAcceleratedVertices = f.seenAcceleratedVertices();
+    }
+
     public static void beginBlockEntity(BlockEntity be) {
         Session s = session;
         if (s == null) return;

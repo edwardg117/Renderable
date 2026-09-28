@@ -317,4 +317,14 @@ class ListenerSwapTest {
         assertNull(counted.ownerOf(stranger));
         assertEquals(3, reads[0], "a new round allows one more rebuild");
     }
+
+    @Test
+    void calibrationTimesEachProxyCallAsOneAttributionOnlyPair() {
+        session.onRenderPre(0, 0);
+        Runnable call = ProxyCalibration.invocation(session);
+        call.run();
+        call.run();
+        assertEquals(2, session.timedCalls(), "timed on the thread that built it, as calibration's is");
+        assertEquals(2, session.attributionCalls(), "the kind of call the attribution-only constant is charged for");
+    }
 }

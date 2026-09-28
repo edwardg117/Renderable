@@ -81,6 +81,8 @@ public final class Session {
     private int depth;
     private long timedCalls;
     private long vertexCalls;
+    /** Of {@link #timedCalls}, the attribution-only pairs, which the estimate charges at their own cost. */
+    private long attributionCalls;
     private long selfNanos;
     private long selfStartNanos = -1;
     private int selfDepth;
@@ -143,6 +145,11 @@ public final class Session {
     /** Number of vertex-counting calls, for the overhead estimate (spec addendum §P4.A5). */
     public long vertexCalls() {
         return vertexCalls;
+    }
+
+    /** Of {@link #timedCalls()}, the attribution-only pairs (spec addendum §P5.C2). */
+    public long attributionCalls() {
+        return attributionCalls;
     }
 
     /**
@@ -272,7 +279,9 @@ public final class Session {
         FrameStats stats = FrameStats.of(frameList);
         long threshold = HitchDetector.threshold(stats.p50Nanos(), config.hitchMedianMultiplier(), config.hitchMinExcessNanos());
         List<FrameRecord> hitches = HitchDetector.detect(frameList, threshold);
-        double overheadMs = (timedCalls * config.calibratedCallNanos()
+        // Spec addendum §P5.C2: each kind of call at its own measured cost.
+        double overheadMs = ((timedCalls - attributionCalls) * config.calibratedCallNanos()
+                + attributionCalls * config.calibratedAttributionNanos()
                 + vertexCalls * config.calibratedVertexNanos()) / 1_000_000.0;
         return new SessionResult(config, wallStartMillis, frameList, accumulators(), stats, threshold, hitches,
                 timedCalls, vertexCalls, selfNanos, overheadMs, unbalancedFrames, flywheelStats(), mesh.snapshot());
@@ -342,6 +351,7 @@ public final class Session {
         stack[depth] = null;
         timedCalls++;
         boolean ownsBucket = bucket != null;
+        if (!ownsBucket) attributionCalls++;
         if (ownsBucket) {
             ordinaryDepth--;
             innermostOrdinary = stackPrevOrdinary[depth];

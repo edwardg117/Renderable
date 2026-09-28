@@ -114,7 +114,10 @@ class SessionTest {
     @Test
     void configRejectsNonPositiveDuration() {
         assertThrows(IllegalArgumentException.class, () -> new SessionConfig(0, 2.0, 0, 5, 0, 0));
-        SessionConfig c = SessionConfig.ofSeconds(30, 2.0, 16, 5, 25, 2);
+        SessionConfig c = SessionConfig.ofSeconds(30, 2.0, 16, 5, 25, 2, 40);
+        assertEquals(40, c.calibratedAttributionNanos());
+        assertEquals(25, new SessionConfig(1, 2.0, 0, 5, 25, 2).calibratedAttributionNanos(),
+                "without its own figure, an attribution-only pair costs what a timed pair does");
         assertEquals(30_000 * MS, c.durationNanos());
         assertEquals(16 * MS, c.hitchMinExcessNanos());
         assertEquals(30.0, c.durationSeconds(), 1e-9);
@@ -926,5 +929,32 @@ class SessionTest {
         assertEquals(2, Ranking.membersOf(r, ProfileKey.Category.MOD, "somemod").size());
         assertEquals(Set.of(ModKey.event("somemod", "a.RenderLevelStageEvent"),
                 ModKey.event("somemod", "a.ClientTickEvent$Post")), r.accumulators().keySet());
+    }
+
+    @Test
+    void theOverheadEstimateChargesEachKindOfCallItsOwnCost() {
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 10, 1, 100), clock, 1_700_000_000_000L);
+        at(0); s.onRenderPre(0, 0);
+        Accumulator a = s.accumulator(press);
+        Accumulator handler = s.accumulator(TestSessions.STAGE_HANDLER);
+        s.begin(a, Bucket.BLOCK_ENTITY);
+        s.vertex();
+        s.vertex();
+        s.vertex();
+        s.end();
+        s.begin(a, Bucket.BLOCK_ENTITY);
+        s.end();
+        s.beginAttribution(handler);
+        s.end();
+        s.onRenderPost();
+        at(16); s.onRenderPre(0, 0);
+        SessionResult r = s.finish();
+
+        // Two timed pairs to one attribution-only pair, so neither swapping the two costs nor counting the
+        // wrong kind as attribution-only gives the same total.
+        assertEquals(3, r.timedCalls(), "every pair is a timed call");
+        assertEquals(1, s.attributionCalls(), "one of them attribution-only");
+        assertEquals(3, r.vertexCalls());
+        assertEquals((2 * 10 + 1 * 100 + 3 * 1) / 1e6, r.overheadEstimateMs(), 1e-12);
     }
 }

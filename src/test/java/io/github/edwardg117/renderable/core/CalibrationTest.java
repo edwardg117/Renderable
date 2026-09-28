@@ -2,36 +2,43 @@ package io.github.edwardg117.renderable.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.function.LongSupplier;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class CalibrationTest {
 
     @Test
-    void fakeClockGivesExactPerPairCost() {
+    void aFakeClockGivesTheExactCostOfEachCall() {
         long[] t = {0};
-        // Each clock read advances 7 ns. begin + end = 2 reads = 14 ns per pair.
-        long perPair = Calibration.measureCallNanos(() -> t[0] += 7);
-        assertEquals(14, perPair);
+        LongSupplier clock = () -> t[0] += 7;
+        // Each call reads the clock twice, 14 ns. The read that ends the loop adds 7 ns over 10,000 calls,
+        // which floors away.
+        assertEquals(14, Calibration.nanosPerCall(clock, () -> {
+            clock.getAsLong();
+            clock.getAsLong();
+        }));
     }
 
     @Test
-    void realClockGivesSaneNumber() {
-        long perPair = Calibration.measureCallNanos(System::nanoTime);
-        assertTrue(perPair >= 0 && perPair < 10_000, "per-pair cost was " + perPair + " ns");
-    }
-
-    @Test
-    void vertexCalibrationIsANonNegativeNumberOfNanoseconds() {
-        long[] clock = {0};
-        // A clock that advances 3 ns per read: each vertex() call reads it zero times, so the loop's
-        // elapsed time is the two reads around it, which divided by the sample count floors to zero.
-        assertEquals(0, Calibration.measureVertexNanos(() -> clock[0] += 3),
-                "no clock reads inside the loop, so the two reads around it floor to zero");
+    void aClockThatGoesBackwardsIsClampedAndACallThatReadsNothingIsFree() {
         long[] backwards = {0};
-        assertEquals(0, Calibration.measureVertexNanos(() -> backwards[0] -= 1_000_000),
-                "a clock that goes backwards is clamped, not reported as negative");
+        assertEquals(0, Calibration.nanosPerCall(() -> backwards[0] -= 1_000_000, () -> {
+        }), "a clock that goes backwards is clamped, not reported as negative");
+        long[] forwards = {0};
+        assertEquals(0, Calibration.nanosPerCall(() -> forwards[0] += 3, () -> {
+        }), "no reads inside the loop, so the two around it floor to zero");
+    }
 
-        long real = Calibration.measureVertexNanos(System::nanoTime);
-        assertTrue(real >= 0 && real < 10_000, "a vertex count is a field increment, not a microsecond: " + real);
+    @Test
+    void theRealClockGivesASaneNumberForARealSessionPair() {
+        Session s = new Session(new SessionConfig(Long.MAX_VALUE, 2.0, 0, 5, 0, 0), System::nanoTime, 0);
+        Accumulator a = s.accumulator(new EntityKey("renderable:calibration", 0, ""));
+        s.onRenderPre(0, 0);
+        long perPair = Calibration.nanosPerCall(System::nanoTime, () -> {
+            s.begin(a, Bucket.ENTITY);
+            s.end();
+        });
+        assertTrue(perPair >= 0 && perPair < 10_000, "per-pair cost was " + perPair + " ns");
     }
 }

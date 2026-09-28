@@ -3,12 +3,12 @@ package io.github.edwardg117.renderable;
 import io.github.edwardg117.renderable.core.Accumulator;
 import io.github.edwardg117.renderable.core.BlockEntityKey;
 import io.github.edwardg117.renderable.core.Bucket;
-import io.github.edwardg117.renderable.core.Calibration;
 import io.github.edwardg117.renderable.core.Environment;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
 import io.github.edwardg117.renderable.core.advice.Advisor;
+import io.github.edwardg117.renderable.hooks.CallCalibration;
 import io.github.edwardg117.renderable.hooks.GcWatcher;
 import io.github.edwardg117.renderable.hooks.Probe;
 import io.github.edwardg117.renderable.hooks.compat.FlywheelCompat;
@@ -46,6 +46,7 @@ public final class ProfilerController implements Probe.Listener {
     private Session session;
     private long calibratedCallNanos = -1;
     private long calibratedVertexNanos = -1;
+    private long calibratedAttributionNanos = -1;
     private int pendingStallMs;
     private long lastVisualSampleSecond = -1;
     /** The dimension the running session started in, so the overlay can scope its labels to it. */
@@ -127,16 +128,33 @@ public final class ProfilerController implements Probe.Listener {
             chat("Renderable: a session is already running. Use /renderable stop to end it early.");
             return;
         }
-        if (calibratedCallNanos < 0) {
-            calibratedCallNanos = Calibration.measureCallNanos(System::nanoTime);
-            calibratedVertexNanos = Calibration.measureVertexNanos(System::nanoTime);
+        // Once, before the first real session (spec addendum §P5.C2). The player is there whenever the level is;
+        // if it ever is not, this session charges nothing and the next one calibrates.
+        if (calibratedCallNanos < 0 && mc.player != null) {
+            try {
+                CallCalibration.Costs c = CallCalibration.measure(mc.player, mc.level.dimension().location().toString());
+                calibratedCallNanos = c.timedPair();
+                calibratedVertexNanos = c.vertex();
+                calibratedAttributionNanos = c.attributionPair();
+                RenderableMod.LOGGER.info("Renderable calibrated its calls: a timed pair {} ns (Session alone {} ns),"
+                                + " a vertex {} ns (Session alone {} ns), an attribution-only pair {} ns",
+                        c.timedPair(), c.sessionPair(), c.vertex(), c.sessionVertex(), c.attributionPair());
+            } catch (RuntimeException | LinkageError e) {
+                // The key and the autostart run this inside a tick listener, where a throw would end the client.
+                // Charge nothing instead, for this session and every later one, rather than fail again on each start.
+                calibratedCallNanos = 0;
+                calibratedVertexNanos = 0;
+                calibratedAttributionNanos = 0;
+                RenderableMod.LOGGER.warn("Renderable could not calibrate its calls; its overhead estimate will read 0", e);
+            }
         }
         SessionConfig config = SessionConfig.ofSeconds(seconds,
                 RenderableConfig.HITCH_MEDIAN_MULTIPLIER.get(),
                 RenderableConfig.HITCH_MIN_EXCESS_MS.get(),
                 RenderableConfig.TOP_CONTRIBUTORS_PER_FRAME.get(),
-                calibratedCallNanos,
-                calibratedVertexNanos);
+                Math.max(0, calibratedCallNanos),
+                Math.max(0, calibratedVertexNanos),
+                Math.max(0, calibratedAttributionNanos));
         lastVisualSampleSecond = -1;
         session = new Session(config, System::nanoTime, System.currentTimeMillis());
         sessionDimension = mc.level.dimension().location().toString();
