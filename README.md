@@ -21,7 +21,8 @@ and what caused each stutter. It changes nothing in the game.
    until you run `/renderable overlay on` or restart the game. To keep them off, set `overlayEnabled` to false
    in `config/renderable-client.toml`.
 
-When it is not sampling, each of its hooks checks one flag and returns.
+It is a diagnostic tool: add it when you want to find what is slowing the game down, and remove it when you
+are done. While it is installed and not sampling, each of its hooks does little more than check one flag.
 
 ## Using it
 
@@ -153,7 +154,8 @@ cannot be timed one by one; the Flywheel tab shows the instancing bucket and vis
 class instead. Mesh timing needs Sodium; without it the Blocks and Sections tabs say so, and
 Sodium's translucency re-sorts are not timed. Each hook is a single branch when the mod is not
 sampling (a hook that wraps a call also hands that call its arguments in an array, for the JIT's escape
-analysis to remove; the idle-cost check in `docs/acceptance/phase-5-idle.md` measures what is left); while
+analysis to remove; that idle cost was not measured, since Renderable is meant to be removed after a
+profile); while
 sampling, the report states its own overhead, which covers both
 timed calls and vertex counting, and separately the measured cost of its own HUD line, Flywheel sample and
 event-list check. The HUD line lands in the hud bucket; the once-a-second Flywheel sample and event-list

@@ -561,8 +561,8 @@ have no Minecraft imports; `EnvironmentCollector` is the only Minecraft-aware cl
    - With escape analysis off, the handlers must allocate, which is the control proving the measurement sees
      them. With it on, they must allocate at most a tenth of that.
 
-   The protocol, the scene and the numbers script are in `docs/acceptance/phase-5-idle.md`, whose Results
-   section records the runs.
+   The protocol, the scene and the numbers script are in `docs/acceptance/phase-5-idle.md`. Not run for 0.5.0:
+   players add Renderable for a profile and remove it afterwards, so the user skipped the runs (2026-09-28).
 
 ## 10. Repository, build, release
 

@@ -773,6 +773,10 @@ kills every entity, so the per-entity hooks, which are the busiest, never run in
 **Acceptance check (C1).** `docs/acceptance/phase-5-idle.md` exists, with the acceptance numbers above and a
 verdict.
 
+**Status.** Not run for 0.5.0. On 2026-09-28 the user skipped the runs: players add Renderable for a profile
+and remove it afterwards, and no cost was noticed while it was installed. The protocol stays for a later
+release.
+
 ## P5.C2 Overhead calibration covers the hook side
 
 **Observed.** P4.3: both calibrated constants measure from inside `Session` and leave out the guard each
@@ -839,7 +843,7 @@ A "For players" section at the top of the README:
 - press F6, play normally for 30 seconds, and read the Advice tab;
 - what to send the pack author, and how (privately, per P5.C3);
 - how to hide the overlay;
-- what it costs when idle, from P5.C1.
+- that it is for profiling: add it, profile, then remove it (P5.C1's idle-cost runs were skipped).
 
 The existing sections stay for readers who want the detail.
 

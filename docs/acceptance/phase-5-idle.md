@@ -6,7 +6,9 @@ effect. Phase 4 wrote this protocol (spec addendum §P4.A4) and did not run it. 
 with `NoAI` in view, so the entity render and tick hooks, the busiest, run in every frame (§P5.C1), and runs
 with the pack's rendering mods, so Sodium's hooks are measured too.
 
-**Status:** protocol written; the runs are in the Results section once the user has done them.
+**Status:** not run. On 2026-09-28 the user chose to skip the runs: players add Renderable for a profile and
+remove it afterwards, and no cost was noticed while it was installed. The protocol, the scene and the numbers
+script stay for a later release that wants the number.
 
 ## Once: the scene
 
@@ -104,4 +106,4 @@ outside a session.
 
 ## Results
 
-Not run yet.
+Not run: skipped on 2026-09-28 (see **Status** above).
