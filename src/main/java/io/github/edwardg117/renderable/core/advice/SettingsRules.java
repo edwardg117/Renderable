@@ -20,6 +20,7 @@ final class SettingsRules {
         shadows(f, out);
         flywheelShaders(f, out);
         chunkRebuilds(f, out);
+        distantHorizons(f, out);
         frameCap(f, out);
         vsync(f, out);
     }
@@ -92,6 +93,24 @@ final class SettingsRules {
         if (farView) actions.add("While travelling, a lower render distance rebuilds fewer sections.");
         out.add(new Recommendation("chunk-rebuilds", stutter ? Kind.STUTTER : Kind.FRAME_RATE, Audience.PLAYER,
                 "Chunk rebuilds", finding, String.join(" ", actions), upload, stutter ? worst : 0));
+    }
+
+    /**
+     * Distant Horizons' LOD drawing (spec addendum §P6.9), the one rule that names a mod. {@code lod} is time
+     * Renderable measures in DH's own render methods, so it is 0 without DH or when that hook did not apply. The
+     * action names Distant Horizons' settings by their captions, the same in 2.4.5-b and 3.3.3; both are on the
+     * first page of its settings.
+     */
+    static void distantHorizons(Facts f, List<Recommendation> out) {
+        double lod = f.bucket(Bucket.LOD);
+        if (lod < Thresholds.LOD_MS || lod < Thresholds.LOD_SHARE * f.frameMs()) return;
+        out.add(new Recommendation("distant-horizons", Kind.FRAME_RATE, Audience.PLAYER,
+                "Distant Horizons' far terrain costs a lot to draw",
+                String.format(Locale.ROOT, "Distant Horizons draws its far terrain in %.1f ms of each %.1f ms frame.",
+                        lod, f.frameMs()),
+                "Lower Quality Preset or LOD Chunk Render Distance Radius in Distant Horizons' settings, which its"
+                        + " button beside FOV in Options opens.",
+                lod, 0));
     }
 
     static void frameCap(Facts f, List<Recommendation> out) {

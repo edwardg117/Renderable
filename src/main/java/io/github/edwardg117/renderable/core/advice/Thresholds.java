@@ -37,6 +37,8 @@ final class Thresholds {
     static final double STALL_MS = 50;
     static final double STALL_SHARE = 0.5;
     static final double MOD_MS = 0.5;
+    static final double LOD_MS = 1.0;
+    static final double LOD_SHARE = 0.10;
 
     private Thresholds() {
     }

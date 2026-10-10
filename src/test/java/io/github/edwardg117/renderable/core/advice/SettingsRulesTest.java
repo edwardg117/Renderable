@@ -229,4 +229,37 @@ class SettingsRulesTest {
         assertTrue(run(new FactsBuilder().frameMs(0).swap(0).env("vsync", "true").build(), SettingsRules::vsync).isEmpty(),
                 "no frames");
     }
+
+    @Test
+    void distantHorizonsFiresAtAMillisecondAndATenthOfTheFrame() {
+        Recommendation a = run(new FactsBuilder().frameMs(10.1).bucket(Bucket.LOD, 3.2).build(),
+                SettingsRules::distantHorizons).get(0);
+        assertEquals("distant-horizons", a.rule());
+        assertEquals(Recommendation.Kind.FRAME_RATE, a.kind());
+        assertEquals(Recommendation.Audience.PLAYER, a.audience());
+        assertEquals("Distant Horizons' far terrain costs a lot to draw", a.title());
+        assertEquals("Distant Horizons draws its far terrain in 3.2 ms of each 10.1 ms frame.", a.finding());
+        assertEquals("Lower Quality Preset or LOD Chunk Render Distance Radius in Distant Horizons' settings, which its"
+                + " button beside FOV in Options opens.", a.action());
+        assertEquals(3.2, a.msPerFrame(), 1e-9);
+        assertEquals("3.2 ms/frame", a.atStake());
+
+        assertEquals("Distant Horizons draws its far terrain in 1.0 ms of each 10.0 ms frame.",
+                run(new FactsBuilder().frameMs(10).bucket(Bucket.LOD, 1.0).build(), SettingsRules::distantHorizons)
+                        .get(0).finding(), "exactly a millisecond, and exactly a tenth of the frame");
+        assertTrue(run(new FactsBuilder().frameMs(9).bucket(Bucket.LOD, 0.99).build(),
+                SettingsRules::distantHorizons).isEmpty(), "just under a millisecond, though 11% of the frame");
+        assertTrue(run(new FactsBuilder().frameMs(20).bucket(Bucket.LOD, 1.99).build(),
+                SettingsRules::distantHorizons).isEmpty(), "just under a tenth of the frame");
+    }
+
+    @Test
+    void distantHorizonsIsQuietWithoutItsTime() {
+        // Review focus 1. Without Distant Horizons, or with its render hook under "did not apply", lod reads 0 however
+        // much terrain costs: DH's head injection then draws inside terrain, unnamed. No rule speaks for terrain.
+        Facts withoutLod = new FactsBuilder().frameMs(10).bucket(Bucket.TERRAIN, 6).build();
+        assertTrue(run(withoutLod, SettingsRules::distantHorizons).isEmpty());
+        assertTrue(Advisor.advise(withoutLod).isEmpty(), "no other rule reads terrain");
+        assertTrue(run(new FactsBuilder().frameMs(0).build(), SettingsRules::distantHorizons).isEmpty(), "no frames");
+    }
 }
