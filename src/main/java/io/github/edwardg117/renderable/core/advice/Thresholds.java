@@ -42,6 +42,8 @@ final class Thresholds {
     static final double SOUND_MS = 0.5;
     /** The share of a hitch the {@code sound} bucket must reach to count toward {@code sound-wait}'s bucket test. */
     static final double SOUND_BUCKET_SHARE = 0.25;
+    /** The share of a hitch its unnamed time must reach to count toward {@code unattributed-stall}'s repeat form. */
+    static final double UNNAMED_SHARE = 0.25;
 
     private Thresholds() {
     }

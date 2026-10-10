@@ -22,33 +22,64 @@ final class PackRules {
         stackResets(f, out);
     }
 
-    /** A hitch whose time is mostly in code nothing names: other tick, other render or tasks, less named time. */
+    /**
+     * Time in code nothing names (spec addendum §P5.B2, §P6.9). A hitch has three parts that can hold it: other tick,
+     * other render and tasks, each less the time the Mods tab names in it and less the frame's GC pause. A stall: one
+     * part is at least {@link Thresholds#STALL_MS} and {@link Thresholds#STALL_SHARE} of its hitch. A repeat: one part
+     * is at least {@link Thresholds#UNNAMED_SHARE} of its hitch, in {@link Thresholds#REPEATED_HITCHES} or more hitches
+     * and in at least {@link Thresholds#HITCH_REPEAT_SHARE} of them, a hitch counting once. A stall's part is also a
+     * quarter of its hitch, so a repeat always reaches the stall's worst: when it passes, it is named, and says both.
+     */
     static void unattributedStall(Facts f, List<Recommendation> out) {
-        Facts.Hitch worstHitch = null;
-        String worstWhere = null;
-        double worst = 0;
-        double sum = 0;
+        String[] where = {"client tick", "rendering", "main-thread tasks"};
+        Facts.Hitch stallHitch = null;
+        String stallWhere = null;
+        double stall = 0;
+        double stallSum = 0;
+        int repeats = 0;
+        String repeatWhere = null;
+        double repeatWorst = 0;
+        double repeatSum = 0;
         for (Facts.Hitch h : f.hitches()) {
             double[] parts = {h.unnamedTickMs(), h.unnamedRenderMs(), h.untimedTasksMs()};
-            String[] where = {"client tick", "rendering", "main-thread tasks"};
+            boolean counted = false;
             for (int i = 0; i < parts.length; i++) {
                 // The frame's GC pause landed in one of the parts; which one is not known, so each loses it.
                 double v = Math.max(0, parts[i] - h.gcMs());
-                if (v < Thresholds.STALL_MS || v < Thresholds.STALL_SHARE * h.totalMs()) continue;
-                sum += v;
-                if (v > worst) {
-                    worst = v;
-                    worstHitch = h;
-                    worstWhere = where[i];
+                if (v >= Thresholds.STALL_MS && v >= Thresholds.STALL_SHARE * h.totalMs()) {
+                    stallSum += v;
+                    if (v > stall) {
+                        stall = v;
+                        stallHitch = h;
+                        stallWhere = where[i];
+                    }
+                }
+                if (v >= Thresholds.UNNAMED_SHARE * h.totalMs()) {
+                    repeatSum += v;
+                    if (!counted) repeats++;
+                    counted = true;
+                    if (v > repeatWorst) {
+                        repeatWorst = v;
+                        repeatWhere = where[i];
+                    }
                 }
             }
         }
-        if (worstHitch == null) return;
-        out.add(new Recommendation("unattributed-stall", Kind.STUTTER, Audience.PACK_AUTHOR, "A stall Renderable cannot name",
-                String.format(Locale.ROOT, "Hitch #%d (%.0f ms): %.0f ms of %s is in code Renderable does not time.",
-                        worstHitch.number(), worstHitch.totalMs(), worst, worstWhere),
-                "Profile the same place with a sampling profiler such as spark, which names the code.",
-                sum / f.frames(), worst));
+        int hitches = f.hitches().size();
+        String action = "Profile the same place with a sampling profiler such as spark, which names the code.";
+        if (repeats >= Thresholds.REPEATED_HITCHES && repeats >= Thresholds.HITCH_REPEAT_SHARE * hitches) {
+            out.add(new Recommendation("unattributed-stall", Kind.STUTTER, Audience.PACK_AUTHOR,
+                    "Stutter Renderable cannot name",
+                    String.format(Locale.ROOT, "In %d of %d hitches, at least a quarter of the frame was in code"
+                            + " Renderable does not time, up to %.0f ms of %s.", repeats, hitches, repeatWorst, repeatWhere),
+                    action, repeatSum / f.frames(), repeatWorst));
+        } else if (stallHitch != null) {
+            out.add(new Recommendation("unattributed-stall", Kind.STUTTER, Audience.PACK_AUTHOR,
+                    "A stall Renderable cannot name",
+                    String.format(Locale.ROOT, "Hitch #%d (%.0f ms): %.0f ms of %s is in code Renderable does not time.",
+                            stallHitch.number(), stallHitch.totalMs(), stall, stallWhere),
+                    action, stallSum / f.frames(), stall));
+        }
     }
 
     /** A mod's event handlers: their steady cost, or one handler's stutter (see {@link KeyStutter#find}). */

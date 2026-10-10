@@ -276,4 +276,65 @@ class PackRulesTest {
         assertTrue(run(f, SceneRules::hitchRepeat).isEmpty(), "a Mods tab key");
         assertEquals(List.of("sound-wait"), Advisor.advise(f).stream().map(Recommendation::rule).toList());
     }
+
+    @Test
+    void unnamedTimeRepeatsAtAQuarterOfTheHitchInThreeHitchesAndAQuarterOfThem() {
+        FactsBuilder quarter = new FactsBuilder();
+        for (int i = 1; i <= 12; i++) quarter.hitch(new Facts.Hitch(i, 40, 0, 0, false, i <= 3 ? 10 : 2, 0, 0, List.of()));
+        Recommendation a = run(quarter.build(), PackRules::unattributedStall).get(0);
+        assertEquals("unattributed-stall", a.rule());
+        assertEquals(Recommendation.Kind.STUTTER, a.kind());
+        assertEquals(Recommendation.Audience.PACK_AUTHOR, a.audience());
+        assertEquals("Stutter Renderable cannot name", a.title());
+        assertEquals("In 3 of 12 hitches, at least a quarter of the frame was in code Renderable does not time, up to"
+                + " 10 ms of client tick.", a.finding(), "10 of 40 ms is exactly a quarter, in exactly a quarter of them");
+        assertEquals("Profile the same place with a sampling profiler such as spark, which names the code.", a.action());
+        assertEquals(10, a.worstMs(), 1e-9);
+        assertEquals(0.03, a.msPerFrame(), 1e-9, "three hitches' 10 ms over the 1,000 frames");
+
+        FactsBuilder under = new FactsBuilder();
+        for (int i = 1; i <= 4; i++) under.hitch(new Facts.Hitch(i, 40, 0, 0, false, 9.9, 0, 0, List.of()));
+        assertTrue(run(under.build(), PackRules::unattributedStall).isEmpty(), "just under a quarter of each hitch");
+        FactsBuilder thirteen = new FactsBuilder();
+        for (int i = 1; i <= 13; i++) thirteen.hitch(new Facts.Hitch(i, 40, 0, 0, false, i <= 3 ? 10 : 2, 0, 0, List.of()));
+        assertTrue(run(thirteen.build(), PackRules::unattributedStall).isEmpty(), "3 of 13 is under a quarter of them");
+        FactsBuilder two = new FactsBuilder();
+        for (int i = 1; i <= 2; i++) two.hitch(new Facts.Hitch(i, 40, 0, 0, false, 20, 0, 0, List.of()));
+        assertTrue(run(two.build(), PackRules::unattributedStall).isEmpty(), "two hitches are not a repeat, nor 20 ms a stall");
+        FactsBuilder paused = new FactsBuilder();
+        for (int i = 1; i <= 4; i++) paused.hitch(new Facts.Hitch(i, 40, 5, 0, false, 12, 0, 0, List.of()));
+        assertTrue(run(paused.build(), PackRules::unattributedStall).isEmpty(), "a 5 ms GC pause leaves 7 ms of 40");
+    }
+
+    @Test
+    void aRepeatCountsAHitchOnceAndNamesTheWindowOfItsWorst() {
+        FactsBuilder both = new FactsBuilder();
+        for (int i = 1; i <= 12; i++) {
+            both.hitch(i <= 3 ? new Facts.Hitch(i, 40, 0, 0, false, 10, 10, 0, List.of()) : FactsBuilder.hitch(i, 40));
+        }
+        Recommendation a = run(both.build(), PackRules::unattributedStall).get(0);
+        assertEquals("In 3 of 12 hitches, at least a quarter of the frame was in code Renderable does not time, up to"
+                + " 10 ms of client tick.", a.finding(), "two parts of one hitch count it once; a tie goes to the first part");
+        assertEquals(0.06, a.msPerFrame(), 1e-9, "both parts of each hitch are time at stake");
+
+        FactsBuilder windows = new FactsBuilder();
+        for (int i = 1; i <= 3; i++) windows.hitch(new Facts.Hitch(i, 40, 0, 0, false, 0, 12, 0, List.of()));
+        windows.hitch(new Facts.Hitch(4, 40, 0, 0, false, 0, 0, 15, List.of()));
+        assertEquals("In 4 of 4 hitches, at least a quarter of the frame was in code Renderable does not time, up to"
+                + " 15 ms of main-thread tasks.", run(windows.build(), PackRules::unattributedStall).get(0).finding());
+    }
+
+    @Test
+    void theRepeatFormSaysTheStallToo() {
+        // Review focus 4. One hitch passes the stall form and three more the repeat form: one finding, the repeat, whose
+        // worst is the stall's. A stall's part is half its hitch, so it always counts toward the repeat as well.
+        FactsBuilder b = new FactsBuilder().hitch(new Facts.Hitch(1, 382.4, 0, 0, false, 374, 1, 0, List.of()));
+        for (int i = 2; i <= 4; i++) b.hitch(new Facts.Hitch(i, 40, 0, 0, false, 12, 1, 0, List.of()));
+        List<Recommendation> r = run(b.build(), PackRules::unattributedStall);
+        assertEquals(1, r.size());
+        assertEquals("In 4 of 4 hitches, at least a quarter of the frame was in code Renderable does not time, up to"
+                + " 374 ms of client tick.", r.get(0).finding());
+        assertEquals(374, r.get(0).worstMs(), 1e-9);
+        assertEquals((374 + 3 * 12) / 1000.0, r.get(0).msPerFrame(), 1e-9);
+    }
 }
