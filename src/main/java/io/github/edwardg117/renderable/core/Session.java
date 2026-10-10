@@ -341,6 +341,15 @@ public final class Session {
         depth++;
     }
 
+    /**
+     * The bucket of the innermost open call: null when nothing is open, when that call is attribution-only, or when it
+     * is deeper than {@link #MAX_DEPTH}. {@code Probe.pauseBucket} reads it before it steps out of a terrain call
+     * (plan 6a, deviation 4).
+     */
+    public Bucket innermostBucket() {
+        return depth == 0 || depth > MAX_DEPTH ? null : stackBucket[depth - 1];
+    }
+
     /** The window open right now: the tick, tasks or the render window, or -1 outside all three. */
     private int window() {
         if (tickStartNanos >= 0) return Window.TICK.ordinal();

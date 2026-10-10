@@ -9,10 +9,12 @@ import io.github.edwardg117.renderable.core.ModKey;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.hooks.compat.IrisCompat;
 import net.minecraft.client.particle.Particle;
+import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketType;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -70,6 +72,12 @@ public final class Probe {
      * such payload would allocate a key while sampling. Render thread only; cleared on attach and detach.
      */
     private static final HashMap<ResourceLocation, Accumulator> PAYLOAD_BY_ID = new HashMap<>(64);
+
+    /**
+     * Sound plays' accumulators by event id, then category (spec addendum §P6.5). Render thread only; cleared on attach
+     * and detach.
+     */
+    private static final SoundKeys SOUNDS = new SoundKeys(soundCategoryNames());
     private static final boolean[] SEEN = new boolean[Hook.values().length];
     /** Mesh accumulators by Block or Fluid instance; written from Sodium's worker threads. */
     private static final ConcurrentHashMap<Object, MeshAccumulator> MESH_BY_OBJECT = new ConcurrentHashMap<>(512);
@@ -102,6 +110,7 @@ public final class Probe {
         BY_CLASS.clear();
         BY_CONSTANT.clear();
         PAYLOAD_BY_ID.clear();
+        SOUNDS.clear();
         MESH_BY_OBJECT.clear();
         seenVertices = false;
         seenAcceleratedVertices = false;
@@ -124,6 +133,7 @@ public final class Probe {
         BY_CLASS.clear();
         BY_CONSTANT.clear();
         PAYLOAD_BY_ID.clear();
+        SOUNDS.clear();
         MESH_BY_OBJECT.clear();
     }
 
@@ -233,6 +243,27 @@ public final class Probe {
         s.end();
     }
 
+    /**
+     * Steps out of the innermost open call while other work runs inside it, when that call's bucket is
+     * {@code bucket}: NeoForge's stage event at the end of each terrain layer (plan 6a, deviation 4). It cannot tell a
+     * keyed call from a bucket-only one, and {@link #resumeBucket} reopens without a key, so use it only for a bucket
+     * that nothing but {@link #beginBucket} opens (today {@code TERRAIN}). Render thread only. Returns whether it
+     * stepped out; the caller must then call {@link #resumeBucket} with the same bucket.
+     */
+    public static boolean pauseBucket(Bucket bucket) {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread || s.innermostBucket() != bucket) return false;
+        s.end();
+        return true;
+    }
+
+    /** Begins again the bucket-only timing {@link #pauseBucket} ended. Call it only when that returned true. */
+    public static void resumeBucket(Bucket bucket) {
+        Session s = session;
+        if (s == null || Thread.currentThread() != renderThread) return;
+        s.begin(null, bucket);
+    }
+
     /** {@code Minecraft.runAllTasks}: packets and other queued work (spec addendum §P5.A1). Render thread only. */
     public static void beginTasks() {
         Session s = session;
@@ -304,6 +335,32 @@ public final class Probe {
         }
         s.beginAttribution(a);
         return true;
+    }
+
+    /**
+     * One sound play (spec addendum §P6.5), keyed by the event and category the instance names as the play begins,
+     * before any PlaySoundEvent handler replaces or drops it: a replaced sound's cost stays on the row of the sound
+     * asked for, and a dropped one is still a play. Attribution-only, like a packet: the bucket the play runs in
+     * keeps its time. Ignored off the render thread, where a mod may play from its own thread, and for an instance
+     * that names no event or no category. Returns whether a call was begun.
+     */
+    public static boolean beginSound(SoundInstance sound) {
+        Session s = session;
+        if (s == null || sound == null || Thread.currentThread() != renderThread) return false;
+        SoundSource source = sound.getSource();
+        Accumulator a = SOUNDS.get(s, sound.getLocation(), source == null ? -1 : source.ordinal());
+        if (a == null) return false;
+        SEEN[Hook.SOUND_PLAYS.ordinal()] = true;
+        s.beginAttribution(a);
+        return true;
+    }
+
+    /** Each {@code SoundSource}'s name by ordinal, for {@link #SOUNDS}. */
+    private static String[] soundCategoryNames() {
+        SoundSource[] all = SoundSource.values();
+        String[] names = new String[all.length];
+        for (int i = 0; i < all.length; i++) names[i] = all[i].getName();
+        return names;
     }
 
     /**

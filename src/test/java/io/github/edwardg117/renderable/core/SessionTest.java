@@ -1101,4 +1101,37 @@ class SessionTest {
         assertEquals(1 * MS, f.bucket(Bucket.LOD), "only the lod the stack tracked");
         assertEquals(6 * MS, f.bucket(Bucket.TERRAIN), "1-5 whole, then 6-9 less the lod");
     }
+
+    @Test
+    void theStageEventsAfterATerrainLayerLeaveTerrainForTheirOwnBucketsAndNamedTime() {
+        // Plan 6a, deviation 4: each layer ends with NeoForge's RenderLevelStageEvent, inside renderSectionLayer.
+        // ClientHooksMixin steps out of the terrain call while it runs (Probe.pauseBucket ends it, resumeBucket begins
+        // it again), so its handlers stay named time and what they draw keeps its own bucket.
+        Session s = session(10_000);
+        Accumulator handler = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        Accumulator cowAcc = s.accumulator(cow);
+        at(0);  s.onRenderPre(0, 0);
+        assertNull(s.innermostBucket(), "nothing is open");
+        at(1);  s.begin(null, Bucket.TERRAIN);
+        at(2);  s.begin(null, Bucket.LOD);
+        at(4);  s.end();
+        assertEquals(Bucket.TERRAIN, s.innermostBucket(), "what pauseBucket checks before it steps out");
+        at(5);  s.end();                                   // pauseBucket
+        assertNull(s.innermostBucket());
+        at(5);  s.beginAttribution(handler);               // a handler of the layer's stage event
+        assertNull(s.innermostBucket(), "an attribution-only call owns no bucket");
+        at(6);  s.begin(cowAcc, Bucket.ENTITY);            // an entity it draws
+        at(8);  s.end();
+        at(9);  s.end();
+        at(9);  s.begin(null, Bucket.TERRAIN);             // resumeBucket
+        at(10); s.end();                                   // the terrain wrapper's own end
+        at(12); s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(2 * MS, f.bucket(Bucket.LOD));
+        assertEquals(3 * MS, f.bucket(Bucket.TERRAIN), "1-5 less the lod inside it, then 9-10");
+        assertEquals(2 * MS, f.bucket(Bucket.ENTITY), "what the handler draws keeps its own bucket");
+        assertEquals(2 * MS, f.named(Window.RENDER), "the handler's 4 ms less the 2 bucketed inside it");
+    }
 }

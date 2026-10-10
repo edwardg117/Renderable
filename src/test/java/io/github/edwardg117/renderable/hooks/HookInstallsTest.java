@@ -128,4 +128,31 @@ class HookInstallsTest {
         assertFalse(HookInstalls.installed().contains(Hook.ACCELERATED_VERTICES.name()),
                 "one injector that missed its target outweighs the four that found theirs");
     }
+
+    @Test
+    void thePhase6VanillaInjectorsNameTheirVerifiedTargets() throws IOException {
+        // Spec addendum §P6.2, verified with javap against neoforge-21.1.220-merged.jar. These mixins are required, so a
+        // misspelt target would stop the game at launch: pin each spelling here.
+        String minecraft = "io.github.edwardg117.renderable.hooks.mixin.MinecraftMixin";
+        assertEquals(new InjectionCheck.Injector("renderable$timeSound", List.of("tick"),
+                        List.of("Lnet/minecraft/client/sounds/SoundManager;tick(Z)V")),
+                injector(minecraft, "renderable$timeSound"));
+        assertEquals(new InjectionCheck.Injector("renderable$timeAnimateTick", List.of("tick"),
+                        List.of("Lnet/minecraft/client/multiplayer/ClientLevel;animateTick(III)V")),
+                injector(minecraft, "renderable$timeAnimateTick"));
+        assertEquals(new InjectionCheck.Injector("renderable$timeTerrain", List.of("renderLevel"),
+                        List.of("Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer("
+                                + "Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V")),
+                injector("io.github.edwardg117.renderable.hooks.mixin.LevelRendererMixin", "renderable$timeTerrain"));
+        assertEquals(new InjectionCheck.Injector("renderable$timeSoundPlay",
+                        List.of("play(Lnet/minecraft/client/resources/sounds/SoundInstance;)V"), List.of()),
+                injector("io.github.edwardg117.renderable.hooks.mixin.SoundEngineMixin", "renderable$timeSoundPlay"));
+        // Deviation 4: the RenderType overload, which both renderers call at the end of each layer.
+        assertEquals(new InjectionCheck.Injector("renderable$leaveTerrain",
+                        List.of("dispatchRenderStage(Lnet/minecraft/client/renderer/RenderType;"
+                                + "Lnet/minecraft/client/renderer/LevelRenderer;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;I"
+                                + "Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;)V"),
+                        List.of()),
+                injector("io.github.edwardg117.renderable.hooks.mixin.ClientHooksMixin", "renderable$leaveTerrain"));
+    }
 }

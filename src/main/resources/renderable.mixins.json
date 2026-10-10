@@ -19,7 +19,10 @@
     "GuiLayerManagerMixin",
     "PacketUtilsMixin",
     "MainThreadPayloadHandlerMixin",
-    "ClientLevelMixin"
+    "ClientLevelMixin",
+    "LevelRendererMixin",
+    "SoundEngineMixin",
+    "ClientHooksMixin"
   ],
   "injectors": {
     "defaultRequire": 1

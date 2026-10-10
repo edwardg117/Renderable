@@ -30,5 +30,13 @@ public enum Hook {
     PACKETS,
     PAYLOADS,
     RIDER_TICK,
-    EVENTS
+    EVENTS,
+    /** The {@code sound} bucket: {@code SoundManager.tick} in {@code Minecraft.tick} (spec addendum §P6.3). */
+    SOUND,
+    /** The {@code animate tick} bucket: {@code ClientLevel.animateTick} in {@code Minecraft.tick}. */
+    ANIMATE_TICK,
+    /** The {@code terrain} bucket: every {@code renderSectionLayer} call {@code LevelRenderer.renderLevel} makes. */
+    TERRAIN,
+    /** The Mods tab's sound rows: {@code SoundEngine.play} (spec addendum §P6.5). */
+    SOUND_PLAYS
 }

@@ -57,4 +57,22 @@ class SourceGuardsTest {
             }
         }
     }
+
+    @Test
+    void everyAttributionOnlyEntryPointDeclinesOffTheRenderThread() throws IOException {
+        // Review focus 3. A Session is render-thread only: an attribution-only call begun on another thread, such as a
+        // sound a mod plays from its network thread, would corrupt the stack. So each entry point in Probe that
+        // begins one must check the thread first, as beginPacket does (spec addendum §P6.5).
+        String probe = Files.readString(MAIN.resolve("hooks/Probe.java"));
+        int found = 0;
+        for (int at = probe.indexOf(".beginAttribution("); at >= 0; at = probe.indexOf(".beginAttribution(", at + 1)) {
+            int start = probe.lastIndexOf("\n    public static ", at);
+            assertTrue(start >= 0, "a beginAttribution call outside a public entry point of Probe");
+            String method = probe.substring(start + "\n    public static ".length(), probe.indexOf('(', start));
+            assertTrue(probe.substring(start, at).contains("Thread.currentThread() != renderThread"),
+                    method + " begins an attribution-only call without checking the render thread");
+            found++;
+        }
+        assertTrue(found >= 4, "beginLayer, beginPacket, beginPayload and beginSound; found " + found);
+    }
 }
