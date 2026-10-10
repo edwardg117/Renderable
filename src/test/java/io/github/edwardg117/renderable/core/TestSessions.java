@@ -241,6 +241,30 @@ public final class TestSessions {
     }
 
     /**
+     * The phase 6 buckets (spec addendum §P6.3), each on its own so the figures do not depend on the lod carve-out:
+     * one 16 ms frame with render 0-8 holding terrain 1-4 and lod 4-6, then the tick 8-10 holding sound 8-9.5 and
+     * animate tick 9.5-10. So terrain 3, lod 2, other render 3, sound 1.5, animate tick 0.5, other tick 0, swap 6.
+     */
+    public static SessionResult phase6Buckets() {
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25, 2), () -> now[0], WALL_START);
+        s.onRenderPre(0, 0);
+        now[0] = 1 * MS;     s.begin(null, Bucket.TERRAIN);
+        now[0] = 4 * MS;     s.end();
+        now[0] = 4 * MS;     s.begin(null, Bucket.LOD);
+        now[0] = 6 * MS;     s.end();
+        now[0] = 8 * MS;     s.onRenderPost();
+        now[0] = 8 * MS;     s.onTickPre();
+        now[0] = 8 * MS;     s.begin(null, Bucket.SOUND);
+        now[0] = 9_500_000;  s.end();
+        now[0] = 9_500_000;  s.begin(null, Bucket.ANIMATE_TICK);
+        now[0] = 10 * MS;    s.end();
+        now[0] = 10 * MS;    s.onTickPost();
+        now[0] = 16 * MS;    s.onRenderPre(0, 0);
+        return s.finish();
+    }
+
+    /**
      * The phase 2 skeleton: the {@link #sample()} frames plus particles, ticks, light, Flywheel and visual samples.
      *
      * Per frame: 0.1 ms other render, press 2 ms (60 in frame 10), press2 1.5, mixer 1, cow 0.5, player 0.3,

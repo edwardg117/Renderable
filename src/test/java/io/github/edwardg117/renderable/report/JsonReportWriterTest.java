@@ -47,7 +47,7 @@ class JsonReportWriterTest {
     @Test
     void schemaModEnvironmentAndSession() {
         JsonObject o = parse();
-        assertEquals(5, o.get("schema").getAsInt());
+        assertEquals(6, o.get("schema").getAsInt());
         assertEquals("0.1.0", o.getAsJsonObject("mod").get("version").getAsString());
         assertEquals("1.21.1", o.getAsJsonObject("environment").get("minecraft").getAsString());
         JsonObject environment = o.getAsJsonObject("environment");
@@ -286,8 +286,8 @@ class JsonReportWriterTest {
         java.io.StringWriter out = new java.io.StringWriter();
         JsonReportWriter.write(r3, environment(), "0.4.0", out);
         assertEquals(JsonReportWriter.write(r3, environment(), "0.4.0"), out.toString());
-        assertEquals(5, JsonParser.parseString(out.toString()).getAsJsonObject().get("schema").getAsInt());
-        assertTrue(out.toString().startsWith("{\n  \"schema\": 5,"), out.toString().substring(0, 40));
+        assertEquals(6, JsonParser.parseString(out.toString()).getAsJsonObject().get("schema").getAsInt());
+        assertTrue(out.toString().startsWith("{\n  \"schema\": 6,"), out.toString().substring(0, 40));
     }
 
     @Test
@@ -381,5 +381,24 @@ class JsonReportWriterTest {
         assertEquals(2.0, first.get("msPerFrame").getAsDouble(), 1e-9);
         List<String> keys = new ArrayList<>(o.keySet());
         assertEquals(keys.indexOf("stats") + 1, keys.indexOf("recommendations"), "right after the averages");
+    }
+
+    @Test
+    void schema6NamesThePhase6BucketsByLabel() {
+        assertEquals(List.of("terrain", "lod", "block entity", "entity", "particle render", "flywheel", "chunk upload",
+                        "light", "hud", "particle tick", "be tick", "entity tick", "sound", "animate tick"),
+                List.copyOf(parse().getAsJsonObject("stats").getAsJsonObject("avgBucketsMs").keySet()),
+                "every bucket by label, in enum order, zeros included - bump SCHEMA if that was intended");
+
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(TestSessions.phase6Buckets(), environment(), "0.6.0"))
+                .getAsJsonObject();
+        JsonObject buckets = o.getAsJsonArray("frames").get(0).getAsJsonObject().getAsJsonObject("bucketsUs");
+        assertEquals(List.of("terrain", "lod", "sound", "animate tick"), List.copyOf(buckets.keySet()),
+                "a frame lists the buckets that had time, by label");
+        assertEquals(3_000, buckets.get("terrain").getAsLong());
+        assertEquals(2_000, buckets.get("lod").getAsLong());
+        assertEquals(1_500, buckets.get("sound").getAsLong());
+        assertEquals(500, buckets.get("animate tick").getAsLong());
+        assertEquals(1.5, o.getAsJsonObject("stats").getAsJsonObject("avgBucketsMs").get("sound").getAsDouble(), 1e-9);
     }
 }

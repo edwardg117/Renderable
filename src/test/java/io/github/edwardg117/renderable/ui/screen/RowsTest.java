@@ -138,4 +138,16 @@ class RowsTest {
         assertEquals(Ranking.particles(r).stream().map(RankedEntry::label).toList(), screen,
                 "the order and names the report prints (spec §5.3)");
     }
+
+    @Test
+    void theFramesTabListsThePhase6BucketsThroughItsLoops() {
+        List<String> rows = describe(Rows.frames(TestSessions.phase6Buckets()));
+        int tick = rows.indexOf("0 - tick|2.00 ms");
+        int render = rows.indexOf("0 - render|8.00 ms");
+        assertTrue(tick >= 0 && render > tick, rows.toString());
+        assertEquals(List.of("0 -   sound|1.50 ms", "0 -   animate tick|0.50 ms", "0 -   other tick|0.00 ms"),
+                rows.subList(tick + 1, tick + 4), "the tick's buckets in enum order, then the rest");
+        assertEquals(List.of("0 -   terrain|3.00 ms", "0 -   lod|2.00 ms", "0 -   other render|3.00 ms"),
+                rows.subList(render + 1, render + 4), "terrain and lod lead the render side");
+    }
 }

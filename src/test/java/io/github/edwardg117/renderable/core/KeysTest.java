@@ -201,4 +201,20 @@ class KeysTest {
         assertEquals("minecraft:player#118098", EntityKey.player("minecraft:player", 118098, true).serialize(),
                 "the JSON key has no name either way");
     }
+
+    @Test
+    void terrainAndLodLeadTheRenderSideAndSoundAndAnimateTickEndTheTick() {
+        assertEquals(List.of(Bucket.TERRAIN, Bucket.LOD, Bucket.BLOCK_ENTITY, Bucket.ENTITY, Bucket.PARTICLE_RENDER,
+                Bucket.FLYWHEEL, Bucket.CHUNK_UPLOAD, Bucket.LIGHT, Bucket.HUD, Bucket.PARTICLE_TICK, Bucket.BE_TICK,
+                Bucket.ENTITY_TICK, Bucket.SOUND, Bucket.ANIMATE_TICK), List.of(Bucket.VALUES),
+                "terrain and its LODs lead the render side; the split prints in this order");
+        assertTrue(Bucket.TERRAIN.isRender());
+        assertTrue(Bucket.LOD.isRender());
+        assertFalse(Bucket.SOUND.isRender(), "the sound engine ticks inside the client tick");
+        assertFalse(Bucket.ANIMATE_TICK.isRender());
+        assertEquals("terrain", Bucket.TERRAIN.label());
+        assertEquals("lod", Bucket.LOD.label());
+        assertEquals("sound", Bucket.SOUND.label());
+        assertEquals("animate tick", Bucket.ANIMATE_TICK.label());
+    }
 }

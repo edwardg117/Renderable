@@ -30,7 +30,8 @@ import java.util.Map;
  * capped.
  */
 public final class JsonReportWriter {
-    public static final int SCHEMA = 5;
+    /** Schema 6 (spec addendum §P6.7): {@code terrain}, {@code lod}, {@code sound} and {@code animate tick} buckets, and sound rows in {@code mods}. */
+    public static final int SCHEMA = 6;
 
     private JsonReportWriter() {
     }
