@@ -957,4 +957,148 @@ class SessionTest {
         assertEquals(3, r.vertexCalls());
         assertEquals((2 * 10 + 1 * 100 + 3 * 1) / 1e6, r.overheadEstimateMs(), 1e-12);
     }
+
+    @Test
+    void lodCarvesItselfOutOfTheTerrainThatEnclosesIt() {
+        Session s = session(10_000);
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.begin(null, Bucket.TERRAIN);       // the solid layer
+        at(2);  s.begin(null, Bucket.LOD);           // Distant Horizons' head injection draws its LODs
+        at(6);  s.end();
+        at(8);  s.end();
+        at(9);  s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(4 * MS, f.bucket(Bucket.LOD), "lod counts as itself");
+        assertEquals(3 * MS, f.bucket(Bucket.TERRAIN), "terrain's 7 ms less the 4 ms of lod inside it");
+        assertEquals(2 * MS, f.otherRenderNanos(), "9 ms of render less the 7 bucketed: no nanosecond twice");
+    }
+
+    @Test
+    void everyLodInsideOneTerrainIsSubtracted() {
+        Session s = session(10_000);
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.begin(null, Bucket.TERRAIN);
+        at(2);  s.begin(null, Bucket.LOD); at(4); s.end();
+        at(5);  s.begin(null, Bucket.LOD); at(6); s.end();
+        at(8);  s.end();
+        at(10); s.begin(null, Bucket.TERRAIN); at(11); s.end();     // a layer DH leaves alone
+        at(12); s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(3 * MS, f.bucket(Bucket.LOD));
+        assertEquals(5 * MS, f.bucket(Bucket.TERRAIN), "7 less both lods' 3, then the other layer's 1");
+        assertEquals(4 * MS, f.otherRenderNanos(), "12 - 3 - 5");
+    }
+
+    @Test
+    void aLodThatNothingEnclosesCountsAsItself() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(null, Bucket.LOD);            // the layer called outside renderLevel, as Iris's shadow pass does
+        at(3); s.end();
+        at(6); s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(2 * MS, f.bucket(Bucket.LOD));
+        assertEquals(4 * MS, f.otherRenderNanos());
+    }
+
+    @Test
+    void onlyLodLeavesTheBucketAroundIt() {
+        Session s = session(10_000);
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.begin(null, Bucket.HUD);
+        at(2);  s.begin(null, Bucket.TERRAIN);       // a minimap mod drawing chunk layers in the HUD
+        at(4);  s.end();
+        at(5);  s.begin(null, Bucket.LOD);           // and Distant Horizons' LODs with them
+        at(6);  s.end();
+        at(8);  s.end();
+        at(9);  s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(0, f.bucket(Bucket.TERRAIN), "a bucket inside the HUD still counts as hud");
+        assertEquals(1 * MS, f.bucket(Bucket.LOD), "lod is the one exception");
+        assertEquals(6 * MS, f.bucket(Bucket.HUD), "the HUD's 7 ms less the lod inside it");
+    }
+
+    @Test
+    void aLodLeftOpenByAThrowIsResetWithTheFrame() {
+        Session s = session(10_000);
+        at(0);  s.onRenderPre(0, 0);
+        at(1);  s.begin(null, Bucket.TERRAIN);
+        at(2);  s.begin(null, Bucket.LOD);           // a hook threw past both ends
+        at(10); s.onRenderPre(0, 0);
+        assertEquals(1, s.unbalancedFrames());
+
+        at(11); s.begin(null, Bucket.TERRAIN);
+        at(12); s.begin(null, Bucket.LOD); at(14); s.end();
+        at(15); s.end();
+        at(16); s.begin(null, Bucket.LOD); at(17); s.end();
+        at(20); s.onRenderPre(0, 0);
+
+        assertEquals(0, s.framesView().get(0).bucket(Bucket.LOD), "nothing ended in the frame that threw");
+        FrameRecord f = s.framesView().get(1);
+        assertEquals(3 * MS, f.bucket(Bucket.LOD), "both lods count: the one left open was dropped with its frame");
+        assertEquals(2 * MS, f.bucket(Bucket.TERRAIN), "4 ms less the 2 ms of lod inside it");
+    }
+
+    @Test
+    void aLodInsideALodCountsOnce() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(null, Bucket.LOD);
+        at(3); s.begin(null, Bucket.LOD);            // one DH render method calling another, should a version do so
+        at(4); s.end();
+        at(5); s.end();
+        at(6); s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(4 * MS, f.bucket(Bucket.LOD), "the outer call's 4 ms, the inner one not added again");
+        assertEquals(2 * MS, f.otherRenderNanos());
+    }
+
+    @Test
+    void namedTimeLeavesOutTheLodAndTheTerrainAroundIt() {
+        Session s = session(10_000);
+        Accumulator handler = s.accumulator(ModKey.event("somemod", "a.RenderLevelStageEvent"));
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.beginAttribution(handler);
+        at(2); s.begin(null, Bucket.TERRAIN);
+        at(3); s.begin(null, Bucket.LOD); at(5); s.end();
+        at(6); s.end();
+        at(8); s.end();
+        at(9); s.onRenderPost();
+        at(20); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(2 * MS, f.bucket(Bucket.LOD));
+        assertEquals(2 * MS, f.bucket(Bucket.TERRAIN));
+        assertEquals(3 * MS, f.named(Window.RENDER), "the handler's 7 ms less the 4 bucketed inside it, lod once");
+    }
+
+    @Test
+    void aLodDeeperThanTheStackIsLeftInItsBucketAndLaterLodsStillCount() {
+        Session s = session(10_000);
+        at(0); s.onRenderPre(0, 0);
+        at(1); s.begin(null, Bucket.TERRAIN);
+        for (int i = 1; i < Session.MAX_DEPTH; i++) s.begin(null, Bucket.TERRAIN);
+        at(2); s.begin(null, Bucket.LOD);            // past the stack: neither timed nor counted as open
+        at(4); s.end();
+        for (int i = 1; i < Session.MAX_DEPTH; i++) s.end();
+        at(5); s.end();
+        at(6); s.begin(null, Bucket.TERRAIN);
+        at(7); s.begin(null, Bucket.LOD); at(8); s.end();
+        at(9); s.end();
+        at(10); s.onRenderPre(0, 0);
+
+        FrameRecord f = s.framesView().get(0);
+        assertEquals(1 * MS, f.bucket(Bucket.LOD), "only the lod the stack tracked");
+        assertEquals(6 * MS, f.bucket(Bucket.TERRAIN), "1-5 whole, then 6-9 less the lod");
+    }
 }

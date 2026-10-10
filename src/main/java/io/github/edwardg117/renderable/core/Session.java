@@ -78,6 +78,12 @@ public final class Session {
     private long namedBucketMark;
     /** Bucket nanoseconds credited so far in this frame, so named time can leave out what was bucketed. */
     private long bucketTotal;
+    /** Open tracked {@link Bucket#LOD} calls, like {@link #ordinaryDepth}; only the outermost credits {@code lod} (spec addendum §P6.4). */
+    private int lodDepth;
+    /** {@code lod} nanoseconds credited so far in this frame, so the bucket around a {@code lod} call can leave it out. */
+    private long lodTotal;
+    /** {@link #lodTotal} when the outermost open bucket-owning call began. */
+    private long lodMark;
     private int depth;
     private long timedCalls;
     private long vertexCalls;
@@ -289,9 +295,11 @@ public final class Session {
 
     /**
      * Start timing a call attributed to {@code a} in {@code bucket}. Must be paired with {@link #end()}.
-     * {@code a} may be null for work that has no key (light updates, Flywheel, chunk upload, the HUD): the
+     * {@code a} may be null for work that has no key (light updates, Flywheel, chunk upload, the HUD, terrain): the
      * bucket is still credited when no other bucket-owning call encloses it, but nothing is added to an
-     * accumulator or to the frame's top list.
+     * accumulator or to the frame's top list. {@link Bucket#LOD} is the exception: it is credited wherever it runs,
+     * and the outermost bucket around it is credited its own time less every {@code lod} call inside it (spec
+     * addendum §P6.4).
      */
     public void begin(Accumulator a, Bucket bucket) {
         long now = clock.getAsLong();
@@ -301,7 +309,9 @@ public final class Session {
             stackBucket[depth] = bucket;
             stackPrevOrdinary[depth] = innermostOrdinary;
             innermostOrdinary = depth;
+            if (ordinaryDepth == 0) lodMark = lodTotal;
             ordinaryDepth++;
+            if (bucket == Bucket.LOD) lodDepth++;
         }
         depth++;
     }
@@ -355,6 +365,7 @@ public final class Session {
         if (ownsBucket) {
             ordinaryDepth--;
             innermostOrdinary = stackPrevOrdinary[depth];
+            if (bucket == Bucket.LOD) lodDepth--;
         }
 
         if (a != null) {
@@ -379,9 +390,18 @@ public final class Session {
                 }
                 a.frameNanos += elapsed;
             }
-            if (ownsBucket && ordinaryDepth == 0) {
-                buckets[bucket.ordinal()] += elapsed;
-                bucketTotal += elapsed;
+            if (bucket == Bucket.LOD) {
+                // Spec addendum §P6.4: lod counts as itself wherever it runs, and once however it nests.
+                if (lodDepth == 0) {
+                    buckets[Bucket.LOD.ordinal()] += elapsed;
+                    bucketTotal += elapsed;
+                    lodTotal += elapsed;
+                }
+            } else if (ownsBucket && ordinaryDepth == 0) {
+                // The outermost bucket-owning call, less every lod call inside it: no nanosecond is in two buckets.
+                long own = Math.max(0, elapsed - (lodTotal - lodMark));
+                buckets[bucket.ordinal()] += own;
+                bucketTotal += own;
             }
             if (namedOpen && depth == 0) {
                 named[namedWindow] += Math.max(0, elapsed - (bucketTotal - namedBucketMark));
@@ -416,6 +436,7 @@ public final class Session {
             ordinaryDepth = 0;
             innermostOrdinary = -1;
             namedOpen = false;
+            lodDepth = 0;
         }
 
         boolean done = false;
@@ -432,6 +453,7 @@ public final class Session {
         tickNanos = 0;
         Arrays.fill(buckets, 0L);
         bucketTotal = 0;
+        lodTotal = 0;
         tasksNanos = 0;
         capNanos = 0;
         Arrays.fill(named, 0L);
