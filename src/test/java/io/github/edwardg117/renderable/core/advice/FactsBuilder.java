@@ -2,6 +2,7 @@ package io.github.edwardg117.renderable.core.advice;
 
 import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.Environment;
+import io.github.edwardg117.renderable.core.ModKey;
 import io.github.edwardg117.renderable.core.ProfileKey;
 
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ final class FactsBuilder {
     private long gcTotalMs;
     private long maxFrameGcMs;
     private final List<Facts.ModCost> mods = new ArrayList<>();
+    private final List<Facts.SoundCost> sounds = new ArrayList<>();
     private int unbalanced;
 
     FactsBuilder env(String key, String value) {
@@ -97,6 +99,12 @@ final class FactsBuilder {
         return this;
     }
 
+    /** A sound row, its mod the event id's namespace. Add them costliest first, as {@link Facts#of} lists them. */
+    FactsBuilder sound(String event, String category, double ms, double playsPerSecond) {
+        sounds.add(new Facts.SoundCost(ModKey.sound(event, category).modId(), event, category, ms, playsPerSecond));
+        return this;
+    }
+
     FactsBuilder unbalanced(int frames) {
         unbalanced = frames;
         return this;
@@ -105,12 +113,18 @@ final class FactsBuilder {
     Facts build() {
         return new Facts(Environment.of(env, List.of()), frames, frameMs, bucketMs.clone(), tasksMs, capMs, swapMs,
                 shadowMs, shadowableMs, List.copyOf(blockEntities), List.copyOf(entities), List.copyOf(particles),
-                List.copyOf(hitches), gcCount, gcTotalMs, maxFrameGcMs, List.copyOf(mods), unbalanced);
+                List.copyOf(hitches), gcCount, gcTotalMs, maxFrameGcMs, List.copyOf(mods), List.copyOf(sounds),
+                unbalanced);
     }
 
     /** A hitch with no GC pause, nothing unnamed and nothing leading from chunk upload: only its size and top contributors. */
     static Facts.Hitch hitch(int number, double totalMs, Facts.Top... top) {
         return new Facts.Hitch(number, totalMs, 0, 0, false, 0, 0, 0, List.of(top));
+    }
+
+    /** A hitch whose sound engine took {@code soundMs}, with no GC pause and nothing unnamed (spec addendum §P6.9). */
+    static Facts.Hitch soundHitch(int number, double totalMs, double soundMs, Facts.Top... top) {
+        return new Facts.Hitch(number, totalMs, 0, 0, false, 0, 0, 0, soundMs, List.of(top));
     }
 
     /** A top contributor that no GC pause could account for. */

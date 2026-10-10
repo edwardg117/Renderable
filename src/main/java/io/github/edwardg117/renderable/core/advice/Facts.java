@@ -10,6 +10,7 @@ import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.SessionResult;
+import io.github.edwardg117.renderable.core.SoundPlays;
 import io.github.edwardg117.renderable.core.TopEntry;
 import io.github.edwardg117.renderable.core.Window;
 
@@ -31,6 +32,7 @@ import java.util.Map;
  * @param hitches            the hitch list, worst first
  * @param maxFrameGcMs       the most GC pause reported in any one frame
  * @param mods               mods, most expensive first
+ * @param sounds             the Mods tab's sound rows, most expensive first (spec addendum §P6.5)
  */
 public record Facts(Environment env,
                     int frames,
@@ -49,6 +51,7 @@ public record Facts(Environment env,
                     long gcTotalMs,
                     long maxFrameGcMs,
                     List<ModCost> mods,
+                    List<SoundCost> sounds,
                     int unbalancedFrames) {
 
     /**
@@ -71,9 +74,19 @@ public record Facts(Environment env,
      * @param unnamedTickMs      other tick, less what the Mods tab names in it
      * @param unnamedRenderMs    other render, less what the Mods tab names in it
      * @param untimedTasksMs     tasks, less what the Mods tab names in them
+     * @param soundMs            the {@code sound} bucket: the sound engine's tick, with the plays it ran (spec addendum
+     *                           §P6.9). Like every tick bucket, it is not in {@code unnamedTickMs}
      */
     public record Hitch(int number, double totalMs, double gcMs, double chunkUploadMs, boolean chunkUploadLargest,
-                        double unnamedTickMs, double unnamedRenderMs, double untimedTasksMs, List<Top> top) {
+                        double unnamedTickMs, double unnamedRenderMs, double untimedTasksMs, double soundMs,
+                        List<Top> top) {
+
+        /** A hitch with nothing in the {@code sound} bucket: every rule but {@code sound-wait} reads it as before. */
+        public Hitch(int number, double totalMs, double gcMs, double chunkUploadMs, boolean chunkUploadLargest,
+                     double unnamedTickMs, double unnamedRenderMs, double untimedTasksMs, List<Top> top) {
+            this(number, totalMs, gcMs, chunkUploadMs, chunkUploadLargest, unnamedTickMs, unnamedRenderMs,
+                    untimedTasksMs, 0, top);
+        }
     }
 
     /**
@@ -92,8 +105,27 @@ public record Facts(Environment env,
     public record ModCost(String modId, double handlersMs, double layersMs, double packetsMs, String topEvent) {
     }
 
+    /**
+     * One sound row of the Mods tab: one sound event played in one category (spec addendum §P6.5). Its time is the
+     * whole play, the wait for a channel included. A mod's sound rows are not in its {@link ModCost}.
+     *
+     * @param modId          the event id's namespace
+     * @param event          the event id, such as {@code create:steam}
+     * @param category       the category's {@code SoundSource} name, such as {@code block}
+     * @param playsPerSecond the row's plays a second over the session
+     */
+    public record SoundCost(String modId, String event, String category, double msPerFrame, double playsPerSecond) {
+    }
+
     public double bucket(Bucket b) {
         return bucketMs[b.ordinal()];
+    }
+
+    /** Every sound row's time, milliseconds a frame: the Sound plays line's figure (spec addendum §P6.5). */
+    public double soundMs() {
+        double ms = 0;
+        for (SoundCost s : sounds) ms += s.msPerFrame();
+        return ms;
     }
 
     /** The environment value for {@code key}, or null when it was not collected or reads "unknown". */
@@ -185,11 +217,20 @@ public record Facts(Environment env,
                     perFrame(packets, frames), topEvent));
         }
 
+        // The kind switch above skips sound rows: they are sound-wait's alone (spec addendum §P6.9).
+        SoundPlays plays = SoundPlays.of(r);
+        List<SoundCost> sounds = new ArrayList<>();
+        for (RankedEntry e : plays.rows()) {
+            ModKey k = (ModKey) e.key();
+            sounds.add(new SoundCost(k.modId(), k.soundEvent(), k.soundCategory(), perFrame(e.totalNanos(), frames),
+                    plays.playsPerSecond(e)));
+        }
+
         return new Facts(env, frames, st.avgNanos() / 1e6, bucketMs, st.avgTasksNanos() / 1e6,
                 st.avgCapNanos() / 1e6, st.avgSwapNanos() / 1e6, perFrame(shadow, frames),
                 perFrame(shadowable, frames), List.copyOf(blockEntities), List.copyOf(entities),
                 List.copyOf(particles), List.copyOf(hitches), st.gcCount(), st.gcMillis(), maxFrameGc,
-                List.copyOf(mods), r.unbalancedFrames());
+                List.copyOf(mods), List.copyOf(sounds), r.unbalancedFrames());
     }
 
     private static Hitch hitch(int number, FrameRecord h) {
@@ -205,7 +246,7 @@ public record Facts(Environment env,
                 h.unnamedTickNanos() / 1e6,
                 Math.max(0, h.otherRenderNanos() - h.named(Window.RENDER)) / 1e6,
                 Math.max(0, h.tasksNanos() - h.named(Window.TASKS)) / 1e6,
-                List.copyOf(top));
+                h.bucket(Bucket.SOUND) / 1e6, List.copyOf(top));
     }
 
     private static double perFrame(long nanos, int frames) {

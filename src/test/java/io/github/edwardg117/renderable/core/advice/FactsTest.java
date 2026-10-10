@@ -3,6 +3,7 @@ package io.github.edwardg117.renderable.core.advice;
 import io.github.edwardg117.renderable.core.Accumulator;
 import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.Environment;
+import io.github.edwardg117.renderable.core.ModKey;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.TestSessions;
@@ -190,5 +191,73 @@ class FactsTest {
         assertEquals(12, f.number("renderDistance"), 1e-9);
         assertTrue(Double.isNaN(f.number("vsync")));
         assertTrue(new FactsBuilder().env("shaderPack", "Complementary").build().shadersOn());
+    }
+
+    @Test
+    void thePhase6FixtureCarriesItsSoundRowsAndLod() {
+        Facts f = Facts.of(TestSessions.phase6(), Environment.empty());
+        assertEquals(List.of("create:steam", "minecraft:block.anvil.land", "minecraft:ui.button.click"),
+                f.sounds().stream().map(Facts.SoundCost::event).toList(), "every sound row, the costliest first");
+        Facts.SoundCost steam = f.sounds().get(0);
+        assertEquals("create", steam.modId(), "the event id's namespace");
+        assertEquals("block", steam.category());
+        assertEquals(1.0, steam.msPerFrame(), 1e-9, "2 ms over the 2 frames");
+        assertEquals(100.0, steam.playsPerSecond(), 1e-9, "4 plays in 0.04 s");
+        assertEquals("master", f.sounds().get(2).category());
+        assertEquals(1.6, f.soundMs(), 1e-9, "the Sound plays line's 1.60 ms a frame");
+        assertEquals(2.0, f.bucket(Bucket.LOD), 1e-9);
+        assertEquals(2.0, f.bucket(Bucket.TERRAIN), 1e-9, "4 ms less the 2 ms of lod inside it");
+
+        Facts.ModCost create = f.mods().stream().filter(m -> m.modId().equals("create")).findFirst().orElseThrow();
+        assertEquals(0, create.handlersMs() + create.layersMs() + create.packetsMs(), 1e-9,
+                "a sound row is none of a mod's handlers, layers or payloads, so it feeds no mod-* rule");
+        Facts.ModCost minecraft = f.mods().stream().filter(m -> m.modId().equals("minecraft")).findFirst().orElseThrow();
+        assertEquals(1.0, minecraft.packetsMs(), 1e-9, "the sound packet, the anvil's play inside it not added again");
+    }
+
+    @Test
+    void soundRowsThatCostTheSameGoByLabelAndNoSoundsIsEmpty() {
+        // Review focus 5: a tie between two sound rows goes A to Z by label, as on the Mods tab, whatever order they
+        // played in, so the advice names the same row the tab lists first.
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> now[0], 0);
+        Accumulator flute = s.accumulator(ModKey.sound("minecraft:block.note_block.flute", "record"));
+        Accumulator steam = s.accumulator(ModKey.sound("create:steam", "block"));
+        s.onRenderPre(0, 0);
+        s.beginAttribution(flute); now[0] = 1 * MS; s.end();
+        s.beginAttribution(steam); now[0] = 2 * MS; s.end();
+        now[0] = 10 * MS; s.onRenderPre(0, 0);
+        Facts f = Facts.of(s.finish(), Environment.empty());
+        assertEquals(List.of("create:steam", "minecraft:block.note_block.flute"),
+                f.sounds().stream().map(Facts.SoundCost::event).toList());
+        assertEquals(2.0, f.soundMs(), 1e-9);
+
+        Facts none = Facts.of(TestSessions.sample(), Environment.empty());
+        assertTrue(none.sounds().isEmpty(), "nothing played");
+        assertEquals(0, none.soundMs(), 0);
+    }
+
+    @Test
+    void aHitchCarriesItsSoundBucket() {
+        // Four quiet 10 ms frames, then a 60 ms hitch whose tick is 45 ms, 40 of them in the sound engine's tick.
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 0, 0), () -> now[0], 0);
+        for (int i = 0; i <= 4; i++) {
+            now[0] = i * 10 * MS;
+            s.onRenderPre(0, 0);
+        }
+        now[0] = 45 * MS;                    s.onRenderPost();
+        s.onTickPre();
+        s.begin(null, Bucket.SOUND);         now[0] = 85 * MS; s.end();
+        now[0] = 90 * MS;                    s.onTickPost();
+        now[0] = 100 * MS;                   s.onRenderPre(0, 0);
+        Facts f = Facts.of(s.finish(), Environment.empty());
+
+        assertEquals(1, f.hitches().size());
+        Facts.Hitch h = f.hitches().get(0);
+        assertEquals(60.0, h.totalMs(), 1e-9);
+        assertEquals(40.0, h.soundMs(), 1e-9, "the sound engine's tick in the hitch");
+        assertEquals(5.0, h.unnamedTickMs(), 1e-9, "the tick's 45 ms less the 40 in sound: a bucket is never unnamed");
+        assertEquals(0, FactsBuilder.hitch(1, 60).soundMs(), 0, "the nine-argument form has no sound bucket");
     }
 }
