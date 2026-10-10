@@ -136,7 +136,10 @@ DH's targets, against both `distanthorizons` 2.4.5-b (the deployed jar) and 3.3.
   - `animate tick` is the random block display effects around the player: drips, smoke, sparkles, and the
     particles they spawn.
   - `terrain` is the chunk-layer draws `renderLevel` makes, solid through tripwire, whichever renderer
-    supplies them: Sodium's, vanilla's, or another mod's head injection.
+    supplies them: Sodium's, vanilla's, or another mod's head injection. It leaves out the
+    `RenderLevelStageEvent` both renderers post at the end of each layer: a required wrapper on NeoForge's
+    `ClientHooks.dispatchRenderStage(RenderType, ...)` closes the terrain call while it runs, so its handlers stay
+    named time and what they draw keeps its own bucket (plan 6a, deviation 4).
   - `lod` is Distant Horizons' LOD drawing, in every pass DH's head injection runs: the main pass, the
     deferred pass for shaders, and the two fades.
 - **Order.** The enum lists the render buckets `TERRAIN`, `LOD`, then the existing seven, and the tick
@@ -209,6 +212,10 @@ early (zero volume, an unloaded engine, a dropped event) costs almost nothing an
 - `[mods x]` keeps its P5.A6 meaning. A play enclosed by a handler or a packet is not outermost, so it adds
   nothing to named time. A play that nothing encloses, in other tick, other render or tasks, is named time
   like a handler.
+- The per-mod rollup on the Mods tab sums its rows' inclusive time, so a play inside a packet or handler of the same
+  namespace counts in both rows: a vanilla sound the server sends counts twice in the `minecraft` row, once in its
+  packet's row (`packet minecraft:sound` or `packet minecraft:sound_entity`) and once in its `sound minecraft:…`
+  row. The tab's note that shares overlap covers it, and no advice rule reads the rollup for sounds.
 
 **Thread.** Only plays on the render thread are timed, as for every other hook.
 
@@ -252,7 +259,8 @@ frame without the new buckets prints as before, apart from `unnamed`.
 ## P6.7 JSON schema 6, environment and hook lists
 
 - **Schema 6.** `avgBucketsMs` and each frame's `bucketsUs` gain `sound`, `animate tick`, `terrain` and
-  `lod`, by label. Sound rows appear under `mods` like any other key, with `kind` `sound`. Nothing else
+  `lod`, by label. Sound rows appear under `mods` like any other key; the key's kind word starts its serialised
+  form, `sound@create:create:steam (block)`, and no `kind` field is added (plan 6a, decision 3). Nothing else
   changes shape.
 - **Environment.** DH's version is already recorded (`distanthorizons: 2.4.5-b`). Without DH, `LOD` is absent
   from all three hook lists, as Flywheel's hook is without Flywheel.
@@ -264,8 +272,10 @@ frame without the new buckets prints as before, apart from `unnamed`.
 ## P6.8 The DH pin and the build
 
 - `gradle.properties` gains `distanthorizons_version=3.3.3-1.21.1`. `build.gradle` adds
-  `maven.modrinth:distanthorizons:${distanthorizons_version}` to `packModJars`, so `-PpackMods` runs the
-  dev client with DH. DH is not on the compile classpath (P6.1, change 2).
+  `maven.modrinth:distanthorizons:${distanthorizons_version}` to `packModRuntime`, which `installPackMods` copies
+  into `run/mods`, so `-PpackMods` runs the dev client with DH. It stays out of `packModJars`, whose jars
+  `extractNestedModJars` searches for nested mod jars to compile against: DH has none, and DH is not on the compile
+  classpath (P6.1, change 2; plan 6a, deviation 1).
 - `CLAUDE.md`'s toolchain list gains Distant Horizons `3.3.3-1.21.1`. The orchestrator makes that edit
   with the plan's commit, since the user approved the pin; `CLAUDE.md` is otherwise the user's file.
 - The DH mixin goes in `hooks.mixin.distanthorizons` with `require = 0`, like the Sodium, Iris and Flywheel

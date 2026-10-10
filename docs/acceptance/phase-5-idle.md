@@ -44,6 +44,9 @@ after launch and lasts 120 s, and its file appears in `run/` when it ends. Then 
 world takes longer than about 50 s to load on this machine, use a longer `delay` for all four runs alike, and
 note it under Results.
 
+Since phase 6, `-PpackMods` also loads Distant Horizons 3.3.3, whose background threads build LODs while the
+game runs. Both arms carry that load alike, but a run made after phase 6 does not compare with one made before it.
+
 | Run | Renderable | JVM | Command |
 | --- | --- | --- | --- |
 | 1 | absent | default | `./gradlew runClient -PquickPlay="RenderableIdle" -PpackMods -PwithoutRenderable -PclientJvmArgs="-XX:StartFlightRecording=delay=60s,duration=120s,filename=idle-run1.jfr,settings=profile" --no-daemon` |

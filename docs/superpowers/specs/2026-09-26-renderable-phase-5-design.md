@@ -447,6 +447,12 @@ bucket-owning call, so its time counts in `hud` instead of its old bucket. An en
 draws through `EntityRenderDispatcher.render` is an example: it moves from `entity` to `hud`, and is still
 on the entity's own row.
 
+**Phase 6 exception (spec addendum §P6.4).** `lod` always counts as itself. When a `lod` call ends, its time is
+credited to `lod` at once, and the outermost bucket enclosing it is credited its own time less every `lod` call
+inside it; a `lod` call inside another counts once. Every other bucket keeps the outermost rule, so a bucket inside
+`hud` still counts as `hud`. Named time is unchanged: `lod`'s credit is bucket time like any other, so a handler
+around a `terrain` call around a `lod` call names neither.
+
 **User-visible change.** Apart from the HUD case above, the existing numbers do not change. Hitch top
 contributors may now name mod handlers, which is what a stall needs.
 
@@ -465,7 +471,9 @@ contributors may now name mod handlers, which is what a stall needs.
 
 - **Mods tab.** One row per mod: `mod | share | us/f | peak ms | gc f | calls/f`.
   - A row expands to its members, each labelled with its kind: `event ClientTickEvent.Post`,
-    `layer xaerominimap:minimap`, `packet somemod:sync_data`.
+    `layer xaerominimap:minimap`, `packet somemod:sync_data`, and from phase 6 `sound create:steam (block)`
+    (spec addendum §P6.5): one row per sound event and category, under the event id's namespace, timing the whole
+    `SoundEngine.play` call, so `calls/f` is plays per frame. A play only names time: the bucket it runs in keeps it.
   - The tab opens sorted by total time, largest first. `share` and `us/f` sort the same way, and the arrow
     sits on `share`, the first of them, as on the other ranked tabs. The columns sort like the other data
     tabs (P4.C7).
@@ -482,7 +490,7 @@ contributors may now name mod handlers, which is what a stall needs.
   other mods carries their time (P5.A3).
 - **Empty states:**
   - `(event timing unavailable: <reason>)` when event timing is off (P5.A3);
-  - `(no mod handlers, HUD layers or packets were timed)` otherwise;
+  - `(no mod handlers, HUD layers, packets or sounds were timed)` otherwise (sounds from phase 6);
   - above a table that has layers or packets while event timing is off, the line
     `(event handlers were not timed: <reason>)` (plan 5a).
 

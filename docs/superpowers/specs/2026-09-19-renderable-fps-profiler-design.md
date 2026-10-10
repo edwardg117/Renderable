@@ -72,15 +72,17 @@ Every frame in the session produces one record:
 | `renderNanos` | frame start to just after `RenderFrameEvent.Post` is posted |
 | `tasksNanos` | time in `Minecraft.runAllTasks`: packets and other queued main-thread work (phase 5) |
 | `capNanos` | time in `RenderSystem.limitDisplayFPS`: the wait for the fps limit (phase 5) |
-| buckets | `BLOCK_ENTITY`, `ENTITY`, `PARTICLE_RENDER`, `FLYWHEEL`, `CHUNK_UPLOAD`, `LIGHT`, `HUD`, `PARTICLE_TICK`, `BE_TICK`, `ENTITY_TICK`, each a nanosecond sum for this frame |
+| buckets | `TERRAIN`, `LOD`, `BLOCK_ENTITY`, `ENTITY`, `PARTICLE_RENDER`, `FLYWHEEL`, `CHUNK_UPLOAD`, `LIGHT`, `HUD`, `PARTICLE_TICK`, `BE_TICK`, `ENTITY_TICK`, `SOUND`, `ANIMATE_TICK`, each a nanosecond sum for this frame (`TERRAIN`, `LOD`, `SOUND` and `ANIMATE_TICK` from phase 6) |
 | `namedNanos` | per window (render, tick, tasks), the time of the outermost attribution-only calls (§3.4) that no bucket-owning call encloses, less the bucket time inside them (phase 5) |
 | `gcCount`, `gcMillis` | delta since the previous frame of the collection count and time summed over the collectors' pause beans: all of them under G1, Parallel and Serial, and only the `Pauses` beans under ZGC and Shenandoah, whose `Cycles` beans time concurrent work (phase 5) |
 | `top` | up to `topContributorsPerFrame` (default 5) keys with the most nanoseconds in this frame, across all timed keys |
 
 Derived values, computed at report time and never stored twice:
 
-- `otherRenderNanos = renderNanos - (BLOCK_ENTITY + ENTITY + PARTICLE_RENDER + FLYWHEEL + CHUNK_UPLOAD + LIGHT + HUD)`
-- `otherTickNanos = tickNanos - (PARTICLE_TICK + BE_TICK + ENTITY_TICK)`
+- `otherRenderNanos = renderNanos - (TERRAIN + LOD + BLOCK_ENTITY + ENTITY + PARTICLE_RENDER + FLYWHEEL + CHUNK_UPLOAD + LIGHT + HUD)`
+- `otherTickNanos = tickNanos - (PARTICLE_TICK + BE_TICK + ENTITY_TICK + SOUND + ANIMATE_TICK)`
+- `unnamedTickNanos = max(0, otherTickNanos - namedNanos[tick])`: the part of the tick that neither a bucket nor the
+  Mods tab names, printed as `unnamed` at the end of the tick's brackets (phase 6)
 - `swapNanos = totalNanos - tickNanos - renderNanos - tasksNanos - capNanos` (the buffer swap and any vsync wait, the blit, the sound update, mouse turning and the yield)
 
 Render buckets nest inside `renderNanos` and tick buckets inside `tickNanos`. Nothing is
@@ -88,7 +90,9 @@ counted in two buckets. When a timed call nests inside another timed call (an it
 a block entity renderer), the inner call is attributed to the innermost key and the outer key's
 time includes it; buckets are only incremented by the outermost call that owns a bucket, tracked with a depth
 counter. Attribution-only calls (§3.4) own none, so a block entity drawn inside an event handler is still
-block entity time.
+block entity time. `LOD` is the one exception (phase 6, spec addendum §P6.4): it counts as itself wherever it runs,
+once however it nests, and the outermost bucket enclosing it is credited its own time less every `LOD` call inside
+it. So `TERRAIN` holds Sodium's draw and `LOD` Distant Horizons', and no nanosecond is in both.
 
 ### 3.3 Hitch detection
 
@@ -117,17 +121,17 @@ accumulators.
 | `ParticleKey` | particle class name | render and tick (phase 2) |
 | `BlockKey` | block id | Sodium mesh build (phase 3) |
 | `SectionKey` | dimension, section position | Sodium mesh build (phase 3) |
-| `ModKey` | kind (event, layer, packet), owning mod id, event class or id | event handlers, HUD layers, packets (phase 5); attribution-only |
+| `ModKey` | kind (event, layer, packet, sound), owning mod id, event class or id; for a sound, `<event id> (<category>)` with the event id's namespace as the mod | event handlers, HUD layers, packets (phase 5) and sound plays (phase 6); attribution-only |
 
 Flywheel visual counts are averaged per class in `FlywheelStats`, not keyed accumulators.
 
-A mod's event handlers, HUD layers and packets are **attribution-only** (phase 5, spec addendum §P5.A6):
-their keys (`ModKey`, category `MOD`, type id the mod's id) are timed, ranked, peaked and GC-flagged like any
-other, but they own no bucket, and vertices emitted inside one land on the innermost call that does own a
-bucket. The time the outermost attribution-only calls account for outside any bucket is recorded per frame
-window as `namedNanos`, so a `ChunkEvent.Load` handler run inside a chunk packet's handling is not counted
-twice. Having no bucket to say which side it ran on, an attribution-only call is tick time on its key inside
-the client tick and render time anywhere else, packets included.
+A mod's event handlers, HUD layers and packets, and sound plays (phase 6), are **attribution-only** (phase 5,
+spec addendum §P5.A6): their keys (`ModKey`, category `MOD`, type id the mod's id) are timed, ranked, peaked
+and GC-flagged like any other, but they own no bucket, and vertices emitted inside one land on the innermost
+call that does own a bucket. The time the outermost attribution-only calls account for outside any bucket is
+recorded per frame window as `namedNanos`, so a `ChunkEvent.Load` handler run inside a chunk packet's handling
+is not counted twice. Having no bucket to say which side it ran on, an attribution-only call is tick time on
+its key inside the client tick and render time anywhere else, packets included.
 
 Each key's accumulator holds: `calls`, `totalNanos`, `shadowNanos` (Iris shadow pass share),
 `tickNanos`, `maxFrameNanos`, `vertices`, and a scratch `frameNanos` (render plus tick
@@ -193,7 +197,7 @@ that survives into the next session is re-keyed on first sight.
 
 Vanilla targets below are Mojang-mapped names as expected for 1.21.1 and are verified in the
 dev environment in the phase 1 plan. Third-party targets were read with `javap` from the jars
-this pack pins (Sodium 0.8.13, Iris 1.8.14-beta.1, Flywheel 1.0.6 bundled in Create 6.0.10).
+this pack pins (Sodium 0.8.13, Iris 1.8.14-beta.1, Flywheel 1.0.6 bundled in Create 6.0.10, Distant Horizons 3.3.3).
 
 ### 4.1 Phase 1: frame model, block entities, entities
 
@@ -263,7 +267,8 @@ block like any other.
 
 ### 4.5 Mixin gating and failure policy
 
-- A mixin config plugin applies Sodium, Iris and Flywheel mixins only when that mod is loaded.
+- A mixin config plugin applies Sodium, Iris, Flywheel, Accelerated Rendering and Distant Horizons mixins only when
+  that mod is loaded.
 - Third-party mixins are `require = 0`. If one of their injectors misses its target after a version bump, the
   client keeps running and nothing is logged, but the report lists the hook among those that did not apply,
   and a table it leaves empty says so. Mixin does log a third-party mixin it rejects as a whole, whose hooks
@@ -296,6 +301,23 @@ block like any other.
 | the cached array of every `ListenerList` on `NeoForge.EVENT_BUS` | swapped for `TimedListener` proxies while a session runs; not a mixin | `ModKey` event time per owning mod and event class, attribution-only |
 
 The spec addendum's §P5.A0 records the bytecode offsets these were verified at.
+
+### 4.7 Phase 6: sound, terrain and Distant Horizons
+
+| Target | Kind | Records |
+| --- | --- | --- |
+| call to `SoundManager#tick(boolean)` inside `Minecraft#tick()` | `@WrapOperation` | `SOUND` bucket |
+| call to `ClientLevel#animateTick(int, int, int)` inside `Minecraft#tick()` | `@WrapOperation` | `ANIMATE_TICK` bucket |
+| the seven calls to `LevelRenderer#renderSectionLayer(RenderType, double, double, double, Matrix4f, Matrix4f)` inside `LevelRenderer#renderLevel` | `@WrapOperation`, one injector for all seven | `TERRAIN` bucket |
+| NeoForge `ClientHooks#dispatchRenderStage(RenderType, LevelRenderer, Matrix4f, Matrix4f, int, Camera, Frustum)`, which vanilla's and Sodium's `renderSectionLayer` call at the end of each layer | `@WrapMethod` | closes the open `TERRAIN` call while the layer's `RenderLevelStageEvent` runs, and opens it again after |
+| `SoundEngine#play(SoundInstance)` | `@WrapMethod` | `ModKey` sound time per event and category, attribution-only |
+| Distant Horizons `ClientApi#renderLods()`, `#renderDeferredLodsForShaders()`, `#renderFadeOpaque()` and `#renderFadeTransparent()` (gated on `distanthorizons`, targeted by string) | `@WrapMethod` | `LOD` bucket, carved out of the bucket enclosing it |
+
+The phase 6 addendum (`docs/superpowers/specs/2026-10-10-renderable-phase-6-design.md`, §P6.2) records the bytecode
+offsets these were verified at, and the Sodium, Iris and Distant Horizons code around the terrain calls.
+The `dispatchRenderStage` row came later (plan 6a, deviation 4): vanilla's `renderSectionLayer` calls it at offset
+555, and Sodium's overwrite through `NeoForgeLevelRenderHooks.runChunkLayerEvents` (offset 11), each at the end of
+the layer.
 
 ## 5. User interface
 
@@ -340,7 +362,7 @@ Tabs and columns:
 | Advice | the recommendations, the player's first, each wrapped as a title and two short paragraphs | none; the screen opens on this tab |
 | Frames | summary block plus a frame-time histogram | sampled seconds, frames, avg, p50, p95, p99, max, threshold, average bucket split |
 | Hitches | one per hitch | frame index, time into session, total ms, bucket split bar, GC delta, top contributors (a GC-suspect contributor's **split** cell reads `[gc]` in place of the bar, since the name cell is the one the list truncates) |
-| Mods | one row per mod, expandable to its event types, HUD layers and packets | share %, µs/frame, peak frame ms, gc f, calls/frame |
+| Mods | one row per mod, expandable to its event types, HUD layers, packets and sounds | share %, µs/frame, peak frame ms, gc f, calls/frame |
 | Block Entities | type rows, expandable to positions | render µs/frame, tick µs/frame, share %, peak frame ms, gc f, shadow %, vertices/frame, calls |
 | Entities | type rows, expandable to individuals | same |
 | Particles | class rows | render µs/frame, tick µs/frame, share %, avg live count, vertices/frame, gc f |
@@ -412,18 +434,21 @@ Sections, in order:
    Distant Horizons present or not; dimension, player position, loaded section count; which
    Renderable hooks are installed, which fired and which did not apply.
 4. **Frames**: frames, avg ms and FPS, p50, p95, p99, max; hitch threshold and count and total
-   hitch time as a share of wall time; average split per frame: tick, the buckets (the HUD among them),
-   other render, tasks, the frame cap and swap, leaving out a bucket, tasks or the frame cap that took no
-   time, with the part of tick, other render and tasks that the Mods section names in brackets; the GC count
+   hitch time as a share of wall time; average split per frame: tick, the buckets (the HUD among them, and
+   `terrain` and `lod` first), other render, tasks, the frame cap and swap, leaving out a bucket, tasks or the
+   frame cap that took no time, with the part of tick, other render and tasks that the Mods section names in
+   brackets; the tick's brackets partition it, its buckets, then `mods`, then `unnamed` for the rest when above
+   zero (phase 6); the GC count
    and pause time, with a note under that line, printed whenever the session saw a collection, explaining that
    `gc f` counts frames a pause could account for, that those are left out of `peak ms`, and that `-` means
-   none was clean; Renderable's own estimated overhead; and the measured time of its own in-frame work
-   (§3.5), when it had any.
+   none was clean; Renderable's own estimated overhead; the measured time of its own in-frame work
+   (§3.5), when it had any; and, when anything played a sound, `Sound plays: x ms a frame, n plays a second`,
+   every sound row summed, including those the Mods section's top 15 and top 3 leave out (phase 6).
 5. **Hitches**: up to 25 worst, each on two lines: frame and time, total, bucket split; then top
    contributors with their milliseconds in that frame, with a contributor at least as large as
    that frame's GC pause marked `[gc]`. A note under the section heading explains the marker,
    printed only when the session has at least one hitch.
-6. **Mods** (top 15, each with its top 3 event types, HUD layers or packets), under a note that counting is
+6. **Mods** (top 15, each with its top 3 event types, HUD layers, packets or sounds), under a note that counting is
    inclusive and that a library carries the handlers it runs for other mods; or one line saying why there are
    none, and a line above the table when event timing was off.
 7. **Block entities by type** (top 20) and **by position** (top 20), and the count of GC-suspect frames. The
@@ -445,8 +470,8 @@ code fence.
 
 ```
 {
-  "schema": 5,
-  "mod": { "version": "0.5.0" },
+  "schema": 6,
+  "mod": { "version": "0.6.0" },
   "environment": { ... same fields as the text header, typed ... },
   "session": { "startedAt": iso8601, "durationSeconds": 30.0, "frames": 2412,
                "hitchThresholdMs": 33.2, "overheadEstimateMs": 0.4, "timedCalls": 6947008,
@@ -455,7 +480,7 @@ code fence.
   "recommendations": [ { "rule": "gc-pauses", "kind": "STUTTER", "audience": "PLAYER", "title": ...,
                          "finding": ..., "action": ..., "msPerFrame": ..., "worstMs": ... } ],
   "frames": [ { "i": 0, "totalUs": ..., "tickUs": ..., "renderUs": ..., "tasksUs": ..., "capUs": ...,
-                "namedUs": { "render": ..., "tick": ..., "tasks": ... }, "bucketsUs": { ... },
+                "namedUs": { "render": ..., "tick": ..., "tasks": ... }, "bucketsUs": { "terrain": ..., "lod": ..., ... },
                 "gcCount": 0, "gcMs": 0, "top": [ { "key": "...", "us": ..., "gc": false } ] }, ... ],
   "hitches": [ frame indices ],
   "mods": [ { ...a ranked row for the mod..., "entries": [ ...ranked rows... ] } ],
@@ -474,9 +499,14 @@ code fence.
 The environment's `hooksInstalled`, `hooksFired` and `hooksFailed` arrays list hooks by name; schema 4 called
 `hooksFired` `hooksApplied` (phase 5).
 
+Schema 6 (phase 6) adds four labels to `avgBucketsMs` and to each frame's `bucketsUs`: `terrain`, `lod`, `sound`
+and `animate tick`. Sound rows sit in `mods` like any other key. Buckets are written by label, never by position.
+Nothing else changes shape. `terrain` and `lod` are render buckets and `sound` and `animate tick` tick buckets, so
+`otherRenderUs` and `avgOtherRenderMs` no longer include the first two, nor `avgOtherTickMs` the last two.
+
 JSON is complete, not truncated to top-N. Keys serialise as strings of the form
 `type@dim:x,y,z`, `type#entityId`, `particle:ClassName`, `block:id`, `section@dim:x,y,z`,
-`event@mod:class`, `layer@mod:id`, `packet@mod:id`.
+`event@mod:class`, `layer@mod:id`, `packet@mod:id`, `sound@mod:event (category)`.
 
 Every row of `blockEntities`, `entities`, `particles` and `mods`, and of each mod's `entries`, carries
 `gcFrames`, the count of frames the key appeared in that were GC-suspect; its `peakFrameUs` is the largest
@@ -592,6 +622,7 @@ Each phase is its own implementation plan and its own release tag.
 | 4a | GC-suspect values excluded from per-key and per-type peaks and flagged in every output, type peaks taken from the type's worst frame, Accelerated Rendering vertices counted, the overhead estimate extended to vertex calls and its calibration corrected, JSON schema 4 | in-game checks 1 to 4; check 5 (idle cost) still not run |
 | 5a | frame components (tasks, frame cap, HUD), frame and tick boundaries at the `Minecraft` call sites, mod event handlers through per-session listener proxies, HUD layers, packets and payloads, rider ticks, attribution-only calls and named time, the Mods tab and report section, JSON schema 5 | spec addendum §P5.A's checks, in the in-pack acceptance at the end of phase 5 |
 | 5b | the recommendation engine and its nineteen rules, the environment's memory and JVM facts, pause-only GC sampling, the Advice tab, the report's Recommendations section, the chat line's suggestion count, the JSON's `recommendations` | spec addendum §P5.B's checks, in the in-pack acceptance at the end of phase 5 |
+| 6a | the `terrain`, `lod`, `sound` and `animate tick` buckets, `lod` carved out of the bucket around it, sound plays as Mods tab rows with the Frames section's Sound plays line, `unnamed` in the tick's brackets, JSON schema 6, Distant Horizons in the dev client | the phase 6 addendum's checks A1 to A5 in unit tests and the dev client; the in-pack acceptance at the end of phase 6 |
 
 Phase 4 is four independently executable plans rather than one. Group A ships alone as `v0.4.0`; groups B
 (robustness and cost), C (screen and overlay) and D (hygiene and CI) follow in any order, each with its own
@@ -599,3 +630,6 @@ commits, and are described in `docs/superpowers/specs/2026-09-20-renderable-phas
 
 Phase 5 is four plans, 5a (attribution), 5b (recommendations), 5d (polish) and 5c (readiness), run in that
 order and released together as `v0.5.0`; see `docs/superpowers/specs/2026-09-26-renderable-phase-5-design.md`.
+
+Phase 6 is two stacked plans, 6a (measurement) and 6b (advice and release), released together as `v0.6.0`; see
+`docs/superpowers/specs/2026-10-10-renderable-phase-6-design.md`.
