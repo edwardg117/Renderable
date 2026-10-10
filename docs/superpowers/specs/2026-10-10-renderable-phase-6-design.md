@@ -69,6 +69,9 @@ Two points were settled while writing:
    wraps takes no arguments and returns nothing. DH 3.3.3 is still pinned, for the dev client and for javap
    (P6.8).
 
+During plan review the user added one rule test: `sound-wait`'s stutter form also fires on the `sound` bucket
+in repeated hitches (P6.9), for stalls spread over many sound events.
+
 # P6.A Measurement (plan 6a)
 
 ## P6.2 Verified hook targets
@@ -140,8 +143,9 @@ DH's targets, against both `distanthorizons` 2.4.5-b (the deployed jar) and 3.3.
   buckets `PARTICLE_TICK`, `BE_TICK`, `ENTITY_TICK`, `SOUND`, `ANIMATE_TICK`. The split prints in enum order,
   so terrain and its LODs, drawn first and usually largest, lead the render side. Ordinals are not
   persisted: the JSON writes buckets by label (P6.7).
-- **Hooks.** Four new `Hook` values, one per bucket: `SOUND`, `ANIMATE_TICK`, `TERRAIN` and `LOD`. Each
-  injector goes in `HookInstalls.HOOKS`, as `CLAUDE.md` requires. The mixin plugin gains
+- **Hooks.** Five new `Hook` values: one per bucket, `SOUND`, `ANIMATE_TICK`, `TERRAIN` and `LOD`, and
+  `SOUND_PLAYS` for the sound rows' hook on target 4 (P6.5). Each injector goes in `HookInstalls.HOOKS`, as
+  `CLAUDE.md` requires. The mixin plugin gains
   `"distanthorizons" → "distanthorizons"` in `REQUIRED_MOD`.
 - **Cost.** `sound` and `animate tick` run once per tick, `terrain` up to seven times a frame and `lod` up to
   four times. None of them runs per entity or per vertex.
@@ -152,7 +156,7 @@ which the split now shows as `unnamed` (P6.6).
 
 **Acceptance check (A1).** In the dev client with `-PpackMods` (now with DH):
 
-- `hooks installed` lists `SOUND`, `ANIMATE_TICK`, `TERRAIN` and `LOD`, and `hooks that did not apply` is
+- `hooks installed` lists `SOUND`, `ANIMATE_TICK`, `TERRAIN`, `LOD` and `SOUND_PLAYS`, and `hooks that did not apply` is
   `none`.
 - `terrain` and `lod` have time every frame.
 - Muting the master volume drops `sound` to about zero.
@@ -277,7 +281,7 @@ Two new rules and one widened, in P5.B2's format:
 
 | Rule | For | Kind | Fires when | At stake |
 | --- | --- | --- | --- | --- |
-| `sound-wait` | player | frame rate, or stutter when one sound row took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test | the sound rows sum to ≥ 0.5 ms/f, or the stutter form's test | sound play time; in the stutter form, that row's largest time in one of the hitches the finding is about |
+| `sound-wait` | player | frame rate, or stutter when one sound row took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test, or the `sound` bucket is at least a quarter of the hitch in 3 or more hitches and in at least a quarter of all hitches | the sound rows sum to ≥ 0.5 ms/f, or one of the stutter form's tests | sound play time; in the stutter form, that row's largest time in one of the hitches the finding is about, or for the bucket test the `sound` bucket's largest time in one of those hitches |
 | `distant-horizons` | player | frame rate | `lod` ≥ 1.0 ms/f and ≥ 10% of the average frame | `lod` |
 | `unattributed-stall` | pack author | stutter | as in P5.B2 (≥ 50 ms and at least half the frame), **or** the unnamed time (as P5.B2 computes it: other tick, other render and tasks, less named time, less the frame's GC pause) is at least a quarter of the hitch in 3 or more hitches and in at least a quarter of all hitches | that time; its largest in one hitch |
 
@@ -296,6 +300,11 @@ Two new rules and one widened, in P5.B2's format:
   not feed `mod-network` or `mod-handlers`.
 - **The muting claim** rests on P6.2: `play` returns before asking for a channel when the volume works out
   to zero.
+- **The `sound` bucket test** (added by the user on 2026-10-10, during plan review) covers stalls spread over
+  many sound events, none of which reaches a quarter of a hitch alone: queued sounds play inside
+  `SoundManager.tick`, so the bucket shows the whole wait. Its finding reads, for example, "In 30 of 83 hitches,
+  the sound engine took at least a quarter of the frame (up to 18 ms)." Its action is the muting action, naming
+  the slider of the costliest sound row, or no slider when the session has no sound rows.
 
 **Acceptance check (B1).** Unit tests for each rule at and just under each threshold, in each form, and for
 the slider table. At the other player's base, `distant-horizons` fires, and `sound-wait` fires if the sound
