@@ -113,10 +113,15 @@ do not commit.** Tasks 7 and 8 are the orchestrator's, with the user.
     `HITCH_KEY_SHARE` (0.25) of the hitch;
   - `Advisor.advise(Facts)` is package-private, runs `SettingsRules`, `SceneRules`, `MemoryRules` and `PackRules` in
     that order, sorts stably by `RANKING`, and returns nothing when there are no frames.
-- **What plan 6a gives this plan** (its "Interfaces for plan 6b"): `Bucket.LOD` and `Bucket.TERRAIN`; `ModKey.Kind.SOUND`,
-  `ModKey.sound(eventId, category)`, `soundEvent()` and `soundCategory()`; `SoundPlays.of(r)`, its `rows()` (the
-  costliest first, ties A to Z by label, as `Ranking.byKey` sorts) and `playsPerSecond(RankedEntry)`;
-  `TestSessions.phase6()` and its keys.
+- **What plan 6a gives this plan** (its "Interfaces for plan 6b", as executed on `phase-6a-measurement`):
+  - `Bucket.LOD` and `Bucket.TERRAIN`;
+  - `ModKey.Kind.SOUND`, `ModKey.sound(eventId, category)`, `soundEvent()` and `soundCategory()`;
+  - `SoundPlays.of(r)`, its `rows()` (the costliest first, ties A to Z by label, as `Ranking.byKey` sorts) and
+    `playsPerSecond(RankedEntry)`;
+  - `public static String SoundPlays.perSecond(double rate)`, which `summary()` uses: whole from 9.95 up, one decimal
+    below, and "under 0.1" for a rate above zero that would read "0.0";
+  - `FrameRecord.unnamedTickNanos()`, which `Facts.hitch` now reads (`h.unnamedTickNanos() / 1e6,`);
+  - `TestSessions.phase6()` and its keys.
 - **`TestSessions.phase6()`'s figures, as the rules see them:**
   - two 20 ms frames in 0.04 s, no hitches;
   - `lod` 2.0 ms a frame, which is exactly a tenth of the frame;
@@ -128,11 +133,13 @@ do not commit.** Tasks 7 and 8 are the orchestrator's, with the user.
 - **Floating point at the thresholds:** `0.10 * 10.0` is exactly `1.0` as a double, but `0.10 * 12.0` is
   `1.2000000000000002`. So the "exactly a tenth" test uses 1.0 ms of a 10.0 ms frame.
 - **The `sound` bucket is never unnamed time.** `Facts.of` takes a hitch's `unnamedTickMs` from
-  `FrameRecord.otherTickNanos()`, the tick less every tick bucket, `SOUND` among them (plan 6a, Task 1).
-- **The suite is 289 tests** after plan 6a, its review's `ClientHooksMixin` test included. That was checked by
-  applying 6a's Tasks 1 to 7, from its own code blocks, to a clone of `main` carrying the working tree's phase 6
-  spec, and running `./gradlew test --rerun --no-daemon`. This plan's Tasks 1 to 6 were applied the same way on
-  top: every step's expected failure and count below came out as written.
+  `FrameRecord.unnamedTickNanos()`: other tick (the tick less every tick bucket, `SOUND` among them), less the
+  tick's named time.
+- **The suite is 294 tests** after plan 6a, as executed on `phase-6a-measurement` (`4af0ad0`): its plan's 289, one
+  more `lod` test in `SessionTest`, three `SoundPlays.perSecond` tests in `SoundPlaysTest`, and
+  `HookInstallsTest.theThirdPartyConfigIsOptionalSoAMissedTargetOnlyLogs`. This plan's Tasks 1 to 6 were applied
+  from their own code blocks to a clone of that branch and run with `./gradlew test --rerun --no-daemon`: every
+  step's expected failure and count below came out as written.
 - **The pack instance** (from `docs/acceptance/phase-5.md`; no subagent opens it, and the orchestrator only reads it, in
   Task 7):
   - `%APPDATA%\.MCUpdater\instances\Gears-And-Frontiers\`, with `renderable-0.5.0.jar` in `mods/`;
@@ -215,7 +222,7 @@ src/test/java/io/github/edwardg117/renderable/core/advice/
   AdvisorTest.java                                                    Modify (Task 4)
 ```
 
-**Expected test totals:** 289 at the start, 292 after Task 1, 294 after Task 2, 304 after Task 3 and 310 after Task 4,
+**Expected test totals:** 294 at the start, 297 after Task 1, 299 after Task 2, 309 after Task 3 and 315 after Task 4,
 which is also the total at the end (Tasks 5 to 8 add none). Review rounds may add tests; a shortfall is worth
 investigating and an excess is not.
 
@@ -254,8 +261,8 @@ Spec §P6.9's "the sound rows sum" is the Sound plays line's figure, which `Soun
 stays out of its mod's `ModCost`, so it feeds no `mod-*` rule (§P6.9, "no double finding").
 
 `sound-wait`'s bucket test (§P6.9) reads each hitch's `sound` bucket, so `Facts.Hitch` carries it. Like every tick
-bucket it is outside `unnamedTickMs`, which `Facts.of` takes from `FrameRecord.otherTickNanos()`: the sound engine's
-time is named, and `unattributed-stall` never counts it. A second constructor keeps the nine-argument form, with
+bucket it is outside `unnamedTickMs`, which `Facts.of` takes from `FrameRecord.unnamedTickNanos()`: the sound
+engine's time is named, and `unattributed-stall` never counts it. A second constructor keeps the nine-argument form, with
 `soundMs` 0, so the other rules' tests and the thirty-odd hitches they build stay as they are (decision 11).
 
 - [ ] **Step 1: Write the failing tests**
@@ -618,7 +625,7 @@ with:
 - [ ] **Step 5: Run the tests**
 
 Run: `./gradlew test --rerun --no-daemon`
-Expected: BUILD SUCCESSFUL, **292** tests, 0 failures.
+Expected: BUILD SUCCESSFUL, **297** tests, 0 failures.
 
 - [ ] **Step 6: Stage and report**
 
@@ -760,7 +767,7 @@ with:
 - [ ] **Step 5: Run the tests**
 
 Run: `./gradlew test --rerun --no-daemon`
-Expected: BUILD SUCCESSFUL, **294** tests, 0 failures. No existing fixture has `lod`, so no other expectation moves.
+Expected: BUILD SUCCESSFUL, **299** tests, 0 failures. No existing fixture has `lod`, so no other expectation moves.
 
 - [ ] **Step 6: Stage and report**
 
@@ -786,12 +793,12 @@ Report to the orchestrator for the commit: `feat(advice): distant-horizons names
 **Interfaces:**
 - Consumes: `Facts.sounds()`, `Facts.soundMs()`, `Facts.SoundCost`, `Facts.Hitch.soundMs()` and
   `FactsBuilder.soundHitch` (Task 1); `ModKey.Kind.SOUND`, `ModKey.soundEvent()`,
-  `ModKey.soundCategory()` (plan 6a Task 4); `Thresholds.causes`, `Thresholds.isMod`; `Fmt.num`.
+  `ModKey.soundCategory()` (plan 6a Task 4); `Thresholds.causes`, `Thresholds.isMod`; `SoundPlays.perSecond(double)`
+  (plan 6a, as executed).
 - Produces:
   - `record KeyStutter(ModKey key, double worstMs, int hitchNumber, int count)` (package-private), with
     `String finding(String subject, int hitches)` and `static KeyStutter find(Facts f, Predicate<ModKey> which)`;
-  - `static String Words.slider(String category)`, `static String Words.volume(String category)` and
-    `static String Words.perSecond(double rate)`;
+  - `static String Words.slider(String category)` and `static String Words.volume(String category)`;
   - `Thresholds.SOUND_MS = 0.5` and `Thresholds.SOUND_BUCKET_SHARE = 0.25`;
   - `static void SettingsRules.soundWait(Facts, List<Recommendation>)`, rule `sound-wait`, run after
     `distantHorizons` in `SettingsRules.all`.
@@ -818,7 +825,9 @@ The finding names a sound by its event and its slider: `create:steam (Blocks)`. 
 "the slider for the sounds playing here" when the bucket test fires with no sound row (decision 10). That works
 because at a volume of exactly 0, `play` returns before asking for a channel (verified facts). The pack-author
 sentence is left out for a vanilla sound, whose namespace no pack author can report to (deviation 5). Plays a second
-are written as the Sound plays line writes them: whole from ten up, one decimal below.
+go through plan 6a's `SoundPlays.perSecond`, as on the Sound plays line: whole from 9.95 up, one decimal below, and
+"under 0.1" for a rate above zero that would read 0.0. `Words` has no rate formatter of its own, so the two cannot
+drift apart, and `SoundPlaysTest` covers the rule.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -870,9 +879,6 @@ Then append to `SettingsRulesTest`:
         assertEquals("the Blocks volume", Words.volume("block"));
         assertEquals("the Master Volume", Words.volume("master"), "its caption already says Volume");
         assertEquals("the somemod_engines volume", Words.volume("somemod_engines"));
-        assertEquals("85", Words.perSecond(85.2));
-        assertEquals("10", Words.perSecond(10));
-        assertEquals("1.5", Words.perSecond(1.5), "under ten a second, one decimal, as the Sound plays line");
     }
 
     @Test
@@ -1099,7 +1105,7 @@ Append to `PackRulesTest`:
 
 Run: `./gradlew test --rerun --no-daemon --tests '*SettingsRulesTest' --tests '*PackRulesTest'`
 Expected: compilation failure: `invalid method reference` for `Words::slider` and `SettingsRules::soundWait`, and
-`cannot find symbol` for `Words.volume` and `Words.perSecond`.
+`cannot find symbol` for `Words.volume`.
 
 - [ ] **Step 3: Create `KeyStutter`**
 
@@ -1349,11 +1355,6 @@ with:
         String slider = slider(category);
         return slider.endsWith(" Volume") ? "the " + slider : "the " + slider + " volume";
     }
-
-    /** A rate a second as the Sound plays line writes it: whole from ten up ("85"), one decimal below ("1.5"). */
-    static String perSecond(double rate) {
-        return rate >= 10 ? String.format(Locale.ROOT, "%.0f", rate) : Fmt.num(rate);
-    }
 ```
 
 - [ ] **Step 6: Add the threshold**
@@ -1386,6 +1387,7 @@ with:
 ```java
 import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.ModKey;
+import io.github.edwardg117.renderable.core.SoundPlays;
 ```
 
 Replace (it occurs once):
@@ -1450,7 +1452,7 @@ with:
         Facts.SoundCost top = f.sounds().isEmpty() ? null : f.sounds().get(0);
         String steady = String.format(Locale.ROOT, "Playing sounds kept the game waiting %.1f ms a frame", ms);
         String costliest = top == null ? "" : steady + "; " + top.event() + " (" + Words.slider(top.category())
-                + ") played " + Words.perSecond(top.playsPerSecond()) + " times a second.";
+                + ") played " + SoundPlays.perSecond(top.playsPerSecond()) + " times a second.";
         String modId = top == null ? null : top.modId();
         String category = top == null ? null : top.category();
         String finding;
@@ -1481,7 +1483,7 @@ with:
 - [ ] **Step 8: Run the tests**
 
 Run: `./gradlew test --rerun --no-daemon`
-Expected: BUILD SUCCESSFUL, **304** tests, 0 failures. Every existing `PackRulesTest` test passes unchanged, which shows
+Expected: BUILD SUCCESSFUL, **309** tests, 0 failures. Every existing `PackRulesTest` test passes unchanged, which shows
 the stutter test moved without changing.
 
 - [ ] **Step 9: Stage and report**
@@ -1802,7 +1804,7 @@ with:
 - [ ] **Step 5: Run the tests**
 
 Run: `./gradlew test --rerun --no-daemon`
-Expected: BUILD SUCCESSFUL, **310** tests, 0 failures. The stall form's existing tests (`anUnattributedStallNamesTheWorstHitch`,
+Expected: BUILD SUCCESSFUL, **315** tests, 0 failures. The stall form's existing tests (`anUnattributedStallNamesTheWorstHitch`,
 `anUnattributedStallAtItsThresholdsAndInEachWindow`) pass unchanged: each has one or two hitches, too few for a repeat.
 The report and JSON tests do not move either: no other fixture has three hitches.
 
@@ -1899,7 +1901,8 @@ with:
   render or tasks is likewise the part of it the Mods tab names. **lod** is counted apart from the terrain draw it
   runs inside, so no time is in both. The Frames tab is the exception: it always lists tasks and the frame cap,
   shows the Mods tab's part as an **in the Mods tab** row under each, and shows the rest of the tick as **other
-  tick**, that part included. A big swap/wait with a low GPU load is not a rendering problem in the world.
+  tick**, that part included. Each figure is rounded on its own, so a bracket can differ from its total by a tenth
+  or two. A big swap/wait with a low GPU load is not a rendering problem in the world.
 ```
 
 Replace:
@@ -1917,7 +1920,9 @@ with:
   type and sound. A sound row, such as `sound create:steam (block)`, is one sound event played in one category.
   It times the whole play, the wait for a channel included, and its **calls/f** is plays per frame. A sound only
   names time: the bucket it was played in keeps it, such as **be tick** for a machine's sound. The Frames
-  section's **Sound plays** line sums the sound rows. Counting is
+  section's **Sound plays** line sums the sound rows. A play inside a packet or handler of the same mod counts in
+  both rows, so a mod's total on the Mods tab can read high: the `minecraft` row counts each vanilla sound the
+  server sends in its packet's row and in its sound row. Counting is
 ```
 
 Replace:
@@ -1958,7 +1963,9 @@ with:
 Schema 6 (this version) adds four buckets to `avgBucketsMs` and to each frame's `bucketsUs`: `terrain`, `lod`,
 `sound` and `animate tick`. Buckets are written by label, never by position. Sound rows sit in a mod's `entries`
 like its other rows, keyed `sound@<mod>:<event id> (<category>)`, such as `sound@create:create:steam (block)`.
-Nothing else changes shape.
+`terrain` and `lod` are render buckets and `sound` and `animate tick` tick buckets, so `otherRenderUs` and
+`avgOtherRenderMs` no longer include the first two, nor `avgOtherTickMs` the last two. There is no per-frame
+`unnamed` field: it is `max(0, max(0, tickUs − the tick buckets) − namedUs.tick)`. Nothing else changes shape.
 
 Schema 5 added `tasksUs`, `capUs` and `namedUs` (`render`, `tick` and `tasks`, empty ones left out)
 ```
@@ -2252,7 +2259,7 @@ Then check: `grep -c "0\.5\.0" docs/pack-module.md` prints `0`.
 - [ ] **Step 3: Build and test**
 
 Run: `./gradlew build --no-daemon`, then `./gradlew test --rerun --no-daemon`, then `ls build/libs/`
-Expected: BUILD SUCCESSFUL both times, **310** tests, and `renderable-0.6.0.jar` in `build/libs/`.
+Expected: BUILD SUCCESSFUL both times, **315** tests, and `renderable-0.6.0.jar` in `build/libs/`.
 
 - [ ] **Step 4: Stage and report**
 
@@ -2272,12 +2279,15 @@ Spec §P6.10, short, as the user prefers. It checks what no dev client could:
 - §P6.9's check B1 in the pack;
 - plan 6a's leftovers ("After this plan" in plan 6a): Create's boiler sound under `create`, `lod` against the pack's own
   DH, `unnamed` at the 16:08 spot, nothing named before reading differently at the user's base, and the Hitches
-  tab's split width (plan 6a's "Carried to 6b").
+  tab's split width (plan 6a's "Carried to 6b");
+- the mute check of §P6.3's A1 (its third bullet), which plan 6a's dev client could not show because its world was
+  all but silent. It is optional, and it is `sound-wait`'s action tried in the game;
+- whether the Mods tab's name column cuts a long sound label's `(category)`.
 
 The user plays; the orchestrator reads the reports and the log from the instance, read-only, and writes the results.
 A FAIL is a defect: stop and plan the fix with the user before Task 8.
 
-- [ ] **Step 1: Ask the user to run two sessions**
+- [ ] **Step 1: Ask the user to run the sessions**
 
 Send the user this:
 
@@ -2286,12 +2296,20 @@ Send the user this:
 > 2. Start the pack and join the server.
 > 3. **Session 1, the other player's base.** Stand at -1169 91 -1678, the spot of the 16:08 session, press **F7**
 >    (this instance still binds Renderable's key there) and play normally for the 30 seconds.
-> 4. When its results screen opens, look at the **Hitches** tab and tell me whether a hitch's split is cut off
->    before `terrain` and `lod`. Then close the screen.
-> 5. **Session 2, your base.** At your base (about 2562 97 1152), press **F7** again and play normally for 30 seconds.
-> 6. Tell me when both sessions are done. You can leave the game running.
+> 4. When its results screen opens, tell me:
+>    - on the **Hitches** tab, whether a hitch's split is cut off before `terrain` and `lod`;
+>    - on the **Mods** tab, opening `create` or `minecraft`, whether a long `sound ...` label loses its `(category)`
+>      at the end;
+>    - on the **Advice** tab, which slider "Sounds keep the game waiting" names, if it is there.
+>
+>    Then close the screen.
+> 5. **Session 2, optional: the same spot, muted.** In Options, Music & Sounds, set that slider to 0% (Blocks if the
+>    Advice tab named none). From the same spot, press **F7** again and play normally for 30 seconds. Then put the
+>    slider back where it was. Skip this session if you would rather not.
+> 6. **Session 3, your base.** At your base (about 2562 97 1152), press **F7** again and play normally for 30 seconds.
+> 7. Tell me when the sessions are done, and whether you ran session 2. You can leave the game running.
 
-- [ ] **Step 2: Read the two new reports and the log**
+- [ ] **Step 2: Read the new reports and the log**
 
 In Git Bash, with the instance at `I="$APPDATA/.MCUpdater/instances/Gears-And-Frontiers"`:
 
@@ -2302,8 +2320,10 @@ python -I - "$I" <<'EOF'
 import glob, json, os, sys
 inst = sys.argv[1]
 TICK = ("particle tick", "be tick", "entity tick", "sound", "animate tick")
-for f in sorted(glob.glob(os.path.join(inst, "renderable", "renderable-*.json")), key=os.path.getmtime)[-2:]:
+for f in sorted(glob.glob(os.path.join(inst, "renderable", "renderable-*.json")), key=os.path.getmtime)[-3:]:
     r = json.load(open(f, encoding="utf-8"))
+    if r["mod"]["version"] != "0.6.0":
+        continue    # the 0.5.0 report before them, when session 2 was skipped
     env, st, b = r["environment"], r["stats"], r["stats"]["avgBucketsMs"]
     frames = {x["i"]: x for x in r["frames"]}
     print("==", os.path.basename(f), "schema", r["schema"], "version", r["mod"]["version"],
@@ -2335,7 +2355,7 @@ for f in sorted(glob.glob(os.path.join(inst, "renderable", "renderable-*.json"))
     for a in r["recommendations"]:
         print("advice:", a["rule"], a["kind"], "|", a["finding"], "|", a["action"])
 EOF
-for f in $(ls -t "$I"/renderable/renderable-*.txt | head -2); do
+for f in $(ls -t "$I"/renderable/renderable-*.txt | head -3); do    # with session 2 skipped, the third is 0.5.0's
   echo "== $f"
   grep -n "hooks installed\|hooks that did not apply\|Time split\|Sound plays" "$f"
   grep -n -m5 "^  #[0-9]*  frame" "$f"
@@ -2346,7 +2366,8 @@ grep -c "could not check the hooks" "$I/logs/latest.log"
 grep -in "renderable" "$I/logs/latest.log" | grep -i "mixin\|error\|exception" | head
 ```
 
-Then compare the user's base with the 0.5.0 session taken there (`renderable-2026-10-10_15-56-32`):
+Then compare the user's base, the newest report, with the 0.5.0 session taken there
+(`renderable-2026-10-10_15-56-32`):
 
 ```bash
 python -I - "$I" <<'EOF'
@@ -2390,26 +2411,33 @@ Session 1, the other player's base:
    costliest row's. `unattributed-stall` is expected to be quiet: on the 0.5.0 numbers here its repeat form
    would have fired on client tick (64 of 83 hitches), time `sound` now names. If it fires, record its finding.
 
-Session 2, the user's base:
-6. **Nothing named before reads differently (§P6.10, 2).** Against the 0.5.0 session at the same base:
+Session 2, muted (optional), the same spot:
+6. **The mute check (§P6.3, A1's third bullet).** Against session 1: the muted category's sound rows read about
+   0 ms a frame while their plays still count, and the `sound` bucket drops. That is `sound-wait`'s action working
+   in the game: at 0% `play` skips the wait for a channel. If the user skipped the session, record it **NOT RUN**.
+   Check that the user has put the slider back.
+
+Session 3, the user's base:
+7. **Nothing named before reads differently (§P6.10, 2).** Against the 0.5.0 session at the same base:
    - the old buckets are in the same range;
    - the top block entity types and mods are much the same;
    - 0.5.0's other render is about this session's other render plus `terrain` plus `lod`;
    - its other tick is about this session's other tick plus `sound` plus `animate tick`.
 
    The two sessions are hours apart and the scene moves, so judge by order of magnitude, not exact figures.
-7. **Hooks and advice.** As check 1, and the user finds the advice sensible for the base. `unattributed-stall` is
+8. **Hooks and advice.** As check 1, and the user finds the advice sensible for the base. `unattributed-stall` is
    expected to be quiet: on the 0.5.0 numbers its repeat form would have fired here on rendering (8 of 18 hitches, up
    to 14 ms), time `terrain` and `lod` now take. If it fires on ordinary hitches, that is noise for the pack author:
    record its finding, and before Task 8 ask the user whether to count a part only by what it exceeds that window's
    session average (on the 0.5.0 reports that keeps the 16:08 tick stalls, 50 of 83, and drops this base's, 1 of 18).
 
 Both:
-8. **The log and privacy.** No Renderable mixin error. No "could not check the hooks" line. Each session's line reads
+9. **The log and privacy.** No Renderable mixin error. No "could not check the hooks" line. Each session's line reads
    `restored N listener lists; 0 still hold a timing proxy`. Neither report holds a UUID: the `grep -cE` counts are 0.
-9. **The Hitches tab (carried from plan 6a).** From the user's answer: whether the Hitches tab cuts a hitch's split
-   before `terrain` and `lod`. If it does, record it and decide with the user whether the split needs a second line
-   or a tooltip, and whether that is a task before Task 8 or a later phase. It is not a FAIL.
+10. **Screen widths (carried from plan 6a).** From the user's answers: whether the Hitches tab cuts a hitch's split
+    before `terrain` and `lod`, and whether the Mods tab's name column cuts a long sound label's `(category)`. If
+    either does, record it and decide with the user whether it needs a second line or a tooltip, and whether that is
+    a task before Task 8 or a later phase. It is not a FAIL.
 
 - [ ] **Step 4: Write `docs/acceptance/phase-6.md`**
 
@@ -2417,7 +2445,8 @@ Follow `docs/acceptance/phase-5.md`:
 - a header: the date, the machine and GPU, the build under test (`renderable-0.6.0.jar` from `phase-6b-advice` at its
   commit), and the pack's rendering stack;
 - a **Scope** paragraph: the short pass the user chose;
-- a table of the two sessions (session, where, frames, avg ms (fps), p50 / p95 / max, hitches, GC, overhead, advice);
+- a table of the sessions (session, where, frames, avg ms (fps), p50 / p95 / max, hitches, GC, overhead, advice), and
+  the mute session as **NOT RUN** if the user skipped it;
 - the hook lists in a code block;
 - one section per session, each check above as **PASS**, **FAIL** or **NOT RUN**, with what was seen;
 - a closing **Observations** section for anything else noticed: the leading sound events, how much of the old other
@@ -2435,7 +2464,7 @@ Tell the user "Touch the YubiKey", then `git add docs/acceptance/phase-6.md` and
 - [ ] **Step 1:** With the acceptance passed and the user's go-ahead, fast-forward `main` to `phase-6b-advice`:
   `git checkout main && git merge --ff-only phase-6b-advice`. The branches stack (6a, then 6b), so this brings all of
   phase 6. If `main` has moved, stop and ask.
-- [ ] **Step 2:** Run `./gradlew test --rerun --no-daemon` on `main` (**310** tests). Tell the user "Touch the YubiKey",
+- [ ] **Step 2:** Run `./gradlew test --rerun --no-daemon` on `main` (**315** tests). Tell the user "Touch the YubiKey",
   and tag: `git tag -s v0.6.0 -m "Renderable 0.6.0"`.
 - [ ] **Step 3:** Update the phase 6 status memory with the merge commit and the tag.
 
@@ -2497,7 +2526,8 @@ Tell the user "Touch the YubiKey", then `git add docs/acceptance/phase-6.md` and
      hitch #1."
    - "Set the Master Volume to 0%" for the master slider, whose caption already says Volume, and "Set the Blocks
      volume to 0%" for the others.
-   - Plays a second are written as the Sound plays line writes them: whole from ten up, one decimal below.
+   - Plays a second go through plan 6a's `SoundPlays.perSecond`, as on the Sound plays line: whole from 9.95 up, one
+     decimal below, and "under 0.1" for a rate above zero that would read 0.0.
    - A category outside the slider table reads as its own name. On 1.21.1 there is none (verified facts).
 6. **The muting claim.** At 0%, `play` skips every sound except one whose instance can start silent, which in
    vanilla is bees and minecarts. The action says "the game then skips those sounds", which is true for every sound
@@ -2519,6 +2549,10 @@ Tell the user "Touch the YubiKey", then `git add docs/acceptance/phase-6.md` and
     reads "Set the slider for the sounds playing here to 0% in Music & Sounds: ...", with no pack-author sentence.
 11. **`Facts.Hitch` keeps a nine-argument constructor** with `soundMs` 0. Only `sound-wait` reads the bucket, and the
     other rules' tests build some thirty hitches in the old form, which stay as they are.
+12. **`chunk-rebuilds`' stutter form now also weighs chunk upload against `terrain` and `lod`.** `Facts.hitch` calls
+    chunk upload "the largest part of the split" by comparing it with every other render bucket, and phase 6's two
+    are render buckets. So a hitch that terrain or LOD drawing leads no longer counts as led by chunk upload. That is
+    what the field means; accepted, with no code change.
 
 ## After this plan
 

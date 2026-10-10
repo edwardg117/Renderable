@@ -83,7 +83,7 @@ Derived values, computed at report time and never stored twice:
 - `otherTickNanos = tickNanos - (PARTICLE_TICK + BE_TICK + ENTITY_TICK + SOUND + ANIMATE_TICK)`
 - `unnamedTickNanos = max(0, otherTickNanos - namedNanos[tick])`: the part of the tick that neither a bucket nor the
   Mods tab names, printed as `unnamed` at the end of the tick's brackets (phase 6)
-- `swapNanos = totalNanos - tickNanos - renderNanos - tasksNanos - capNanos` (the buffer swap and any vsync wait, the blit, the sound update, mouse turning and the yield)
+- `swapNanos = totalNanos - tickNanos - renderNanos - tasksNanos - capNanos` (the buffer swap and any vsync wait, the blit, the sound listener update (`SoundManager.updateSource`), mouse turning and the yield)
 
 Render buckets nest inside `renderNanos` and tick buckets inside `tickNanos`. Nothing is
 counted in two buckets. When a timed call nests inside another timed call (an item rendered by

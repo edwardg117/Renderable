@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Executed** on 2026-10-10 on `phase-6a-measurement` (HEAD `4af0ad0`), **294 tests**. Reviews during execution
+> added, beyond the task text below: one more `lod` test in `SessionTest`; `SoundPlays.perSecond(double)`, with three
+> tests, which the Sound plays line's rate goes through (whole from 9.95 up, one decimal below, "under 0.1" for a
+> rate that would read "0.0"); sounds in the Mods tab's empty-state sentence; `Facts.hitch` reading
+> `FrameRecord.unnamedTickNanos()`; `HookInstallsTest.theThirdPartyConfigIsOptionalSoAMissedTargetOnlyLogs`;
+> ASCII-only comments in the Gradle files; and more documentation in the specs. The commits are the record of what
+> was built.
+
 **Goal:** Name the two costs the phase 5 acceptance found without a name. Time the sound engine's tick and every
 sound play, the random block effects, the chunk-layer draws and Distant Horizons' LOD drawing; show the plays as rows
 in the Mods tab with a "Sound plays" line; and make the tick's brackets a full partition of the tick with `unnamed`.
@@ -165,8 +173,9 @@ most likely first. Each has a test in the task that owns its code, marked "Revie
    `theDistantHorizonsMixinIsSkippedWithoutDistantHorizons`; Task 8 Step 7's plain run shows it in a game.
 2. **Zero-volume and early-return plays** (a category muted, which 6b's advice will recommend; a `PlaySoundEvent`
    handler that drops the sound; an unloaded engine). Each still counts as a play at near-zero cost. The Sound plays
-   line prints whenever anything played, `0.00 ms a frame` included, and its rate keeps one decimal under ten a
-   second. Test: Task 4, `SoundPlaysTest.aPlayThatCostNothingStillCountsAndTheLineStillPrints`.
+   line prints whenever anything played, `0.00 ms a frame` included, and its rate goes through
+   `SoundPlays.perSecond`: whole from 9.95 a second up, one decimal below, and "under 0.1" for a rate above zero
+   that would read "0.0". Test: Task 4, `SoundPlaysTest.aPlayThatCostNothingStillCountsAndTheLineStillPrints`.
 3. **A sound played off the render thread** (a mod playing from its network or worker thread). Not timed: no key is
    made and the session's stack is untouched, and the play itself runs as it would without Renderable. Test: Task 5,
    `SourceGuardsTest.everyAttributionOnlyEntryPointDeclinesOffTheRenderThread`.
@@ -3415,9 +3424,10 @@ Nothing is staged in this task.
 
 1. **An instance that names no event or no category is not timed** (Review focus 5). There is no key to give it, and
    its time stays in the bucket it ran in.
-2. **The Sound plays rate is whole at ten a second or more and keeps one decimal below.** So a quiet session never
-   reads "0 plays a second" on a line printed only when something played. The spec's example,
-   `180 plays a second`, is unchanged.
+2. **The Sound plays rate goes through `SoundPlays.perSecond(double)`** (as executed): whole from 9.95 a second up,
+   so 9.96 reads "10" rather than "10.0"; one decimal below; and "under 0.1" for a rate above zero that would
+   read "0.0". So a quiet session never reads "0 plays a second" on a line printed only when something played. The
+   spec's example, `180 plays a second`, is unchanged. Task 4's code above shows the first draft, whole from ten.
 3. **"With `kind` `sound`" (§P6.7) is read as the key's kind word**, as in `sound@create:create:steam (block)`. No
    `kind` field is added, because "nothing else changes shape".
 4. **`FrameStats.avgUnnamedTickNanos()` is `max(0, average other tick − average named tick)`**, not an average of each
@@ -3433,7 +3443,7 @@ Nothing is staged in this task.
 
 ## Interfaces for plan 6b
 
-Plan 6b may rely on these exactly. Plan 6a ends at **289** tests, the baseline 6b counts from.
+Plan 6b may rely on these exactly. Plan 6a ends at **294** tests as executed, the baseline 6b counts from.
 
 - **Buckets.** `core.Bucket.TERRAIN` and `Bucket.LOD` (render, `isRender()` true), and `Bucket.SOUND` and
   `Bucket.ANIMATE_TICK` (tick). Labels `terrain`, `lod`, `sound` and `animate tick`. Enum order: `TERRAIN, LOD,
@@ -3464,7 +3474,9 @@ Plan 6b may rely on these exactly. Plan 6a ends at **289** tests, the baseline 6
   - `public static SoundPlays of(SessionResult r)`; `rows()` is every sound row, the costliest first
     (`Ranking.byKey` order: total time descending, ties by label);
   - `boolean any()`, `double msPerFrame()`, `double playsPerSecond()`, `double playsPerSecond(RankedEntry row)`,
-    `String summary()` (`1.60 ms a frame, 200 plays a second`) and `String line()` (`Sound plays: ` + summary).
+    `String summary()` (`1.60 ms a frame, 200 plays a second`) and `String line()` (`Sound plays: ` + summary);
+  - `public static String SoundPlays.perSecond(double rate)`, which `summary()` uses: whole from 9.95 up, one decimal
+    below, and "under 0.1" for a rate above zero that would read "0.0".
 - **What the advice rules can compute from these:**
   - "the sound rows sum to ≥ 0.5 ms/f": `SoundPlays.of(r).msPerFrame() >= 0.5`. `Facts` has no sound field yet:
     6b adds one in `Facts.of`, which has the `SessionResult`, and to the test `FactsBuilder`;
@@ -3476,8 +3488,10 @@ Plan 6b may rely on these exactly. Plan 6a ends at **289** tests, the baseline 6
     `topContributorsPerFrame` keys (default 5) are kept, so a sound row outside them is not visible in that hitch.
     `RankedEntry.maxFrameNanos()` is a row's largest clean frame anywhere in the session.
 - **The tick's unnamed time.**
-  - `public long FrameRecord.unnamedTickNanos()` and `public long FrameStats.avgUnnamedTickNanos()` are
-    `max(0, other tick − named tick)` in ns, the same figure as `Facts.Hitch.unnamedTickMs()`.
+  - `public long FrameRecord.unnamedTickNanos()` is one frame's `max(0, other tick − named tick)` in ns, the same
+    figure as `Facts.Hitch.unnamedTickMs()`, which `Facts.hitch` now reads from it.
+  - `public long FrameStats.avgUnnamedTickNanos()` is the average other tick less the average named tick, clamped at
+    zero (decision 4), not an average of each frame's figure.
   - P5.B2's unnamed time for `unattributed-stall` (other tick, other render and tasks, less named time, less the GC
     pause) is still `Facts.Hitch`'s `unnamedTickMs`, `unnamedRenderMs` and `untimedTasksMs` with `gcMs`.
 - **The rule engine.** `hitch-repeat` already skips `Category.MOD` keys, and `Facts.of`'s kind switch ignores `SOUND`,

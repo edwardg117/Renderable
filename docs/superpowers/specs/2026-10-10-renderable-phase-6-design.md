@@ -1,8 +1,7 @@
 # Renderable phase 6: sound, terrain and Distant Horizons
 
 **Date:** 2026-10-10
-**Status:** written from the design approved section by section on 2026-10-10; awaiting the user's review.
-Plans not yet written.
+**Status:** approved 2026-10-10; plan 6a done on `phase-6a-measurement` (294 tests); plan 6b written.
 **Extends:** the base spec `docs/superpowers/specs/2026-09-19-renderable-fps-profiler-design.md`, the phase 4
 addendum `2026-09-20-renderable-phase-4-design.md` and the phase 5 addendum
 `2026-09-26-renderable-phase-5-design.md`. Sections here are numbered `P6.x`. A number with no prefix refers to
