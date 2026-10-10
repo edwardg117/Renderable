@@ -1,6 +1,8 @@
 package io.github.edwardg117.renderable.core.advice;
 
 import io.github.edwardg117.renderable.core.Bucket;
+import io.github.edwardg117.renderable.core.ModKey;
+import io.github.edwardg117.renderable.core.SoundPlays;
 import io.github.edwardg117.renderable.core.advice.Recommendation.Audience;
 import io.github.edwardg117.renderable.core.advice.Recommendation.Kind;
 
@@ -21,6 +23,7 @@ final class SettingsRules {
         flywheelShaders(f, out);
         chunkRebuilds(f, out);
         distantHorizons(f, out);
+        soundWait(f, out);
         frameCap(f, out);
         vsync(f, out);
     }
@@ -111,6 +114,64 @@ final class SettingsRules {
                 "Lower Quality Preset or LOD Chunk Render Distance Radius in Distant Horizons' settings, which its"
                         + " button beside FOV in Options opens.",
                 lod, 0));
+    }
+
+    /**
+     * Sound plays (spec addendum §P6.9): their steady cost, or stutter. Two stutter tests, one finding: one sound row by
+     * the mod rules' test ({@link KeyStutter#find}), which names the sound and wins when it passes; otherwise the
+     * {@code sound} bucket in repeated hitches, which catches a stall spread over many plays, since queued sounds play
+     * inside the sound engine's tick. A play waits for the sound thread to hand it a channel, and returns before asking
+     * for one (§P6.2), but only at a volume of exactly 0. So the action says to set a slider to 0%: the stalled or
+     * repeated sound's in the row test, the costliest row's otherwise, and none when no sound row was timed. A vanilla
+     * sound has no mod to report it to.
+     */
+    static void soundWait(Facts f, List<Recommendation> out) {
+        double ms = f.soundMs();
+        boolean costly = ms >= Thresholds.SOUND_MS;
+        KeyStutter s = KeyStutter.find(f, k -> k.kind() == ModKey.Kind.SOUND);
+        int inBucket = 0;
+        double bucketWorst = 0;
+        for (Facts.Hitch h : f.hitches()) {
+            // The frame's GC pause may have landed in the sound engine's tick: the bucket loses it, as
+            // unattributed-stall's parts do.
+            double v = Math.max(0, h.soundMs() - h.gcMs());
+            if (v < Thresholds.SOUND_BUCKET_SHARE * h.totalMs()) continue;
+            inBucket++;
+            bucketWorst = Math.max(bucketWorst, v);
+        }
+        boolean bucket = inBucket >= Thresholds.REPEATED_HITCHES
+                && inBucket >= Thresholds.HITCH_REPEAT_SHARE * f.hitches().size();
+        if (!costly && s == null && !bucket) return;
+
+        Facts.SoundCost top = f.sounds().isEmpty() ? null : f.sounds().get(0);
+        String steady = "Playing sounds kept the game waiting "
+                + (ms < 0.05 ? "under 0.1" : String.format(Locale.ROOT, "%.1f", ms)) + " ms a frame";
+        String costliest = top == null ? "" : steady + "; " + top.event() + " (" + Words.slider(top.category())
+                + ") played " + SoundPlays.perSecond(top.playsPerSecond()) + " times a second.";
+        String modId = top == null ? null : top.modId();
+        String category = top == null ? null : top.category();
+        String finding;
+        double worst = 0;
+        if (s != null) {
+            modId = s.key().modId();
+            category = s.key().soundCategory();
+            finding = s.finding("Playing " + s.key().soundEvent() + " (" + Words.slider(category) + ")",
+                    f.hitches().size()) + (costly ? " " + steady + "." : "");
+            worst = s.worstMs();
+        } else if (bucket) {
+            finding = String.format(Locale.ROOT, "In %d of %d hitches, the sound engine took at least a quarter of the"
+                    + " frame (up to %.0f ms).", inBucket, f.hitches().size(), bucketWorst) + (top == null ? "" : " " + costliest);
+            worst = bucketWorst;
+        } else {
+            finding = costliest;
+        }
+        String slider = category == null ? "the slider for the sounds playing here" : Words.volume(category);
+        out.add(new Recommendation("sound-wait", s != null || bucket ? Kind.STUTTER : Kind.FRAME_RATE, Audience.PLAYER,
+                "Sounds keep the game waiting", finding,
+                "Set " + slider + " to 0% in Music & Sounds: the game then skips those sounds instead of waiting for them."
+                        + (modId != null && Thresholds.isMod(modId)
+                                ? " A pack author can report the sound's mod with this file." : ""),
+                ms, worst));
     }
 
     static void frameCap(Facts f, List<Recommendation> out) {

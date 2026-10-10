@@ -262,4 +262,18 @@ class PackRulesTest {
         assertEquals("1 frame had unbalanced timing: a timed call did not return normally.",
                 run(new FactsBuilder().unbalanced(1).build(), PackRules::stackResets).get(0).finding());
     }
+
+    @Test
+    void soundRowsFeedNoModRuleAndNoHitchRepeat() {
+        // Spec addendum §P6.9, "no double finding": a sound that stutters is sound-wait's alone.
+        ModKey steam = ModKey.sound("create:steam", "block");
+        FactsBuilder b = new FactsBuilder().mod("create", 0, 0, 0, "").sound("create:steam", "block", 0.8, 85);
+        for (int i = 1; i <= 4; i++) b.hitch(hitch(i, 100, top(steam, 60)));
+        Facts f = b.build();
+        assertTrue(run(f, PackRules::modHandlers).isEmpty());
+        assertTrue(run(f, PackRules::modHud).isEmpty());
+        assertTrue(run(f, PackRules::modNetwork).isEmpty());
+        assertTrue(run(f, SceneRules::hitchRepeat).isEmpty(), "a Mods tab key");
+        assertEquals(List.of("sound-wait"), Advisor.advise(f).stream().map(Recommendation::rule).toList());
+    }
 }
