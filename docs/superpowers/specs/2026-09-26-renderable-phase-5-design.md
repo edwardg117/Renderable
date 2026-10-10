@@ -589,6 +589,8 @@ real: it is hitch #1 of the 4b/4c base session.
 | `shadows` | player | frame rate | a shader pack is on, and shadow time ≥ 1.0 ms/f and ≥ 30% of block entity plus entity render | shadow time |
 | `flywheel-shaders` | player | frame rate | a shader pack is on, the Flywheel backend is `flywheel:off`, and block entity render ≥ 1.0 ms/f | block entity render |
 | `chunk-rebuilds` | player | frame rate, or stutter when chunk upload is the largest part of the split in 3 or more hitches | chunk upload ≥ 1.0 ms/f, with biome blend ≥ 3 or render distance ≥ 16 | chunk upload; in the stutter form, its largest time in one of the hitches it leads |
+| `distant-horizons` (phase 6) | player | frame rate | `lod` ≥ 1.0 ms/f and ≥ 10% of the average frame | `lod` |
+| `sound-wait` (phase 6) | player | frame rate, or stutter when one sound row took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test, or the `sound` bucket is at least a quarter of the hitch in 3 or more hitches and in at least a quarter of all hitches | the sound rows sum to ≥ 0.5 ms/f, or one of the stutter form's tests | sound play time; in the stutter form, that row's largest time in one of the hitches the finding is about, or for the bucket test the `sound` bucket's largest time in one of those hitches |
 | `frame-cap` | player | note | frame cap ≥ 25% of the average frame | — |
 | `vsync` | player | note | vsync is on, and swap ≥ 25% of the average frame | — |
 | `block-entity-type` | player | frame rate | a type's render plus tick ≥ 1.0 ms/f (at most three types) | that type |
@@ -598,7 +600,7 @@ real: it is hitch #1 of the 4b/4c base session.
 | `heap-vs-ram` | player | note, or stutter when a frame's GC pause reached 500 ms | physical memory, to the nearest whole GiB, minus the maximum heap is under 4 GiB | none as a note; in the stutter form, GC time and the longest GC pause in one frame |
 | `heap-small` | player | frame rate | the smallest heap in use after any collection is ≥ 80% of the maximum heap | GC time |
 | `gc-pauses` | player | stutter | the collector is G1, Parallel or Serial, and the longest GC pause in one frame is ≥ 50 ms | GC time; longest pause |
-| `unattributed-stall` | pack author | stutter | a hitch where other tick, other render or tasks, less the time the Mods tab names in it (P5.A6) and less the frame's GC pause, is ≥ 50 ms and at least half the frame | that time |
+| `unattributed-stall` | pack author | stutter | a hitch where other tick, other render or tasks, less the time the Mods tab names in it (P5.A6) and less the frame's GC pause, is ≥ 50 ms and at least half the frame; or, from phase 6, where one of them is at least a quarter of the hitch in 3 or more hitches and in at least a quarter of all hitches | that time; its largest in one hitch |
 | `mod-handlers` | pack author | frame rate, or stutter when one of its handlers took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test | a mod's event handlers ≥ 0.5 ms/f, or the stutter form's test, whatever their steady cost | that mod's handlers; in the stutter form, that handler's largest time in one of the hitches the finding is about |
 | `mod-hud` | pack author | frame rate, or stutter when one of its layers took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test | a mod's HUD layers ≥ 0.5 ms/f, or the stutter form's test, whatever their steady cost | those layers; in the stutter form, that layer's largest time in one of the hitches the finding is about |
 | `mod-network` | pack author | frame rate, or stutter when one of its payload types took at least 50 ms and at least half of a hitch, or passes `hitch-repeat`'s test | a mod's payloads ≥ 0.5 ms/f, or the stutter form's test, whatever their steady cost | those payloads; in the stutter form, that payload type's largest time in one of the hitches the finding is about |
@@ -611,6 +613,9 @@ real: it is hitch #1 of the 4b/4c base session.
 | `shadows` | The shader pack's shadow pass is 38% of block entity and entity drawing, 2.1 ms a frame. | Lower the shader pack's shadow distance or resolution, or turn its shadows off. |
 | `flywheel-shaders` | Flywheel is not instancing under this shader pack, so the machines it would instance are drawn one at a time: block entities take 3.2 ms a frame. | Turn shaders off to bring instancing back: Flywheel does not instance while any shader pack is in use. |
 | `chunk-rebuilds` | Chunk rebuilds take 1.8 ms a frame and are the largest part of 4 of 6 hitches, at render distance 16 and biome blend 7x7. | Lower Biome Blend to 5x5 or less. While travelling, a lower render distance rebuilds fewer sections. |
+| `distant-horizons` | Distant Horizons draws its far terrain in 3.2 ms of each 10.1 ms frame. | Lower Quality Preset or LOD Chunk Render Distance Radius in Distant Horizons' settings, which its button beside FOV in Options opens. |
+| `sound-wait` | Playing sounds kept the game waiting 1.4 ms a frame; `create:steam` (Blocks) played 85 times a second. | Set the Blocks volume to 0% in Music & Sounds: the game then skips those sounds instead of waiting for them. A pack author can report the sound's mod with this file. |
+| `sound-wait`, bucket test | In 30 of 83 hitches, the sound engine took at least a quarter of the frame (up to 18 ms). Playing sounds kept the game waiting 1.4 ms a frame; `create:steam` (Blocks) played 85 times a second. | Set the Blocks volume to 0% in Music & Sounds: the game then skips those sounds instead of waiting for them. A pack author can report the sound's mod with this file. |
 | `frame-cap` | 8.3 ms of each 16.7 ms frame is spent waiting for the 60 fps limit, so the game has headroom. | Raise Max Framerate if you want more frames. |
 | `vsync` | With VSync on, 5.2 ms of each 16.7 ms frame is spent waiting for the display. | Turn VSync off for more frames, at the risk of tearing. |
 | `block-entity-type` | `create:factory_panel` takes 1.1 ms a frame across 212 blocks; the most expensive is at 120 64 -340. | It is the build, not a setting: fewer of them in view at once costs less. Highlight on the Block Entities tab shows where they are. |
@@ -621,6 +626,7 @@ real: it is hitch #1 of the 4b/4c base session.
 | `heap-small` | After every collection at least 6.9 of 8 GiB was still in use, so the collector runs often. | Allocate 12 GiB (1.6 x the live data, rounded up to a whole GiB). When that is more than `heap-vs-ram` allows, the action offers the most this machine can spare, if the live data would fill under 80% of it: "Allocate 10 GiB, the most this machine can spare (1.6 x the live data would be 12 GiB)." Otherwise: "This machine cannot spare 12 GiB (1.6 x the live data): close other programs, or lower render distance so the game needs less." |
 | `gc-pauses` | Garbage collection paused the game for up to 120 ms (14 collections, 610 ms in total). | On Java 21, add `-XX:+UseZGC -XX:+ZGenerational` to the JVM arguments (leave out `-XX:+ZGenerational` on Java 23 or later: from Java 26 the game will not start with it). ZGC pauses for well under a millisecond but uses more CPU, and more memory for the same data, so keep a quarter of the heap free. From Java 23 the action names `-XX:+UseZGC` alone, with no note in brackets. When `jvmFlags` holds the flag that chose the collector in use, such as `-XX:+UseG1GC`, the action says to replace that flag instead: the JVM will not start with two collectors chosen. |
 | `unattributed-stall` | Hitch #1 (382 ms): 374 ms of client tick is in code Renderable does not time. | Profile the same place with a sampling profiler such as spark, which names the code. |
+| `unattributed-stall`, repeat form | In 30 of 83 hitches, at least a quarter of the frame was in code Renderable does not time, up to 20 ms of client tick. | Profile the same place with a sampling profiler such as spark, which names the code. |
 | `mod-handlers` | `somemod`'s event handlers take 1.2 ms a frame, most of it in `RenderLevelStageEvent`. | Check the mod's config for the feature behind that event, or report it to the mod with this file. |
 | `mod-hud` | `somemod`'s HUD layers take 0.8 ms a frame. | Check the mod's HUD settings, or report it to the mod with this file. |
 | `mod-network` | The `somemod:sync` payload was a top cost in 4 of 13 hitches, up to 24 ms. `somemod`'s payloads take 0.6 ms a frame on the client. | The server is sending work the client handles on its main thread; report it to the mod with this file. |
@@ -661,6 +667,26 @@ Review changed these rules after plan 5b was written (plan 5b, from review):
   frame, the Particles tab's avg live figure. The finding leaves it out when it rounds to 0.
 - **`flywheel-shaders` says only to turn shaders off.** The Flywheel the pack pins does not instance while any
   shader pack is in use, so no shader pack brings instancing back.
+
+Phase 6 added two rules and widened one (spec addendum §P6.9, plan 6b):
+
+- **`sound-wait`** reads the Mods tab's sound rows (§P6.5), and each hitch's `sound` bucket. It names a category by
+  its slider in Music & Sounds, from a fixed English table, the captions of Minecraft 1.21.1's `soundCategory.*`
+  keys: `master` Master Volume, `music` Music, `record` Jukebox/Note Blocks, `weather` Weather, `block` Blocks,
+  `hostile` Hostile Creatures, `neutral` Friendly Creatures, `player` Players, `ambient` Ambient/Environment, `voice`
+  Voice/Speech. The action says to set a slider to 0%, because `play` skips a sound only at a volume of exactly 0:
+  the stalled or repeated sound's slider in the row test, the costliest row's otherwise, and none when the session
+  timed no sound row. It leaves out the pack-author sentence for a vanilla sound. Its row test is the mod rules'
+  stutter test, applied to sound rows. Its bucket test counts a hitch when the `sound` bucket, less the frame's GC
+  pause, is a quarter of it, and speaks only when no single row passes. `hitch-repeat` and the `mod-*` rules never
+  see sound rows, and the bucket is never unnamed time, so no sound is found twice.
+- **`distant-horizons`** is the one rule that names a mod, by the phase 6 design, although P5.1 chose generic rules
+  only. `lod` is time Renderable measures in Distant Horizons' own render methods, so the rule can only fire where
+  DH is installed and hooked. Its action names DH's own settings, the same in 2.4.5-b and 3.3.3.
+- **`unattributed-stall`** also fires on repeated unnamed time. Each hitch's three parts are taken on their own, as
+  in the stall form, and a hitch counts once however many of its parts pass. The finding names the window of the
+  largest part. When both forms pass, the repeat is named, with that largest part as its worst: a stall's part is
+  always a quarter of its hitch, so the repeat says both.
 
 ## P5.B3 New environment facts
 
@@ -1063,12 +1089,18 @@ Applied by the plan that implements each:
 - **No attribution for rendering that other mods inject into vanilla methods by mixin.** Distant
   Horizons' LOD pass and Sodium's terrain draw still land in other render, which remains the largest
   unnamed bucket. A `terrain` bucket around Sodium's chunk-layer draw is a candidate
-  for a later phase.
+  for a later phase. *Done in phase 6:* `terrain` times the chunk-layer draws, and `lod` Distant Horizons' LOD
+  drawing inside them (spec addendum §P6.3, §P6.4). Rendering other mods inject anywhere but a chunk-layer draw
+  still lands in other render.
 - **No finer split of other tick.** The verified call sites for a later phase are
   `ClientLevel.animateTick(III)V` (offset 773 in `Minecraft.tick`) and `Gui.tick(Z)V` (offset 81).
-  `unattributed-stall` points at a sampling profiler meanwhile.
+  `unattributed-stall` points at a sampling profiler meanwhile. *Done in part in phase 6:* `sound` and
+  `animate tick` are timed, the rest of the tick shows as `unnamed`, and `unattributed-stall` also fires when
+  unnamed time recurs in hitches (spec addendum §P6.3, §P6.6, §P6.9). `Gui.tick` and the other small tick calls
+  stay in `unnamed` (§P6.12).
 - **No sampling profiler.** spark remains the tool for code Renderable does not hook.
-- **No pack-specific rules,** and no rule that changes anything.
+- **No pack-specific rules,** and no rule that changes anything. Phase 6's `distant-horizons` names one mod,
+  Distant Horizons (spec addendum §P6.9); it fires only on time measured in DH's own render methods.
 - **No Highlight or Teleport from an Advice row.**
 - **No timing of network-thread payload handlers,** which are not frame time.
 - **No rollout.** The pack module is documented, not applied. The remote, CI and the release are the

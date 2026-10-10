@@ -53,8 +53,8 @@ are done. While it is installed and not sampling, each of its hooks does little 
    and for good once you log out of the world the session was taken in; hovering over them says which. They
    close the screen, but reopening it with `/renderable results` comes back to the same tab, sort, open
    groups, selection and scroll position, until the next session finishes.
-5. The **Mods** tab ranks mods by the time their event handlers, HUD layers and packets took; click a mod
-   to see its event types, layers and packets.
+5. The **Mods** tab ranks mods by the time their event handlers, HUD layers, packets and sounds took; click a
+   mod to see its event types, layers, packets and sounds.
 
 Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `overlay [on|off]`.
 
@@ -65,7 +65,17 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   how much time the finding is about: its worst single occurrence for stutter, milliseconds a frame for frame
   rate. That figure is an upper bound on what the change can save, not a prediction. Stutter comes first,
   then frame rate, then notes: a stall averaged over a session looks small but is what a player notices. The
-  rules are generic, not written for any one pack, and their thresholds are first estimates.
+  rules are generic, not written for any one pack, and their thresholds are first estimates. One is written for one mod:
+  it reads the time Renderable measures in Distant Horizons' own drawing, so it can only appear where Distant
+  Horizons is installed, and it names that mod's settings to lower.
+- **Sounds keep the game waiting** appears when playing sounds takes half a millisecond a frame, or when one
+  sound stalls a hitch or recurs in several, or when the sound engine takes a quarter of the frame in three or more
+  hitches and in a quarter of them. Each play waits for the sound thread to hand it a channel, and at
+  0% the game skips a sound without waiting, so the advice names the Music & Sounds slider to set to 0% for that
+  sound's category.
+- **A stall Renderable cannot name**, for the pack author, appears after one long stall in code Renderable does
+  not time, and **Stutter Renderable cannot name** when such code took at least a quarter of the frame in three
+  or more hitches and in a quarter of them. A sampling profiler such as spark names that code.
 - A hitch contributor counts toward repeated stutter only when it took at least a quarter of that hitch and
   carries no `[gc]` mark: every hitch's top list also holds the frame's usual costs.
 - **Environment** includes physical memory, the garbage collector, the initial heap, the smallest heap in use
@@ -77,15 +87,21 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   the collectors' concurrent cycles. A ZGC allocation stall, or Shenandoah holding back a thread that
   allocates, is not a pause either: its time lands in whatever was running, with no `[gc]` mark.
 - **Frames** gives the frame-time distribution. Trust p95 and p99 over the average.
-- **Time split** shows where the average frame went: client tick (with its block entity, entity
-  and particle tick shares in brackets), block entities, entities, particles, Flywheel, light
-  updates, chunk upload, the HUD, other render work, **tasks** (packets and other work queued for the
-  main thread), the **frame cap** (the wait for the fps limit, when one is set and reached), and swap/wait
-  (the buffer swap and vsync, the GPU and driver, and the rest of the frame loop). Tasks and the frame cap
-  are shown when they took time. `mods x` in brackets after tick, other render or tasks is the part of it the
-  **Mods** tab names. The Frames tab is the exception: it always lists tasks and the frame cap, and shows that
-  part as an **in the Mods tab** row under each. A big swap/wait with a low GPU load is not a rendering
-  problem in the world.
+- **Time split** shows where the average frame went: client tick, with its parts in brackets; the chunk-layer
+  draws (**terrain**) and Distant Horizons' LOD drawing (**lod**), which lead the render side; block entities,
+  entities, particles, Flywheel, light updates, chunk upload, the HUD, other render work, **tasks** (packets and
+  other work queued for the main thread), the **frame cap** (the wait for the fps limit, when one is set and
+  reached), and swap/wait (the buffer swap and vsync, the GPU and driver, and the rest of the frame loop). A
+  bucket, tasks and the frame cap are shown when they took time. The tick's brackets add up to the tick: its
+  block entity, entity and particle ticks; **sound**, the sound engine's tick, which also plays the sounds it
+  queued; **animate tick**, the drips, smoke and sparkles around the player; `mods x`, the part the **Mods** tab
+  names; and **unnamed**, the rest, which a sampling profiler such as spark can break down. `mods x` after other
+  render or tasks is likewise the part of it the Mods tab names. **lod** is counted apart from the terrain draw it
+  runs inside, so no time is in both. The Frames tab is the exception: it always lists tasks and the frame cap,
+  shows the rest of the tick as **other tick**, the Mods tab's part included, and shows that part of other tick,
+  other render and tasks as an **in the Mods tab** row under each. Each figure is rounded on its own, so a bracket
+  can differ from its total by a tenth or two. A big swap/wait with a low GPU load is not a rendering problem in
+  the world.
 - **Hitches** lists the frames that spiked, each with its split and the things that were most
   expensive in exactly that frame. GC pauses are shown per frame.
 - **Block entities** and **entities** are ranked by microseconds per frame; expand a type to see
@@ -96,12 +112,18 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   renderer's time also counts towards everything it is nested in.
 - **Particles** are ranked by class, named as the Flywheel classes are (see **Flywheel** below). **avg live**
   is the average number of that class rendered per frame; particles culled before rendering are not counted.
-- **Mods** ranks each mod by the time its event handlers, its HUD layers and the packets addressed to it
-  took, in microseconds per frame; expand a mod to see each event type, layer and packet type. Counting is
+- **Mods** ranks each mod by the time its event handlers, its HUD layers, the packets addressed to it and the
+  sounds in its namespace took, in microseconds per frame; expand a mod to see each event type, layer, packet
+  type and sound. A sound row, such as `sound create:steam (block)`, is one sound event played in one category.
+  It times the whole play, the wait for a channel included, and its **calls/f** is plays per frame. A sound only
+  names time: the bucket it was played in keeps it, such as **be tick** for a machine's sound. The Frames
+  section's **Sound plays** line sums the sound rows. A play inside a packet or handler of the same mod counts in
+  both rows, so a mod's total on the Mods tab can read high: the `minecraft` row counts each vanilla sound the
+  server sends in its packet's row and in its sound row. Counting is
   inclusive: a handler's time includes whatever it calls, so a handler that draws an entity counts that
   entity too, and shares overlap with each other and with the other tables. Events are timed whoever posts
   them: NeoForge, the game or another mod. A library that runs other mods' handlers for them, such as
-  Architectury, Balm or Puzzles Lib, carries their time. Vanilla layers and packets appear under `minecraft`
+  Architectury, Balm or Puzzles Lib, carries their time. Vanilla layers, packets and sounds appear under `minecraft`
   and NeoForge's own handlers under `neoforge`; a handler Renderable cannot tie to a mod shows under
   `unknown` or its library's name. Handlers are timed by swapping the event bus's listener lists for timing
   wrappers when a session starts and back when it ends, so none of it runs between sessions. A handler
@@ -172,7 +194,14 @@ flight costs disk space rather than heap. Every array is still complete: nothing
 
 The JSON report carries a `schema` number.
 
-Schema 5 (this version) adds `tasksUs`, `capUs` and `namedUs` (`render`, `tick` and `tasks`, empty ones left out)
+Schema 6 (this version) adds four buckets to `avgBucketsMs` and to each frame's `bucketsUs`: `terrain`, `lod`,
+`sound` and `animate tick`. Buckets are written by label, never by position. Sound rows sit in a mod's `entries`
+like its other rows, keyed `sound@<mod>:<event id> (<category>)`, such as `sound@create:create:steam (block)`.
+`terrain` and `lod` are render buckets and `sound` and `animate tick` tick buckets, so `otherRenderUs` and
+`avgOtherRenderMs` no longer include the first two, nor `avgOtherTickMs` the last two. There is no per-frame
+`unnamed` field: it is `max(0, max(0, tickUs − the tick buckets) − namedUs.tick)`. Nothing else changes shape.
+
+Schema 5 added `tasksUs`, `capUs` and `namedUs` (`render`, `tick` and `tasks`, empty ones left out)
 to every frame; `avgTasksMs`, `avgCapMs` and `avgNamedMs` (all three windows, zeros kept) to `stats`; a `hud`
 bucket; `environment.eventTiming` (`on`, or `unavailable: ` and why);
 a `mods` array, one ranked row per mod followed by an `entries` array of its event, layer and packet rows;
@@ -209,8 +238,8 @@ and `visualCounts` (class to average count, highest first), replacing schema 1's
 ## Building
 
 Java 21. `./gradlew build` produces `build/libs/renderable-<version>.jar`.
-`./gradlew runClient` starts a dev client; add `-PpackMods` to include Sodium, Iris, Create and
-Create: Enchantable Machinery at the versions the Gears & Frontiers pack pins.
+`./gradlew runClient` starts a dev client; add `-PpackMods` to include Sodium, Iris, Create,
+Create: Enchantable Machinery and Distant Horizons at the versions the Gears & Frontiers pack pins.
 Add `-PquickPlay="<save folder>"` to join a world under `run/saves` straight from launch, which is
 how the mixins that only load inside a level are checked with `-Dmixin.debug.export=true`.
 Add `-Drenderable.autostart=<seconds>` to the client's JVM arguments (for example through

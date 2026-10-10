@@ -296,9 +296,9 @@ Two new rules and one widened, in P5.B2's format:
 
 | Rule | Finding (example) | Action |
 | --- | --- | --- |
-| `sound-wait` | Playing sounds kept the game waiting 1.4 ms a frame; `create:steam` (Blocks) played 85 times a second. | Lower the Blocks volume in Music & Sounds: at 0% the game skips those sounds instead of waiting for them. A pack author can report the sound's mod with this file. |
-| `distant-horizons` | Distant Horizons draws its far terrain in 3.2 ms of each 10.1 ms frame. | Lower its LOD render distance or its quality preset in Distant Horizons' settings. |
-| `unattributed-stall`, repeat form | In 30 of 83 hitches, at least a quarter of the frame was in code Renderable does not time (up to 20 ms). | Profile the same place with a sampling profiler such as spark, which names the code. |
+| `sound-wait` | Playing sounds kept the game waiting 1.4 ms a frame; `create:steam` (Blocks) played 85 times a second. | Set the Blocks volume to 0% in Music & Sounds: the game then skips those sounds instead of waiting for them. A pack author can report the sound's mod with this file. |
+| `distant-horizons` | Distant Horizons draws its far terrain in 3.2 ms of each 10.1 ms frame. | Lower Quality Preset or LOD Chunk Render Distance Radius in Distant Horizons' settings, which its button beside FOV in Options opens. |
+| `unattributed-stall`, repeat form | In 30 of 83 hitches, at least a quarter of the frame was in code Renderable does not time, up to 20 ms of client tick. | Profile the same place with a sampling profiler such as spark, which names the code. |
 
 - **The slider's name.** The finding and action name the category by its Music & Sounds slider, from a fixed
   English table in `core`: `master` Master Volume, `music` Music, `record` Jukebox/Note Blocks, `weather`
@@ -314,6 +314,21 @@ Two new rules and one widened, in P5.B2's format:
   `SoundManager.tick`, so the bucket shows the whole wait. Its finding reads, for example, "In 30 of 83 hitches,
   the sound engine took at least a quarter of the frame (up to 18 ms)." Its action is the muting action, naming
   the slider of the costliest sound row, or no slider when the session has no sound rows.
+- **Settled in plan 6b.**
+  - The bucket test takes the frame's GC pause off the bucket first, as `unattributed-stall`'s repeat form does with
+    its parts, and speaks only when no single sound row passes the row test. Its finding adds the steady sound time
+    and the costliest row when there is one, since its action names that row's slider.
+  - The slider names are the English captions of Minecraft 1.21.1's `soundCategory.*` keys, and the
+    `distant-horizons` action uses DH's own setting names, the same in 2.4.5-b and 3.3.3; both were checked against
+    the jars.
+  - `sound-wait`'s action says to set the slider to 0%, not to lower it: `play` skips a sound only when its volume
+    works out to exactly 0, so any other setting saves nothing.
+  - In the row test, `sound-wait`'s action names the category of the stalled or repeated sound, not the
+    costliest row's. It leaves out the pack-author sentence for a vanilla sound.
+  - `unattributed-stall`'s repeat form takes each of the three parts on its own, as the stall form does, and counts
+    a hitch once. It names the window of its worst part, and when both forms pass it is the one named.
+  - At zero volume, `play` skips every sound except one whose instance can start silent (vanilla's bees and
+    minecarts), which still asks for a channel.
 
 **Acceptance check (B1).** Unit tests for each rule at and just under each threshold, in each form, and for
 the slider table. At the other player's base, `distant-horizons` fires, and `sound-wait` fires if the sound
