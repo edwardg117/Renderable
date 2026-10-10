@@ -74,8 +74,16 @@ public record FrameRecord(int index,
     }
 
     /**
+     * The part of the tick that neither a tick bucket nor the Mods tab accounts for: the split's {@code unnamed}
+     * (spec addendum §P6.6). With the tick buckets and the tick's named time it partitions the tick. Clamped at zero.
+     */
+    public long unnamedTickNanos() {
+        return Math.max(0, otherTickNanos() - named(Window.TICK));
+    }
+
+    /**
      * Everything outside tick, render, tasks and the frame cap: the buffer swap and any vsync wait, the blit,
-     * the sound update, mouse turning and the yield. Clamped at zero.
+     * the sound listener update ({@code SoundManager.updateSource}), mouse turning and the yield. Clamped at zero.
      */
     public long swapNanos() {
         return Math.max(0, totalNanos - tickNanos - renderNanos - tasksNanos - capNanos);

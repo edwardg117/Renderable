@@ -202,7 +202,7 @@ public record Facts(Environment env,
         List<Top> top = new ArrayList<>();
         for (TopEntry t : h.top()) top.add(new Top(t.key(), t.nanos() / 1e6, t.gc()));
         return new Hitch(number, h.totalNanos() / 1e6, h.gcMillis(), upload / 1e6, upload > other,
-                Math.max(0, h.otherTickNanos() - h.named(Window.TICK)) / 1e6,
+                h.unnamedTickNanos() / 1e6,
                 Math.max(0, h.otherRenderNanos() - h.named(Window.RENDER)) / 1e6,
                 Math.max(0, h.tasksNanos() - h.named(Window.TASKS)) / 1e6,
                 List.copyOf(top));

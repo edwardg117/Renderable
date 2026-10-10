@@ -81,6 +81,11 @@ public record FrameStats(int frames,
         return avgNamedNanos[w.ordinal()];
     }
 
+    /** The average frame's {@code unnamed} tick time (spec addendum §P6.6): other tick less its named time, clamped. */
+    public long avgUnnamedTickNanos() {
+        return Math.max(0, avgOtherTickNanos - avgNamed(Window.TICK));
+    }
+
     public double avgFps() {
         return avgNanos == 0 ? 0 : 1e9 / avgNanos;
     }

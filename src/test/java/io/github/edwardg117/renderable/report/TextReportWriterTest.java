@@ -49,7 +49,7 @@ class TextReportWriterTest {
         String s = TextReportWriter.write(r, env, "0.1.0");
         assertTrue(s.contains("  Sampled 0.4 s, 20 frames, avg 19.2 ms (52 fps), p50 16.0, p95 16.0, p99 80.0, max 80.0 ms\n"), s);
         assertTrue(s.contains("  Hitches: 1 frames over 32.0 ms threshold, totalling 0.1 s (20.8% of wall time)\n"), s);
-        assertTrue(s.contains("  Time split (avg ms/frame): tick 1.00 [entity tick 0.20] | block entity 7.40 | entity 0.80 | other render 2.10 | swap/wait 7.90\n"), s);
+        assertTrue(s.contains("  Time split (avg ms/frame): tick 1.00 [entity tick 0.20, unnamed 0.80] | block entity 7.40 | entity 0.80 | other render 2.10 | swap/wait 7.90\n"), s);
         assertTrue(s.contains("  GC: 1 collections, 5 ms paused\n"), s);
         assertTrue(s.contains("  Renderable overhead: about 0.00 ms over 120 timed calls and 0 vertex calls\n"), s);
     }
@@ -60,7 +60,7 @@ class TextReportWriterTest {
         int at = s.indexOf("Hitches (worst 25)\n");
         assertTrue(at > 0, s);
         String section = s.substring(at, s.indexOf("\n\n", at));
-        assertTrue(section.contains("\n  #1  frame 10 @ 0.2s  80.0 ms  |  tick 1.0 [entity tick 0.2] | block entity 62.5 | entity 0.8 | other render 2.1 | swap 13.6  |  gc 0 ms\n"), section);
+        assertTrue(section.contains("\n  #1  frame 10 @ 0.2s  80.0 ms  |  tick 1.0 [entity tick 0.2, unnamed 0.8] | block entity 62.5 | entity 0.8 | other render 2.1 | swap 13.6  |  gc 0 ms\n"), section);
         assertTrue(section.contains("\n      60.00 ms  create:mechanical_press @ 100 64 -20\n"), section);
         assertTrue(section.contains("\n      1.50 ms  create:mechanical_press @ 103 64 -20\n"), section);
     }
@@ -123,7 +123,7 @@ class TextReportWriterTest {
     @Test
     void phase2Sections() {
         String s = TextReportWriter.write(TestSessions.phase2(), phase2Environment(), "0.2.0");
-        assertTrue(s.contains("  Time split (avg ms/frame): tick 1.00 [particle tick 0.10, be tick 0.40, entity tick 0.20] | block entity 7.40 | entity 0.80 | particle render 0.30 | flywheel 1.20 | light 0.30 | other render 2.10 | swap/wait 6.10\n"), s);
+        assertTrue(s.contains("  Time split (avg ms/frame): tick 1.00 [particle tick 0.10, be tick 0.40, entity tick 0.20, unnamed 0.30] | block entity 7.40 | entity 0.80 | particle render 0.30 | flywheel 1.20 | light 0.30 | other render 2.10 | swap/wait 6.10\n"), s);
         assertTrue(s.contains("  Renderable overhead: about 0.01 ms over 280 timed calls and 0 vertex calls\n"), s);
         assertFalse(s.contains("Attribution stack reset"), s);
 
@@ -318,7 +318,7 @@ class TextReportWriterTest {
     @Test
     void phase5SplitNamesTheNewComponents() {
         String s = TextReportWriter.write(TestSessions.phase5(), env, "0.5.0");
-        assertTrue(s.contains("  Time split (avg ms/frame): tick 2.00 [entity tick 1.00, mods 0.40] | block entity 1.00"
+        assertTrue(s.contains("  Time split (avg ms/frame): tick 2.00 [entity tick 1.00, mods 0.40, unnamed 0.60] | block entity 1.00"
                 + " | entity 0.50 | hud 2.00 | other render 1.50 [mods 1.00] | tasks 2.00 [mods 1.00]"
                 + " | frame cap 3.00 | swap/wait 8.00\n"), s);
     }
