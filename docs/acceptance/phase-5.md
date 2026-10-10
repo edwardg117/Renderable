@@ -121,3 +121,32 @@ username and no file path. The user may run it on the server later.
 - **Mesh rebuilds at the base.** Sections `161 6 72` and `161 6 71` rebuilt about 8 times a second at 11 to 12 ms
   each, near the player. Something in those sections changes all the time; a lead for the pack, not a defect.
 - **Outside testing.** The user gave the 0.5.0 jar to another player to try.
+
+## After the tag: another player's base
+
+On 2026-10-10, after `v0.5.0` was tagged, the user ran two more 30 s sessions with the same build at another
+player's base. Both show `hooks that did not apply: none`, and the log says `restored 228 listener lists; 0
+still hold a timing proxy` after each. Neither report holds a UUID. No other player was in view, so check 24
+stays NOT RUN.
+
+| Session | Where | Frames | avg ms (fps) | p50 / p95 / max | Hitches | GC | Overhead | Advice |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `renderable-2026-10-10_16-08-48` | -1169 91 -1678 | 3992 | 7.5 (133) | 5.3 / 18.5 / 35.4 | 83 (6.6%) | 14 / 84 ms | 1067.26 ms over 19,302,395 timed and 26,209,913 vertex calls | none |
+| `renderable-2026-10-10_16-10-48` | -1127 138 -1684 | 2969 | 10.1 (99) | 8.1 / 18.9 / 40.0 | 17 (1.6%) | 11 / 68 ms | 969.82 ms over 17,174,795 timed and 32,848,883 vertex calls | none |
+
+What the reports show at that base:
+- Create: Enchantable Machinery's mixers and presses lead block entity render time (the mixers 0.33 ms a frame
+  and about 4,200 vertices).
+- Create fluid tanks lead block entity tick time and appear in several hitches; one at -1135 142 -1695 took
+  2.13 ms in a frame.
+- `ae2:cable_bus` makes 2.7 million render calls in 30 s but costs little.
+- Protection Pixel (`RenderLevelStageEvent`, 0.2 ms a frame) and Xaero's World Map (`RenderFrameEvent.Post`,
+  0.19 ms a frame) are the steady handler costs.
+
+**A gap for the next phase.** The first session's worst hitches are mostly tick time Renderable cannot name.
+Hitch #3 has 25.6 ms of tick, and its named parts (particle tick, block entity tick, entity tick, mods) add to
+about 5.6 ms; hitches #6 and #7 look the same. The split has no `other tick` part in hitch lines, so the reader
+has to subtract, and no row names what is left. The Advice tab offered nothing although hitches took 6.6% of
+the session. Neither is a phase 5 defect: no plan promised either. The next phase should show unattributed
+tick time in hitch lines, find a way to attribute it, and recommend when hitches are frequent with no named
+cause.
