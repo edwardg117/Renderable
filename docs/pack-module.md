@@ -6,7 +6,7 @@ here and not applied: phase 5 leaves the pack repository alone (spec addendum §
 
 ```xml
 		<Module name="Renderable" id="renderable" depends="" side="CLIENT">
-			<URL priority="1">https://github.com/edwardg117/Renderable/releases/download/v0.5.0/renderable-0.5.0.jar</URL>
+			<URL priority="1">https://github.com/edwardg117/Renderable/releases/download/v0.6.0/renderable-0.6.0.jar</URL>
 			<Size>0</Size>
 			<Required>false</Required>
 			<ModType>Regular</ModType>
@@ -14,7 +14,7 @@ here and not applied: phase 5 leaves the pack repository alone (spec addendum §
 			<Meta>
 				<license>MIT</license>
 				<description>Client render profiler: shows which block entities, entities and effects cost frame time and what caused each hitch.</description>
-				<version>0.5.0</version>
+				<version>0.6.0</version>
 				<authors>edwardg117</authors>
 			</Meta>
 		</Module>
@@ -23,9 +23,9 @@ here and not applied: phase 5 leaves the pack repository alone (spec addendum §
 Before adding it, fill in three things:
 
 - **`Size` and `MD5`**, the released jar's byte count and MD5. For example, on the downloaded jar:
-  `stat -c %s renderable-0.5.0.jar` and `md5sum renderable-0.5.0.jar`, or `certutil -hashfile renderable-0.5.0.jar MD5`
+  `stat -c %s renderable-0.6.0.jar` and `md5sum renderable-0.6.0.jar`, or `certutil -hashfile renderable-0.6.0.jar MD5`
   on Windows.
-- **The URL**, if the repository is not `github.com/edwardg117/Renderable` or the tag is not `v0.5.0`. It must be
+- **The URL**, if the repository is not `github.com/edwardg117/Renderable` or the tag is not `v0.6.0`. It must be
   the release asset's download link, not the release page.
 
 **Where it goes.** In the update file of the pack revision that ships it. At the time of writing that is
