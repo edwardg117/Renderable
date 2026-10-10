@@ -18,7 +18,8 @@ Observable does for server tick time. Built for the Gears & Frontiers modpack
 - Optional integrations are compiled and run against the versions the pack pins, from the
   Modrinth Maven (`https://api.modrinth.com/maven`): Sodium `0.8.13+mc1.21.1`, Iris
   `1.8.14-beta.1+mc1.21.1`, Create `1.21.1-6.0.10` (bundles Flywheel 1.0.6), Create:
-  Enchantable Machinery `3.6.0+mc1.21.1-neoforge` with Kotlin for Forge.
+  Enchantable Machinery `3.6.0+mc1.21.1-neoforge` with Kotlin for Forge. Distant Horizons `3.3.3-1.21.1` is
+  run only (dev client and javap): its mixin targets `ClientApi` by name.
 
 ## Rules that keep the design intact
 

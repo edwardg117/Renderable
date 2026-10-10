@@ -13,6 +13,8 @@ import org.objectweb.asm.tree.MethodNode;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -36,16 +38,26 @@ class HookInstallsTest {
 
     /** Every mixin both configs list, by its full class name. */
     static List<String> mixins() throws IOException {
-        List<String> out = new ArrayList<>();
-        for (String config : List.of("renderable.mixins.json", "renderable.thirdparty.mixins.json")) {
-            try (InputStream in = HookInstallsTest.class.getResourceAsStream("/" + config)) {
-                assertNotNull(in, config);
-                JsonObject json = JsonParser.parseString(new String(in.readAllBytes(), StandardCharsets.UTF_8)).getAsJsonObject();
-                String pkg = json.get("package").getAsString();
-                for (JsonElement e : json.getAsJsonArray("client")) out.add(pkg + "." + e.getAsString());
-            }
-        }
+        List<String> out = new ArrayList<>(mixinsOf("renderable.mixins.json"));
+        out.addAll(mixinsOf("renderable.thirdparty.mixins.json"));
         return out;
+    }
+
+    /** The mixins one config lists, by full class name. */
+    static List<String> mixinsOf(String config) throws IOException {
+        JsonObject json = config(config);
+        String pkg = json.get("package").getAsString();
+        List<String> out = new ArrayList<>();
+        for (JsonElement e : json.getAsJsonArray("client")) out.add(pkg + "." + e.getAsString());
+        return out;
+    }
+
+    /** One mixin config, parsed. */
+    static JsonObject config(String config) throws IOException {
+        try (InputStream in = HookInstallsTest.class.getResourceAsStream("/" + config)) {
+            assertNotNull(in, config);
+            return JsonParser.parseString(new String(in.readAllBytes(), StandardCharsets.UTF_8)).getAsJsonObject();
+        }
     }
 
     @Test
@@ -154,5 +166,73 @@ class HookInstallsTest {
                                 + "Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;)V"),
                         List.of()),
                 injector("io.github.edwardg117.renderable.hooks.mixin.ClientHooksMixin", "renderable$leaveTerrain"));
+    }
+
+    static final String CLIENT_API_MIXIN = "io.github.edwardg117.renderable.hooks.mixin.distanthorizons.ClientApiMixin";
+    static final String CLIENT_API = "com/seibel/distanthorizons/core/api/internal/ClientApi";
+
+    /** An annotation's value by name, or null. */
+    private static Object annotationValue(AnnotationNode a, String name) {
+        for (int i = 0; a.values != null && i + 1 < a.values.size(); i += 2) {
+            if (name.equals(a.values.get(i))) return a.values.get(i + 1);
+        }
+        return null;
+    }
+
+    @Test
+    void theDistantHorizonsMixinIsSkippedWithoutDistantHorizons() throws IOException {
+        // Review focus 1. Most players have no DH, so the plugin must decline the mixin: LOD then sits in none of the
+        // hook lists and nothing is logged. The plugin gates a mixin by its sub-package; its map is read as source,
+        // because the plugin loads FML, which this classpath lacks. Only the optional config may list the mixin.
+        assertTrue(CLIENT_API_MIXIN.startsWith("io.github.edwardg117.renderable.hooks.mixin.distanthorizons."));
+        assertTrue(mixinsOf("renderable.thirdparty.mixins.json").contains(CLIENT_API_MIXIN));
+        assertFalse(mixinsOf("renderable.mixins.json").contains(CLIENT_API_MIXIN), "the required config would fail the game");
+        String plugin = Files.readString(Path.of("src/main/java/io/github/edwardg117/renderable/hooks/RenderableMixinPlugin.java"));
+        assertTrue(plugin.contains("\"distanthorizons\", \"distanthorizons\""), "REQUIRED_MOD gates the package on DH's mod id");
+
+        int injectors = 0;
+        for (MethodNode m : classNode(CLIENT_API_MIXIN).methods) {
+            List<AnnotationNode> annotations = new ArrayList<>();
+            if (m.visibleAnnotations != null) annotations.addAll(m.visibleAnnotations);
+            if (m.invisibleAnnotations != null) annotations.addAll(m.invisibleAnnotations);
+            for (AnnotationNode a : annotations) {
+                if (!a.desc.equals("Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;")) continue;
+                assertEquals(0, annotationValue(a, "require"), m.name + " must not fail the game when DH changes");
+                injectors++;
+            }
+        }
+        assertEquals(4, injectors, "one per ClientApi render method");
+    }
+
+    @Test
+    void theThirdPartyConfigIsOptionalSoAMissedTargetOnlyLogs() throws IOException {
+        // An optional mod's mixin that misses its target (the mod updated) must log, not crash the game: the config as a
+        // whole is not required, and its injectors default to require = 0.
+        JsonObject config = config("renderable.thirdparty.mixins.json");
+        assertFalse(config.get("required").getAsBoolean(),
+                "a required third-party config would stop the game when the mod is absent or changed");
+        assertEquals(0, config.getAsJsonObject("injectors").get("defaultRequire").getAsInt(),
+                "an injector that misses its target must be skipped and logged, not fail the game");
+    }
+
+    @Test
+    void aDistantHorizonsRenderMethodThatWasRenamedOrResignedDidNotApply() throws IOException {
+        // Review focus 4. ClientApi as DH 3.3.3 and 2.4.5-b have it (javap, 2026-10-10): every injector finds its method.
+        ClassNode mixin = classNode(CLIENT_API_MIXIN);
+        ClassNode pinned = target(CLIENT_API, method("renderLods", "()V"), method("renderDeferredLodsForShaders", "()V"),
+                method("renderFadeOpaque", "()V"), method("renderFadeTransparent", "()V"));
+        for (InjectionCheck.Injector in : InjectionCheck.injectors(mixin)) {
+            assertTrue(InjectionCheck.present(in, pinned), in.handler() + " finds its method in the pinned ClientApi");
+        }
+
+        // A later DH that gives renderLods an argument and renames the transparent fade.
+        ClassNode updated = target(CLIENT_API, method("renderLods", "(F)V"), method("renderDeferredLodsForShaders", "()V"),
+                method("renderFadeOpaque", "()V"), method("renderFadeTranslucent", "()V"));
+        assertFalse(InjectionCheck.present(injector(CLIENT_API_MIXIN, "renderable$timeRenderLods"), updated),
+                "the selector carries its descriptor, so a re-signed method is not taken for the one the handler wraps");
+        assertFalse(InjectionCheck.present(injector(CLIENT_API_MIXIN, "renderable$timeFadeTransparent"), updated));
+        HookInstalls.check(CLIENT_API_MIXIN, mixin, updated);
+        assertTrue(HookInstalls.failed().contains(Hook.LOD.name()), "listed under hooks that did not apply, not a silent 0");
+        assertFalse(HookInstalls.installed().contains(Hook.LOD.name()));
     }
 }

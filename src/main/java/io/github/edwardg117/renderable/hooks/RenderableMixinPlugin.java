@@ -25,7 +25,8 @@ public final class RenderableMixinPlugin implements IMixinConfigPlugin {
             "sodium", "sodium",
             "iris", "iris",
             "flywheel", "flywheel",
-            "acceleratedrendering", "acceleratedrendering");
+            "acceleratedrendering", "acceleratedrendering",
+            "distanthorizons", "distanthorizons");
 
     @Override
     public void onLoad(String mixinPackage) {

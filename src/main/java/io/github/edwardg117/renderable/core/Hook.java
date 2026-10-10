@@ -37,6 +37,8 @@ public enum Hook {
     ANIMATE_TICK,
     /** The {@code terrain} bucket: every {@code renderSectionLayer} call {@code LevelRenderer.renderLevel} makes. */
     TERRAIN,
+    /** The {@code lod} bucket: Distant Horizons' four {@code ClientApi} render methods, when DH is loaded (§P6.3). */
+    LOD,
     /** The Mods tab's sound rows: {@code SoundEngine.play} (spec addendum §P6.5). */
     SOUND_PLAYS
 }

@@ -10,7 +10,8 @@
     "sodium.ChunkBuilderMeshingTaskMixin",
     "sodium.RenderSectionManagerMixin",
     "sodium.SodiumBufferBuilderMixin",
-    "acceleratedrendering.AcceleratedBufferBuilderMixin"
+    "acceleratedrendering.AcceleratedBufferBuilderMixin",
+    "distanthorizons.ClientApiMixin"
   ],
   "injectors": {
     "defaultRequire": 0

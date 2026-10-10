@@ -147,6 +147,8 @@ dependencies {
     packModRuntime "maven.modrinth:create:${create_version}"
     packModRuntime "maven.modrinth:kotlin-for-forge:${kotlin_for_forge_version}"
     packModRuntime "maven.modrinth:create-enchantable-machinery:${enchantable_machinery_version}"
+    // Run only: no nested jar to extract and nothing compiles against it, so not in packModJars (spec addendum P6.8).
+    packModRuntime "maven.modrinth:distanthorizons:${distanthorizons_version}"
 }
 
 // A plain Sync task here would work for the -PpackMods case but not the plain-run case: Sync (like Copy)
