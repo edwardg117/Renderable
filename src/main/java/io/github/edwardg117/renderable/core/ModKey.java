@@ -1,19 +1,22 @@
 package io.github.edwardg117.renderable.core;
 
 /**
- * Something a mod does in the frame that Renderable can name by its owner (spec addendum §P5.A3 to §P5.A5):
- * the mod's handlers for one event class, one HUD layer, or one packet or payload type. All three roll up by
- * mod id into the Mods tab, so they share {@link Category#MOD} and use the mod id as the type id.
+ * Something a mod does in the frame that Renderable can name by its owner (spec addendum §P5.A3 to §P5.A5, §P6.5):
+ * the mod's handlers for one event class, one HUD layer, one packet or payload type, or one sound event played in
+ * one category. All of them roll up by mod id into the Mods tab, so they share {@link Category#MOD} and use the mod
+ * id as the type id.
  *
  * @param kind  what was timed
- * @param modId the owning mod: the mod whose file registered the handler, or a layer's or packet's namespace
- * @param name  the event's fully-qualified class name, or the layer's or packet's full id
+ * @param modId the owning mod: the mod whose file registered the handler, or a layer's, packet's or sound event's
+ *              namespace
+ * @param name  the event's fully-qualified class name, the layer's or packet's full id, or for a sound
+ *              {@code <event id> (<category>)}
  */
 public record ModKey(Kind kind, String modId, String name) implements ProfileKey {
 
     /** What a {@link ModKey} timed. */
     public enum Kind {
-        EVENT("event"), LAYER("layer"), PACKET("packet");
+        EVENT("event"), LAYER("layer"), PACKET("packet"), SOUND("sound");
 
         private final String word;
 
@@ -37,6 +40,35 @@ public record ModKey(Kind kind, String modId, String name) implements ProfileKey
 
     public static ModKey packet(String modId, String packetId) {
         return new ModKey(Kind.PACKET, modId, packetId);
+    }
+
+    /**
+     * One sound event played in one category (spec addendum §P6.5). The event id's namespace names the mod, as a
+     * layer's or packet's does, and the name carries the category, so one event played in two categories is two
+     * rows: {@code sound create:steam (block)}.
+     *
+     * @param eventId  the event's id as {@code namespace:path}, from {@code SoundInstance.getLocation()}; an id with
+     *                 no colon is taken to be {@code minecraft}'s
+     * @param category the category's name, from {@code SoundSource.getName()}: {@code block}, {@code master}, ...
+     */
+    public static ModKey sound(String eventId, String category) {
+        int colon = eventId.indexOf(':');
+        String modId = colon < 0 ? "minecraft" : eventId.substring(0, colon);
+        return new ModKey(Kind.SOUND, modId, eventId + " (" + category + ")");
+    }
+
+    /** A sound key's event id, {@code create:steam}; "" for any other kind. */
+    public String soundEvent() {
+        if (kind != Kind.SOUND) return "";
+        int open = name.lastIndexOf(" (");
+        return open >= 0 ? name.substring(0, open) : "";
+    }
+
+    /** A sound key's category, a {@code SoundSource} name such as {@code block}; "" for any other kind. */
+    public String soundCategory() {
+        if (kind != Kind.SOUND) return "";
+        int open = name.lastIndexOf(" (");
+        return open >= 0 && name.endsWith(")") ? name.substring(open + 2, name.length() - 1) : "";
     }
 
     @Override

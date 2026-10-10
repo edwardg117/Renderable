@@ -150,4 +150,17 @@ class RowsTest {
         assertEquals(List.of("0 -   terrain|3.00 ms", "0 -   lod|2.00 ms", "0 -   other render|3.00 ms"),
                 rows.subList(render + 1, render + 4), "terrain and lod lead the render side");
     }
+
+    @Test
+    void theFramesTabShowsSoundPlaysUnderTheOverheadRows() {
+        List<String> rows = describe(Rows.frames(TestSessions.phase6()));
+        int overhead = -1;
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).startsWith("0 - Renderable overhead|")) overhead = i;
+        }
+        assertTrue(overhead >= 0, rows.toString());
+        assertEquals("0 - Sound plays|1.60 ms a frame, 200 plays a second", rows.get(overhead + 1));
+        assertTrue(describe(Rows.frames(TestSessions.sample())).stream().noneMatch(row -> row.contains("Sound plays")),
+                "no plays, no row");
+    }
 }

@@ -83,7 +83,7 @@ public final class EmptyStates {
         String why = eventTimingUnavailable(env);
         return why != null
                 ? "(event timing unavailable: " + why + ")"
-                : "(no mod handlers, HUD layers or packets were timed)";
+                : "(no mod handlers, HUD layers, packets or sounds were timed)";
     }
 
     /**

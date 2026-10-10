@@ -401,4 +401,33 @@ class JsonReportWriterTest {
         assertEquals(500, buckets.get("animate tick").getAsLong());
         assertEquals(1.5, o.getAsJsonObject("stats").getAsJsonObject("avgBucketsMs").get("sound").getAsDouble(), 1e-9);
     }
+
+    @Test
+    void aSoundRowIsAModsEntryKeyedByItsEventAndCategory() {
+        JsonObject o = JsonParser.parseString(JsonReportWriter.write(TestSessions.phase6(), environment(), "0.6.0"))
+                .getAsJsonObject();
+        JsonObject steam = null;
+        for (var m : o.getAsJsonArray("mods")) {
+            JsonObject mod = m.getAsJsonObject();
+            for (var e : mod.getAsJsonArray("entries")) {
+                if (e.getAsJsonObject().get("key").getAsString().equals("sound@create:create:steam (block)")) {
+                    assertEquals("create", mod.get("key").getAsString(), "under its namespace's mod");
+                    steam = e.getAsJsonObject();
+                }
+            }
+        }
+        assertNotNull(steam, o.getAsJsonArray("mods").toString());
+        assertEquals(RANKED_KEYS, List.copyOf(steam.keySet()), "a ranked row like any other: nothing changes shape");
+        assertEquals("sound create:steam (block)", steam.get("label").getAsString());
+        assertEquals("create", steam.get("typeId").getAsString());
+        assertEquals(0, steam.get("calls").getAsLong());
+        assertEquals(4, steam.get("tickCalls").getAsLong(), "two plays a frame, both in the tick");
+        assertEquals(2_000, steam.get("tickUs").getAsLong());
+
+        JsonObject f0 = o.getAsJsonArray("frames").get(0).getAsJsonObject().getAsJsonObject("bucketsUs");
+        assertEquals(2_000, f0.get("terrain").getAsLong(), "4 ms less the 2 ms of lod inside it");
+        assertEquals(2_000, f0.get("lod").getAsLong());
+        assertEquals(1_500, f0.get("sound").getAsLong());
+        assertEquals(500, f0.get("animate tick").getAsLong());
+    }
 }

@@ -37,6 +37,12 @@ public final class TestSessions {
     public static final ModKey MINIMAP = ModKey.layer("xaerominimap", "xaerominimap:minimap");
     public static final ModKey CHUNK_PACKET = ModKey.packet("minecraft", "minecraft:level_chunk_with_light");
     public static final EntityKey BOAT = new EntityKey("minecraft:boat", 9, "");
+    public static final BlockEntityKey FLUID_TANK =
+            new BlockEntityKey("create:fluid_tank", "minecraft:overworld", 10, 64, 10);
+    public static final ModKey STEAM = ModKey.sound("create:steam", "block");
+    public static final ModKey ANVIL = ModKey.sound("minecraft:block.anvil.land", "block");
+    public static final ModKey CLICK = ModKey.sound("minecraft:ui.button.click", "master");
+    public static final ModKey SOUND_PACKET = ModKey.packet("minecraft", "minecraft:sound");
 
     public static final long WALL_START = 1_726_700_000_000L;
 
@@ -261,6 +267,65 @@ public final class TestSessions {
         now[0] = 10 * MS;    s.end();
         now[0] = 10 * MS;    s.onTickPost();
         now[0] = 16 * MS;    s.onRenderPre(0, 0);
+        return s.finish();
+    }
+
+    /**
+     * Phase 6 fixture (spec addendum §P6.3 to §P6.6): two identical 20 ms frames. Per frame, in milliseconds from its
+     * start:
+     *
+     * render 0-8: terrain 0.5-4.5 holding lod 1-3. Tasks 8-10: the sound packet 8.5-9.5 holding an anvil play
+     * 8.7-9.1. Tick 10-14: the fluid tank's tick 10-11 (BE_TICK) holding a steam play 10.2-10.8; the sound engine's
+     * tick 11-12.5 (SOUND) holding a delayed steam play 11.2-11.6; animate tick 12.5-13; then a button click
+     * 13.2-13.4 that nothing encloses.
+     *
+     * So per frame: render 8 (terrain 2, lod 2, other render 4), tasks 2 (1 named), tick 4 (be tick 1, sound 1.5,
+     * animate tick 0.5, 0.2 named, 0.8 unnamed), swap 6. Sound rows over the session: steam 4 plays, 2 ms, on the
+     * tick side; anvil 2 plays, 0.8 ms, on the render side (tasks); click 2 plays, 0.4 ms, tick side. Together 3.2 ms,
+     * 1.60 ms a frame, and 8 plays in 0.04 s, 200 a second. No hitches.
+     */
+    public static SessionResult phase6() {
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * MS, 2.0, 16 * MS, 5, 25, 2), () -> now[0], WALL_START);
+        Accumulator tank = s.accumulator(FLUID_TANK);
+        Accumulator steam = s.accumulator(STEAM);
+        Accumulator anvil = s.accumulator(ANVIL);
+        Accumulator click = s.accumulator(CLICK);
+        Accumulator packet = s.accumulator(SOUND_PACKET);
+
+        for (int i = 0; i <= 2; i++) {
+            long t0 = i * 20 * MS;
+            now[0] = t0; s.onRenderPre(0, 0);
+            if (i == 2) break;
+
+            now[0] = t0 + 500_000;    s.begin(null, Bucket.TERRAIN);
+            now[0] = t0 + 1 * MS;     s.begin(null, Bucket.LOD);
+            now[0] = t0 + 3 * MS;     s.end();
+            now[0] = t0 + 4_500_000;  s.end();
+            now[0] = t0 + 8 * MS;     s.onRenderPost();
+
+            now[0] = t0 + 8 * MS;     s.onTasksBegin();
+            now[0] = t0 + 8_500_000;  s.beginAttribution(packet);
+            now[0] = t0 + 8_700_000;  s.beginAttribution(anvil);
+            now[0] = t0 + 9_100_000;  s.end();
+            now[0] = t0 + 9_500_000;  s.end();
+            now[0] = t0 + 10 * MS;    s.onTasksEnd();
+
+            now[0] = t0 + 10 * MS;    s.onTickPre();
+            now[0] = t0 + 10 * MS;    s.begin(tank, Bucket.BE_TICK);
+            now[0] = t0 + 10_200_000; s.beginAttribution(steam);       // a boiler's steam, from its block entity tick
+            now[0] = t0 + 10_800_000; s.end();
+            now[0] = t0 + 11 * MS;    s.end();
+            now[0] = t0 + 11 * MS;    s.begin(null, Bucket.SOUND);
+            now[0] = t0 + 11_200_000; s.beginAttribution(steam);       // a play playDelayed queued
+            now[0] = t0 + 11_600_000; s.end();
+            now[0] = t0 + 12_500_000; s.end();
+            now[0] = t0 + 12_500_000; s.begin(null, Bucket.ANIMATE_TICK);
+            now[0] = t0 + 13 * MS;    s.end();
+            now[0] = t0 + 13_200_000; s.beginAttribution(click);       // nothing encloses it: named tick time
+            now[0] = t0 + 13_400_000; s.end();
+            now[0] = t0 + 14 * MS;    s.onTickPost();
+        }
         return s.finish();
     }
 

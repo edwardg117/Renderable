@@ -4,8 +4,8 @@ package io.github.edwardg117.renderable.core;
 public interface ProfileKey {
 
     /**
-     * {@code MOD} holds a mod's event handlers, HUD layers and packets, whose type id is the mod's id so they
-     * roll up into one row per mod (spec addendum §P5.A7).
+     * {@code MOD} holds a mod's event handlers, HUD layers, packets and sounds, whose type id is the mod's id so they
+     * roll up into one row per mod (spec addendum §P5.A7, §P6.5).
      */
     enum Category { BLOCK_ENTITY, ENTITY, PARTICLE, BLOCK, SECTION, MOD }
 

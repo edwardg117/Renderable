@@ -341,7 +341,7 @@ class TextReportWriterTest {
         String off = TextReportWriter.write(TestSessions.phase5(), Environment.of(m, List.of()), "0.5.0");
         assertTrue(off.contains("  (event handlers were not timed: NoSuchFieldException: listenerLists)\n"), off);
         assertTrue(TextReportWriter.write(TestSessions.sample(), env, "0.5.0")
-                .contains("Mods (top 15, each with its top 3)\n  (no mod handlers, HUD layers or packets were timed)\n"));
+                .contains("Mods (top 15, each with its top 3)\n  (no mod handlers, HUD layers, packets or sounds were timed)\n"));
     }
 
     @Test
@@ -464,5 +464,16 @@ class TextReportWriterTest {
         assertTrue(c.contains("Flywheel\n  bucket 0.00 ms/frame (0.0% of frame time), backend flywheel:instancing\n"
                 + "  visuals: 5.0 block entities, 0.0 entities, 0.0 effects (average over 3 samples)\n\n"), c);
         assertFalse(c.contains("no visuals alive"), c);
+    }
+
+    @Test
+    void theSoundPlaysLineFollowsTheOverheadLinesWhenThereWerePlays() {
+        String s = TextReportWriter.write(TestSessions.phase6(), env, "0.6.0");
+        assertTrue(s.contains(" vertex calls\n  Sound plays: 1.60 ms a frame, 200 plays a second\n\nHitches (worst 25)\n"), s);
+        assertTrue(s.contains("  Time split (avg ms/frame): tick 4.00 [be tick 1.00, sound 1.50, animate tick 0.50,"
+                + " mods 0.20, unnamed 0.80] | terrain 2.00 | lod 2.00 | other render 4.00 | tasks 2.00 [mods 1.00]"
+                + " | swap/wait 6.00\n"), s);
+        assertTrue(s.contains("\n    sound create:steam (block) "), "a sound row under its mod in the Mods section: " + s);
+        assertFalse(TextReportWriter.write(r, env, "0.6.0").contains("Sound plays"), "no plays, no line");
     }
 }

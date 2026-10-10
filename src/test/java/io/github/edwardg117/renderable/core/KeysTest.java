@@ -217,4 +217,27 @@ class KeysTest {
         assertEquals("sound", Bucket.SOUND.label());
         assertEquals("animate tick", Bucket.ANIMATE_TICK.label());
     }
+
+    @Test
+    void soundKeysNameTheirEventAndCategory() {
+        ModKey steam = ModKey.sound("create:steam", "block");
+        assertEquals(ProfileKey.Category.MOD, steam.category());
+        assertEquals(ModKey.Kind.SOUND, steam.kind());
+        assertEquals("create", steam.typeId(), "the event id's namespace names the mod");
+        assertEquals("create:steam (block)", steam.name());
+        assertEquals("sound create:steam (block)", steam.label());
+        assertEquals(steam.label(), steam.memberLabel(), "the event id already names its mod");
+        assertEquals("sound@create:create:steam (block)", steam.serialize());
+        assertEquals("create:steam", steam.soundEvent());
+        assertEquals("block", steam.soundCategory());
+
+        assertEquals(steam, ModKey.sound("create:steam", "block"));
+        assertNotEquals(steam, ModKey.sound("create:steam", "master"), "one event in two categories is two rows");
+        assertEquals("minecraft", ModKey.sound("minecraft:block.anvil.land", "block").modId());
+        assertEquals("minecraft", ModKey.sound("steam", "block").modId(),
+                "an id with no namespace is minecraft's, as ResourceLocation reads it");
+        ModKey packet = ModKey.packet("minecraft", "minecraft:sound");
+        assertEquals("", packet.soundEvent(), "only a sound key has an event");
+        assertEquals("", packet.soundCategory(), "or a category");
+    }
 }

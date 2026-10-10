@@ -16,6 +16,7 @@ import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.SessionResult;
+import io.github.edwardg117.renderable.core.SoundPlays;
 import io.github.edwardg117.renderable.core.Splits;
 import io.github.edwardg117.renderable.core.TopEntry;
 import io.github.edwardg117.renderable.core.advice.Advisor;
@@ -90,6 +91,8 @@ public final class TextReportWriter {
                     "  Attribution stack reset on %d frames (a hook threw past its end call; buckets on those frames are incomplete)\n",
                     r.unbalancedFrames()));
         }
+        SoundPlays sounds = SoundPlays.of(r);
+        if (sounds.any()) sb.append("  ").append(sounds.line()).append('\n');
         sb.append('\n');
 
         sb.append("Hitches (worst ").append(HITCHES).append(")\n");

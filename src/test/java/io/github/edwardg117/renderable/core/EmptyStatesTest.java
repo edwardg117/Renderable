@@ -62,7 +62,7 @@ class EmptyStatesTest {
 
     @Test
     void modsStatesTellUnavailableFromNothing() {
-        assertEquals("(no mod handlers, HUD layers or packets were timed)", EmptyStates.mods(env(Map.of())));
+        assertEquals("(no mod handlers, HUD layers, packets or sounds were timed)", EmptyStates.mods(env(Map.of())));
         assertEquals("", EmptyStates.modsHandlersMissing(env(Map.of(Environment.EVENT_TIMING, "on"))));
         Environment off = env(Map.of(Environment.EVENT_TIMING, Environment.UNAVAILABLE + "NoSuchFieldException: listenerLists"));
         assertEquals("(event timing unavailable: NoSuchFieldException: listenerLists)", EmptyStates.mods(off));

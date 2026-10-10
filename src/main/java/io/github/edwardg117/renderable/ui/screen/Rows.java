@@ -19,6 +19,7 @@ import io.github.edwardg117.renderable.core.RankedTable;
 import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.SectionKey;
 import io.github.edwardg117.renderable.core.SessionResult;
+import io.github.edwardg117.renderable.core.SoundPlays;
 import io.github.edwardg117.renderable.core.Splits;
 import io.github.edwardg117.renderable.core.TopEntry;
 import io.github.edwardg117.renderable.core.Window;
@@ -119,6 +120,8 @@ public final class Rows {
         if (r.unbalancedFrames() > 0) {
             rows.add(Row.plain("Attribution stack reset", r.unbalancedFrames() + " frames (a hook threw past its end call)"));
         }
+        SoundPlays sounds = SoundPlays.of(r);
+        if (sounds.any()) rows.add(Row.plain("Sound plays", sounds.summary()));
         rows.add(Row.plain("", ""));
 
         rows.add(Row.heading("Average split per frame"));
@@ -219,7 +222,7 @@ public final class Rows {
         return rows;
     }
 
-    /** Spec addendum §P5.A7 Mods tab: one row per mod, expandable to its event types, layers and packets. */
+    /** Spec addendum §P5.A7 Mods tab: one row per mod, expandable to its event types, layers, packets and sounds. */
     static List<Row> mods(SessionResult r, Environment env, ColumnSort sort, boolean ascending, Set<String> expanded) {
         int frames = r.frameCount();
         long total = r.stats().totalNanos();
