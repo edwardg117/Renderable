@@ -105,7 +105,7 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   the world.
 - **Hitches** lists the frames that spiked, each with its split and the things that were most expensive in
   exactly that frame. GC pauses are shown per frame. A split too long for its column continues on the lines
-  under its hitch.
+  under its hitch. Each contributor's time sits under **total ms** and its name in the wide split column.
 - **Block entities** and **entities** are ranked by microseconds per frame; expand a type to see
   each position. A riding entity's own row carries its tick time, which its vehicle's row also counts.
   The **shadow** column is the share of a renderer's time spent in Iris's shadow

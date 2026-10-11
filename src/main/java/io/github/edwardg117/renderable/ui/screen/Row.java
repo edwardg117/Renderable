@@ -16,6 +16,21 @@ public record Row(String[] cells,
                   BlockPos pos,
                   int entityId) {
 
+    /**
+     * What a screen reader says for this row: its non-empty cells, joined with ", ". A contributor's or a split
+     * continuation's first cell is empty, so the first cell alone would leave the row unspoken.
+     */
+    public String narration() {
+        if (cells.length == 1) return cells[0];
+        StringBuilder sb = new StringBuilder();
+        for (String cell : cells) {
+            if (cell.isEmpty()) continue;
+            if (!sb.isEmpty()) sb.append(", ");
+            sb.append(cell);
+        }
+        return sb.toString();
+    }
+
     public static Row plain(String... cells) {
         return new Row(cells, null, null, false, false, 0, null, -1);
     }

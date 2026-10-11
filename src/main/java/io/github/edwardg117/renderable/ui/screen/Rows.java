@@ -177,7 +177,8 @@ public final class Rows {
     /**
      * One row per hitch, then its top contributors. The hitch's split can be wider than its column, so it is
      * wrapped by {@code wrapSplit}: the first line sits in the hitch's own row and each further line is a row of its
-     * own under it, holding only the split column, so none of the split is cut off.
+     * own under it, holding only the split column, so none of the split is cut off. A contributor's row has its time
+     * under the total ms column and its name, with a {@code [gc]} mark when suspect, in the split column, the widest.
      */
     static List<Row> hitches(SessionResult r, Function<String, List<String>> wrapSplit) {
         List<Row> rows = new ArrayList<>();
@@ -196,7 +197,8 @@ public final class Rows {
                 rows.add(new Row(new String[]{"", "", split.get(i)}, null, null, true, false, 0, null, -1));
             }
             for (TopEntry t : h.top()) {
-                rows.add(new Row(new String[]{t.key().label(), Fmt.ms2(t.nanos()), t.gc() ? "[gc]" : ""},
+                // The name goes in the wide split column, so the narrow frame column does not cut it.
+                rows.add(new Row(new String[]{"", Fmt.ms2(t.nanos()), t.key().label() + (t.gc() ? "  [gc]" : "")},
                         t.key(), t.key().typeId(), false, false, 1, posOf(t.key()), entityIdOf(t.key())));
             }
         }

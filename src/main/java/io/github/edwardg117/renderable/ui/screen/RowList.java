@@ -64,7 +64,7 @@ public final class RowList extends ObjectSelectionList<RowList.Entry> {
 
         @Override
         public Component getNarration() {
-            return Component.literal(row.cells()[0]);
+            return Component.literal(row.narration());
         }
 
         @Override

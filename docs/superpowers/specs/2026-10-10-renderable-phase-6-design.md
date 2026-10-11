@@ -366,7 +366,7 @@ rows reach 0.5 ms a frame.
 | P5.4 | "No finer split of other tick" and the `terrain` candidate are now done in part; the rest is P6.12 | 6b |
 | §5.1, §7 | `/renderable overlay` and the overlay key write `overlayEnabled` (P6.13) | 6b |
 | P4.B6 | Item 4's copy taken on first use is superseded by P6.13 | 6b |
-| §5.3, P5.A7, P6.5 | Hitches-tab split wrapping; sound labels name the Music & Sounds slider (P6.14) | 6b |
+| §5.3, P5.A7, P6.5 | Hitches-tab split wrapping and contributor names; sound labels name the Music & Sounds slider (P6.14) | 6b |
 
 ## P6.12 What phase 6 does not do
 
@@ -397,13 +397,15 @@ count as on and nothing is written, since NeoForge throws on reading a setting t
 mod's config screen and see them go without a restart; turn them on again there; `/renderable overlay off`, then
 a restart, keeps them off.
 
-## P6.14 Two display fixes from the acceptance
+## P6.14 Three display fixes from the acceptance
 
-The user's in-pack acceptance on 2026-10-11 found two display problems, fixed before 0.6.0 was tagged:
+The user's in-pack acceptance on 2026-10-11 found three display problems, fixed before 0.6.0 was tagged:
 
 - **The Hitches tab cut each split at its column's width,** so `lod` and the rest were hidden. A split now continues
-  on extra rows under its hitch, broken at its `|` separators (`TextWrap.wrapSplit`), as the Advice tab wraps its
-  text.
+  on extra rows under its hitch, broken at its `|` separators, and a part too wide for a line after its commas
+  (`TextWrap.wrapSplit`), as the Advice tab wraps its text.
 - **Sound rows named the category by its internal name** (`neutral`), while the Advice tab and the Music & Sounds
   screen say "Friendly Creatures". A sound row's label now uses the slider's name (`core.SoundCategories`); its key
   and serialised form keep the internal name, so the JSON key is stable and the advice reads the same category.
+- **Contributor names on the Hitches tab were cut** at the narrow frame column. A contributor's time now sits under
+  total ms and its name in the split column.

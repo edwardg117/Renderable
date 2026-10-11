@@ -361,7 +361,7 @@ Tabs and columns:
 | --- | --- | --- |
 | Advice | the recommendations, the player's first, each wrapped as a title and two short paragraphs | none; the screen opens on this tab |
 | Frames | summary block plus a frame-time histogram | sampled seconds, frames, avg, p50, p95, p99, max, threshold, average bucket split |
-| Hitches | one per hitch, its split continuing on rows under it when too long for its column (phase 6) | frame index, time into session, total ms, bucket split bar, GC delta, top contributors (a GC-suspect contributor's **split** cell reads `[gc]` in place of the bar, since the name cell is the one the list truncates) |
+| Hitches | one per hitch, its split continuing on rows under it when too long for its column (phase 6) | frame index, time into session, total ms, bucket split bar, GC delta, top contributors (from phase 6 a contributor's row shows its time under **total ms** and its name in the **split** column, the widest, followed by `[gc]` when it is GC-suspect; the name used to sit in the narrow frame column, where the list cut it) |
 | Mods | one row per mod, expandable to its event types, HUD layers, packets and sounds | share %, µs/frame, peak frame ms, gc f, calls/frame |
 | Block Entities | type rows, expandable to positions | render µs/frame, tick µs/frame, share %, peak frame ms, gc f, shadow %, vertices/frame, calls |
 | Entities | type rows, expandable to individuals | same |

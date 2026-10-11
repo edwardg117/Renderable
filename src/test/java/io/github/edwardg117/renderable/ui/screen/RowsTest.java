@@ -146,26 +146,7 @@ class RowsTest {
 
     @Test
     void aHitchesSplitContinuesOnRowsUnderItAndBeforeItsContributors() {
-        long ms = 1_000_000L;
-        long[] now = {0};
-        Session s = new Session(new SessionConfig(10_000 * ms, 2.0, 16 * ms, 5, 0, 0), () -> now[0], 0);
-        Accumulator cow = s.accumulator(TestSessions.COW);
-        long t = 0;
-        for (int i = 0; i <= 6; i++) {
-            now[0] = t;
-            s.onRenderPre(0, 0);
-            if (i == 6) break;
-            long start = t;
-            t += 1 * ms;
-            now[0] = t;
-            s.begin(cow, Bucket.ENTITY);
-            t += (i == 3 ? 60 : 2) * ms;
-            now[0] = t;
-            s.end();
-            s.onRenderPost();
-            t = start + (i == 3 ? 80 : 16) * ms;
-        }
-        SessionResult r = s.finish();
+        SessionResult r = cowHitchSession(3, 80, 60, 0);
         assertEquals(1, r.hitches().size(), "the one 80 ms frame among 16 ms ones");
         FrameRecord h = r.hitches().get(0);
 
@@ -194,10 +175,66 @@ class RowsTest {
             assertEquals(-1, more.entityId());
         }
         Row contributor = rows.get(3);
-        assertEquals(TestSessions.COW.label(), contributor.cells()[0]);
-        assertEquals(TestSessions.COW, contributor.key());
+        assertArrayEquals(new String[]{"", "60.00", TestSessions.COW.label()}, contributor.cells(),
+                "a contributor's time sits under total ms and its name in the wide split column");
+        assertEquals(TestSessions.COW, contributor.key(), "selection and Highlight and Teleport still find it");
+        assertEquals(TestSessions.COW.typeId(), contributor.typeId());
+        assertEquals(TestSessions.COW.entityId(), contributor.entityId());
         assertEquals(1, contributor.indent());
         assertFalse(contributor.group());
+        assertFalse(contributor.expandable());
+    }
+
+    @Test
+    void aGcSuspectContributorKeepsItsMarkAfterItsNameInTheSplitColumn() {
+        SessionResult r = cowHitchSession(5, 100, 40, 40);
+        assertEquals(1, r.hitches().size(), "the 100 ms frame that holds the 40 ms pause");
+        List<Row> rows = Rows.hitches(r, text -> List.of(text));
+        assertEquals(2, rows.size(), "the hitch and its one contributor");
+        assertTrue(rows.get(0).cells()[2].endsWith(" | gc 40 ms"), rows.get(0).cells()[2]);
+        assertArrayEquals(new String[]{"", "40.00", TestSessions.COW.label() + "  [gc]"}, rows.get(1).cells(),
+                "the mark follows the name, as the text report puts it after the figure");
+        assertEquals(TestSessions.COW, rows.get(1).key());
+    }
+
+    /**
+     * Six frames of a cow's 2 ms render in 16 ms, but frame {@code hitchFrame}, which lasts {@code frameMs} with the cow
+     * taking {@code cowMs} of it. A pause of {@code gcMillis} is reported when the last frame closes, so it belongs
+     * to the last frame (spec addendum §P4.A0).
+     */
+    private static SessionResult cowHitchSession(int hitchFrame, long frameMs, long cowMs, long gcMillis) {
+        long ms = 1_000_000L;
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * ms, 2.0, 16 * ms, 5, 0, 0), () -> now[0], 0);
+        Accumulator cow = s.accumulator(TestSessions.COW);
+        long t = 0;
+        for (int i = 0; i <= 6; i++) {
+            now[0] = t;
+            if (i == 6) {
+                s.onRenderPre(gcMillis > 0 ? 1 : 0, gcMillis);
+                break;
+            }
+            s.onRenderPre(0, 0);
+            long start = t;
+            t += 1 * ms;
+            now[0] = t;
+            s.begin(cow, Bucket.ENTITY);
+            t += (i == hitchFrame ? cowMs : 2) * ms;
+            now[0] = t;
+            s.end();
+            s.onRenderPost();
+            t = start + (i == hitchFrame ? frameMs : 16) * ms;
+        }
+        return s.finish();
+    }
+
+    @Test
+    void aRowNarratesItsNonEmptyCellsSoAContributorOrAContinuationIsNotBlank() {
+        assertEquals("1.70, minecraft:player #275110 (you)", Row.plain("", "1.70", "minecraft:player #275110 (you)").narration());
+        assertEquals("| lod 5.4", Row.plain("", "", "| lod 5.4").narration(), "a continuation line has only its split cell");
+        assertEquals("#1  frame 3 @ 0.048 s, 80.0, tick 1.0", Row.plain("#1  frame 3 @ 0.048 s", "80.0", "tick 1.0").narration());
+        assertEquals("For you", Row.heading("For you").narration());
+        assertEquals("", Row.plain("").narration(), "a blank spacer row has nothing to say");
     }
 
     @Test
