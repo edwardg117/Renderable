@@ -596,7 +596,7 @@ real: it is hitch #1 of the 4b/4c base session.
 | `block-entity-type` | player | frame rate | a type's render plus tick ≥ 1.0 ms/f (at most three types) | that type |
 | `entity-type` | player | frame rate | the same, for entity types | that type |
 | `particle-type` | player | frame rate | a particle class ≥ 0.5 ms/f (at most three classes) | that class |
-| `hitch-repeat` | player | stutter | a key other than a mod's (the mod rules cover those) is among the top contributors, with at least a quarter of the hitch and no `[gc]` mark, of 3 or more hitches, and of at least a quarter of all hitches | its hitch time; its largest time in one hitch |
+| `hitch-repeat` | player | stutter | a key other than a mod's (the mod rules and, from phase 6, `sound-wait` cover those) is among the top contributors, with at least a quarter of the hitch and no `[gc]` mark, of 3 or more hitches, and of at least a quarter of all hitches | its hitch time; its largest time in one hitch |
 | `heap-vs-ram` | player | note, or stutter when a frame's GC pause reached 500 ms | physical memory, to the nearest whole GiB, minus the maximum heap is under 4 GiB | none as a note; in the stutter form, GC time and the longest GC pause in one frame |
 | `heap-small` | player | frame rate | the smallest heap in use after any collection is ≥ 80% of the maximum heap | GC time |
 | `gc-pauses` | player | stutter | the collector is G1, Parallel or Serial, and the longest GC pause in one frame is ≥ 50 ms | GC time; longest pause |
@@ -679,7 +679,8 @@ Phase 6 added two rules and widened one (spec addendum §P6.9, plan 6b):
   timed no sound row. It leaves out the pack-author sentence for a vanilla sound. Its row test is the mod rules'
   stutter test, applied to sound rows. Its bucket test counts a hitch when the `sound` bucket, less the frame's GC
   pause, is a quarter of it, and speaks only when no single row passes. `hitch-repeat` and the `mod-*` rules never
-  see sound rows, and the bucket is never unnamed time, so no sound is found twice.
+  see sound rows, and the bucket is never unnamed time, so no sound row feeds two rules; a play's time still counts
+  for whatever played it, so a block entity or payload that plays a costly sound can be named by its own rule too.
 - **`distant-horizons`** is the one rule that names a mod, by the phase 6 design, although P5.1 chose generic rules
   only. `lod` is time Renderable measures in Distant Horizons' own render methods, so the rule can only fire where
   DH is installed and hooked. Its action names DH's own settings, the same in 2.4.5-b and 3.3.3.

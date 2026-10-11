@@ -66,14 +66,15 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   how much time the finding is about: its worst single occurrence for stutter, milliseconds a frame for frame
   rate. That figure is an upper bound on what the change can save, not a prediction. Stutter comes first,
   then frame rate, then notes: a stall averaged over a session looks small but is what a player notices. The
-  rules are generic, not written for any one pack, and their thresholds are first estimates. One is written for one mod:
-  it reads the time Renderable measures in Distant Horizons' own drawing, so it can only appear where Distant
-  Horizons is installed, and it names that mod's settings to lower.
+  rules are generic, not written for any one pack, and their thresholds are first estimates. One is written for
+  one mod: it reads the time Renderable measures in Distant Horizons' own drawing, so it can only appear where
+  Distant Horizons is installed, and it names that mod's settings to lower.
 - **Sounds keep the game waiting** appears when playing sounds takes half a millisecond a frame, or when one
   sound stalls a hitch or recurs in several, or when the sound engine takes a quarter of the frame in three or more
   hitches and in a quarter of them. Each play waits for the sound thread to hand it a channel, and at
   0% the game skips a sound without waiting, so the advice names the Music & Sounds slider to set to 0% for that
-  sound's category.
+  sound's category. A machine that plays the sound can also show as a costly or repeated block entity, since its
+  tick includes the play: try the slider first.
 - **A stall Renderable cannot name**, for the pack author, appears after one long stall in code Renderable does
   not time, and **Stutter Renderable cannot name** when such code took at least a quarter of the frame in three
   or more hitches and in a quarter of them. A sampling profiler such as spark names that code.

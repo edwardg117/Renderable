@@ -1,7 +1,9 @@
 # Renderable phase 6: sound, terrain and Distant Horizons
 
 **Date:** 2026-10-10
-**Status:** approved 2026-10-10; plan 6a done on `phase-6a-measurement` (294 tests); plan 6b written.
+**Status:** approved 2026-10-10; plan 6a done on `phase-6a-measurement` (294 tests); plan 6b done on
+`phase-6b-advice`; accepted in the pack on 2026-10-11 with four fixes (P6.13, P6.14), 330 tests
+(`docs/acceptance/phase-6.md`).
 **Extends:** the base spec `docs/superpowers/specs/2026-09-19-renderable-fps-profiler-design.md`, the phase 4
 addendum `2026-09-20-renderable-phase-4-design.md` and the phase 5 addendum
 `2026-09-26-renderable-phase-5-design.md`. Sections here are numbered `P6.x`. A number with no prefix refers to
@@ -305,7 +307,8 @@ Two new rules and one widened, in P5.B2's format:
 - **The slider's name.** The finding and action name the category by its Music & Sounds slider, from a fixed
   English table in `core`: `master` Master Volume, `music` Music, `record` Jukebox/Note Blocks, `weather`
   Weather, `block` Blocks, `hostile` Hostile Creatures, `neutral` Friendly Creatures, `player` Players,
-  `ambient` Ambient/Environment, `voice` Voice/Speech. The action names the category of the costliest row.
+  `ambient` Ambient/Environment, `voice` Voice/Speech. In the frame-rate and bucket forms the action names the
+  costliest row's category; in the row test, the stalled sound's (see Settled in plan 6b).
 - **No double finding.** `hitch-repeat` already skips the Mods tab's keys, so sound rows never trigger it;
   `sound-wait`'s stutter form covers them. The `mod-*` rules count only their own kinds, so sound rows do
   not feed `mod-network` or `mod-handlers`.

@@ -67,7 +67,7 @@ final class SceneRules {
 
     /**
      * A block entity, entity or particle that caused several hitches: among a hitch's top costs with at least a
-     * quarter of it, and no GC pause that could account for it. Mod keys are the mod rules'.
+     * quarter of it, and no GC pause that could account for it. Mods tab keys are the mod rules' and sound-wait's.
      */
     static void hitchRepeat(Facts f, List<Recommendation> out) {
         int hitches = f.hitches().size();
