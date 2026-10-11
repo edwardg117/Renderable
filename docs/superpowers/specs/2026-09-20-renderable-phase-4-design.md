@@ -690,6 +690,10 @@ code review confirms every row.
 **User-visible change.** Only #2 and #4 are observable: Highlight and Teleport grey out after logout, and
 `/renderable overlay off` stays off across sessions.
 
+**Item 4 superseded in phase 6 (§P6.13).** Copying the setting on first use meant a change made in the mod's config
+screen did nothing until a restart. The command and the overlay key now write `overlayEnabled` and the overlay
+reads it every frame, so the command and the setting are one switch, and `overlay off` lasts across restarts too.
+
 **Acceptance check (B6).** Unit tests for #1, #3 and #5. In the pack: turn the overlay off, run a session,
 confirm it stays off; log out with a result loaded, open the results screen, confirm Highlight and Teleport
 are disabled and Copy report still works.

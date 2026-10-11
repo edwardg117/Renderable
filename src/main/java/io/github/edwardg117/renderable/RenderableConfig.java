@@ -36,7 +36,8 @@ public final class RenderableConfig {
         b.pop();
 
         b.push("overlay");
-        OVERLAY_ENABLED = b.comment("Draw in-world labels for the last finished session.")
+        OVERLAY_ENABLED = b.comment("Draw in-world labels for the last finished session.",
+                        "/renderable overlay and the overlay key change this setting.")
                 .define("overlayEnabled", true);
         OVERLAY_LABEL_COUNT = b.comment("Labels per category (block entities, entities, sections).")
                 .defineInRange("overlayLabelCount", 25, 1, 200);

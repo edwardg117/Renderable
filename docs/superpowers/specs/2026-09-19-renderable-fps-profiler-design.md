@@ -333,7 +333,7 @@ the layer.
 /renderable stop
 /renderable cancel
 /renderable results
-/renderable overlay [on|off]
+/renderable overlay [on|off]      (sets config overlayEnabled)
 /renderable copy
 /renderable debug stall <ms>      (only when config debugCommands = true)
 /renderable debug events          (only when config debugCommands = true)
@@ -527,7 +527,7 @@ NeoForge client config `renderable-client.toml`:
 | `hitchMedianMultiplier` | 2.0 | see 3.3 |
 | `hitchMinExcessMs` | 16 | see 3.3 |
 | `topContributorsPerFrame` | 5 | keys kept per frame |
-| `overlayEnabled` | true | draw labels for the last session |
+| `overlayEnabled` | true | draw labels for the last session; `/renderable overlay` and the overlay key write it (phase 6) |
 | `overlayLabelCount` | 25 | labels per category |
 | `overlayMaxDistance` | 64 | blocks |
 | `writeText` / `writeJson` | true / true | which files to write |

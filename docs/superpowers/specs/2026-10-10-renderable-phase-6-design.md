@@ -362,6 +362,8 @@ rows reach 0.5 ms a frame.
 | P5.A7 | Sound rows in the Mods tab | 6a |
 | P5.B2 | `sound-wait`, `distant-horizons`; `unattributed-stall`'s repeat form | 6b |
 | P5.4 | "No finer split of other tick" and the `terrain` candidate are now done in part; the rest is P6.12 | 6b |
+| §5.1, §7 | `/renderable overlay` and the overlay key write `overlayEnabled` (P6.13) | 6b |
+| P4.B6 | Item 4's copy taken on first use is superseded by P6.13 | 6b |
 
 ## P6.12 What phase 6 does not do
 
@@ -375,3 +377,19 @@ rows reach 0.5 ms a frame.
   sounds.
 - **No DH API events,** for the reasons in P6.1.
 - **No overlay rework.** The Observable-style rework (P5's carried items) is its own phase.
+
+## P6.13 One switch for the overlay (a 0.5.0 bug)
+
+**Observed.** In 0.5.0, turning `overlayEnabled` off in the mod's config screen left the labels on until the game
+restarted. `WorldOverlay` copied the setting on first use (§P4.B6 item 4) and never read it again.
+
+**Design (the user's choice, 2026-10-11).** The setting is the only state. `core.OverlaySwitch` reads it every
+time and writes it, through a small interface that keeps `core` free of NeoForge; `WorldOverlay` reads it every
+frame (`ModConfigSpec.ConfigValue.get()` returns a cached value, so this allocates nothing), and
+`/renderable overlay [on|off]` and the overlay key write and save it. A change in the config screen therefore
+shows at once, and `overlay off` lasts across restarts as well as sessions. Before the config has loaded, labels
+count as on and nothing is written, since NeoForge throws on reading a setting that early.
+
+**Acceptance check.** Unit tests in `OverlaySwitchTest`. In the pack: after a session, turn labels off in the
+mod's config screen and see them go without a restart; turn them on again there; `/renderable overlay off`, then
+a restart, keeps them off.

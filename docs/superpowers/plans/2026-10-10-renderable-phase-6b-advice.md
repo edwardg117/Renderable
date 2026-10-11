@@ -222,9 +222,9 @@ src/test/java/io/github/edwardg117/renderable/core/advice/
   AdvisorTest.java                                                    Modify (Task 4)
 ```
 
-**Expected test totals:** 294 at the start, 297 after Task 1, 299 after Task 2, 309 after Task 3 and 315 after Task 4,
-which is also the total at the end (Tasks 5 to 8 add none). Review rounds may add tests; a shortfall is worth
-investigating and an excess is not.
+**Expected test totals:** 294 at the start, 297 after Task 1, 299 after Task 2, 309 after Task 3 and 315 after Task 4.
+Tasks 5 to 8 add none; the overlay fix of §P6.13, made before Task 7, adds 4, so the total at the end is 319. Review
+rounds may add tests; a shortfall is worth investigating and an excess is not.
 
 **How to run the suite** (the build cache can restore stale results, so always force it):
 
@@ -2291,8 +2291,8 @@ A FAIL is a defect: stop and plan the fix with the user before Task 8.
 
 Send the user this:
 
-> 1. Close the game. In `%APPDATA%\.MCUpdater\instances\Gears-And-Frontiers\mods\`, replace `renderable-0.5.0.jar`
->    with `H:\repos\Renderable\build\libs\renderable-0.6.0.jar`.
+> 1. Close the game. In `%APPDATA%\.MCUpdater\instances\Gears-And-Frontiers\mods\`, add
+>    `H:\repos\Renderable\build\libs\renderable-0.6.0.jar` (remove `renderable-0.5.0.jar` first if it is there).
 > 2. Start the pack and join the server.
 > 3. **Session 1, the other player's base.** Stand at -1169 91 -1678, the spot of the 16:08 session, press **F7**
 >    (this instance still binds Renderable's key there) and play normally for the 30 seconds.
@@ -2303,6 +2303,11 @@ Send the user this:
 >    - on the **Advice** tab, which slider "Sounds keep the game waiting" names, if it is there.
 >
 >    Then close the screen.
+>
+>    Then open Renderable's config screen (Mods, Renderable, Config: Configured's screen here) and its client
+>    config's Overlay section. "Overlay Enabled" is off in this instance, so the session's labels are hidden: turn
+>    it on, click Save, return to the game and tell me whether the labels appear without a restart. Then turn it
+>    off there the same way and tell me whether they go. Leave it as you prefer afterwards.
 > 5. **Session 2, optional: the same spot, muted.** In Options, Music & Sounds, set that slider to 0% (Blocks if the
 >    Advice tab named none). From the same spot, press **F7** again and play normally for 30 seconds. Then put the
 >    slider back where it was. Skip this session if you would rather not.
@@ -2438,6 +2443,8 @@ Both:
     before `terrain` and `lod`, and whether the Mods tab's name column cuts a long sound label's `(category)`. If
     either does, record it and decide with the user whether it needs a second line or a tooltip, and whether that is
     a task before Task 8 or a later phase. It is not a FAIL.
+11. **The overlay switch (§P6.13).** Turning `overlayEnabled` on in the config screen shows the labels at once,
+    and off again hides them. A FAIL here is a defect.
 
 - [ ] **Step 4: Write `docs/acceptance/phase-6.md`**
 
@@ -2464,7 +2471,7 @@ Tell the user "Touch the YubiKey", then `git add docs/acceptance/phase-6.md` and
 - [ ] **Step 1:** With the acceptance passed and the user's go-ahead, fast-forward `main` to `phase-6b-advice`:
   `git checkout main && git merge --ff-only phase-6b-advice`. The branches stack (6a, then 6b), so this brings all of
   phase 6. If `main` has moved, stop and ask.
-- [ ] **Step 2:** Run `./gradlew test --rerun --no-daemon` on `main` (**315** tests). Tell the user "Touch the YubiKey",
+- [ ] **Step 2:** Run `./gradlew test --rerun --no-daemon` on `main` (**319** tests). Tell the user "Touch the YubiKey",
   and tag: `git tag -s v0.6.0 -m "Renderable 0.6.0"`.
 - [ ] **Step 3:** Update the phase 6 status memory with the merge commit and the tag.
 

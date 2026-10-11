@@ -18,8 +18,9 @@ and what caused each stutter. It changes nothing in the game.
    **Open folder** shows the files in `<game dir>/renderable/`. Send it privately: it holds your position in
    the world. Other players show in it only as numbers, and you as "you"; a mob or statue keeps its name tag.
 4. Coloured labels over machines show what the last session measured. `/renderable overlay off` hides them
-   until you run `/renderable overlay on` or restart the game. To keep them off, set `overlayEnabled` to false
-   in `config/renderable-client.toml`.
+   until you run `/renderable overlay on`, and the choice is kept across restarts. The same switch is
+   `overlayEnabled` in `config/renderable-client.toml`; changing it there, or in a config screen such as
+   Configured's, takes effect at once.
 
 It is a diagnostic tool: add it when you want to find what is slowing the game down, and remove it when you
 are done. While it is installed and not sampling, each of its hooks does little more than check one flag.
@@ -36,9 +37,9 @@ are done. While it is installed and not sampling, each of its hooks does little 
    yellow or red, and the most rebuilt chunk sections carry yellow labels at their centres. A
    leading `!` means that thing showed up in a hitch. Labels are shown only in the dimension they
    were profiled in and are dropped when you leave the world. `/renderable overlay off` hides them
-   and stays off until you turn it back on, including across later sessions. Editing `overlayEnabled`
-   in `renderable-client.toml` while the game is running does nothing: it is read once per client run,
-   and the command is what changes it after that.
+   until you turn them back on, across later sessions and restarts: it sets `overlayEnabled` in
+   `renderable-client.toml`, and a change to that setting, in the file or in a config screen, takes effect
+   at once.
 4. On the results screen, click a column header to sort by it; click it again to reverse. Each list opens in
    the same order as the text report, the active column carries `v` (descending) or `^` (ascending), and a
    name column sorts A to Z on its first click, ignoring case and reading numbers as numbers, so section -10

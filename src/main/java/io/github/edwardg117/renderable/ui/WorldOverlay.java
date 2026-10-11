@@ -2,10 +2,12 @@ package io.github.edwardg117.renderable.ui;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import io.github.edwardg117.renderable.RenderableConfig;
+import io.github.edwardg117.renderable.RenderableMod;
 import io.github.edwardg117.renderable.core.BlockEntityKey;
 import io.github.edwardg117.renderable.core.EntityKey;
 import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.MeshEntry;
+import io.github.edwardg117.renderable.core.OverlaySwitch;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
 import io.github.edwardg117.renderable.core.Ranking;
@@ -75,8 +77,29 @@ public final class WorldOverlay {
     private static int[] drawnLabel = new int[0];
     private static int[] drawnX = new int[0];
     private static int[] drawnY = new int[0];
-    /** Null until first read, then whatever the config said or the user last chose. */
-    private static Boolean enabled;
+    /** Labels on or off: the {@code overlayEnabled} setting itself, read every frame (spec addendum §P6.13). */
+    private static final OverlaySwitch SWITCH = new OverlaySwitch(new OverlaySwitch.Setting() {
+        @Override
+        public boolean loaded() {
+            return RenderableConfig.SPEC.isLoaded();
+        }
+
+        @Override
+        public boolean get() {
+            return RenderableConfig.OVERLAY_ENABLED.get();
+        }
+
+        @Override
+        public void set(boolean value) {
+            RenderableConfig.OVERLAY_ENABLED.set(value);
+            try {
+                RenderableConfig.OVERLAY_ENABLED.save();
+            } catch (RuntimeException e) {
+                // The labels still switch for this run; only the file keeps its old value.
+                RenderableMod.LOGGER.warn("Could not save overlayEnabled to renderable-client.toml", e);
+            }
+        }
+    });
 
     private static final Matrix4f VIEW_PROJECTION = new Matrix4f();
     /** The GUI pose moved to one label's depth; reused every frame, render thread only. */
@@ -148,24 +171,20 @@ public final class WorldOverlay {
     }
 
     /**
-     * Whether labels are drawn. Read from the config on first use, not at every session end, so
-     * {@code /renderable overlay off} survives the next session (spec addendum §P4.B6).
+     * Whether labels are drawn: the {@code overlayEnabled} setting as it is now, so a change in the mod's config
+     * screen shows at once (spec addendum §P6.13, replacing §P4.B6's copy taken on first use).
      */
     public static boolean isEnabled() {
-        Boolean e = enabled;
-        if (e == null) {
-            e = RenderableConfig.OVERLAY_ENABLED.get();
-            enabled = e;
-        }
-        return e;
+        return SWITCH.enabled();
     }
 
+    /** Turns labels on or off by writing {@code overlayEnabled}, so the choice lasts across sessions and restarts. */
     public static void setEnabled(boolean on) {
-        enabled = on;
+        SWITCH.set(on);
     }
 
     public static void toggle() {
-        setEnabled(!isEnabled());
+        SWITCH.toggle();
     }
 
     /** Draw a wireframe box around the block, in {@code dimension} only, for ten seconds. */
