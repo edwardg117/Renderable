@@ -16,11 +16,12 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest becomes Ubuntu 26.04 from 2026-10-19 (runner-images#14748); 24.04 stays supported.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -28,11 +29,16 @@ jobs:
       # setup-gradle caches ~/.gradle, which includes caches/modules-2 where the Modrinth artifacts land.
       # That cache is what lets a build survive a Modrinth outage, so do not add a second cache for the
       # same path: two caches on one directory fight each other.
-      - uses: gradle/actions/setup-gradle@v4
+      # `basic` is the MIT-licensed cache provider. v6's default, "enhanced", is proprietary and using it
+      # accepts Gradle's Terms of Use. Basic has no restore keys, so a change to a Gradle build file starts
+      # that run from a cold cache.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
 
       # The extraction output is cheap to keep and saves unzipping the JarJar containers every run.
       - name: Cache the extracted mod jars
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/nested-mod-jars
           key: nested-mod-jars-${{ hashFiles('gradle.properties') }}
@@ -55,7 +61,7 @@ jobs:
       - name: Build
         run: ./gradlew build --no-daemon
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: renderable
           path: build/libs/*.jar
