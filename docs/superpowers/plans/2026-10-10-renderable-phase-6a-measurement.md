@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Executed** on 2026-10-10 on `phase-6a-measurement` (HEAD `4af0ad0`), **294 tests**. Reviews during execution
+> **Executed** on 2026-10-10 on `phase-6a-measurement` (HEAD `53e6041`), **294 tests**. Reviews during execution
 > added, beyond the task text below: one more `lod` test in `SessionTest`; `SoundPlays.perSecond(double)`, with three
 > tests, which the Sound plays line's rate goes through (whole from 9.95 up, one decimal below, "under 0.1" for a
 > rate that would read "0.0"); sounds in the Mods tab's empty-state sentence; `Facts.hitch` reading
@@ -130,7 +130,7 @@ the Distant Horizons 3.3.3 jar from the Modrinth Maven, and read-only, the deplo
   cannot be loaded in a test: mixin classes are read as bytes, and the plugin's map is read as source.
 - **`run/`** (read 2026-10-10, not to be edited by an agent): `options.txt` has `maxFps:260`, `enableVsync:false`
   and `soundCategory_master:1.0`; `run/saves` holds `New World`.
-- **The suite is 264 tests** at `4171b84` on `main` (`./gradlew test --rerun --no-daemon`).
+- **The suite is 264 tests** at `149c142` on `main` (`./gradlew test --rerun --no-daemon`).
 - **Files are CRLF** in the working tree (`core.autocrlf` is true).
 - **A typed `\uXXXX` escape** becomes the literal character in the Edit/Write tools and in GNU sed. No step here
   needs one.

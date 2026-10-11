@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md` §P4.D. §P4.D1's `TabTest` belongs to plan 4c, which changes `Tab`; §P4.D1's report-import test and §P4.D2 belong to plan 4b, which changes `ReportFiles`. Both reassignments are recorded in §P4.D and in the phase 4 readme.
 
-**Repository:** `H:\repos\Renderable`, branch `phase-4d-hygiene`, created from `phase-4c-screen` at `c831f0f`. Commits are YubiKey-signed: the orchestrator commits after telling the user to touch the key. **Subagents stage and report; they do not commit.**
+**Repository:** `H:\repos\Renderable`, branch `phase-4d-hygiene`, created from `phase-4c-screen` at `76e1c4e`. Commits are YubiKey-signed: the orchestrator commits after telling the user to touch the key. **Subagents stage and report; they do not commit.**
 
 **Ordering:** Written assuming only plan 4a was on `main`; **executed from 2026-09-26 on top of plans 4b and
 4c**, which the user chose so that one in-pack session accepts 4b, 4c and 4d together. Every "if 4b or 4c has

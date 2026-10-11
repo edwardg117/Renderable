@@ -5,7 +5,7 @@ Date: 2026-10-11. Machine: Windows 11 Pro. GPU: `NVIDIA GeForce RTX 4080 SUPER/P
 
 Build under test: `renderable-0.6.0.jar` from branch `phase-6b-advice`, which carries 6a and 6b, in the real
 Gears & Frontiers instance (`.MCUpdater/instances/Gears-And-Frontiers`, connected to the user's server). The three
-planned sessions ran on the jar built at `9567f87`, which includes the overlay fix below; the follow-up sessions at
+planned sessions ran on the jar built at `05c31d4`, which includes the overlay fix below; the follow-up sessions at
 the spawn power station ran on the builds named with them. Java 21.0.3 (Eclipse Adoptium), 8192 MiB heap, 387 mods,
 2560x1440 fullscreen, GUI scale 3, fps limit 220, vsync off, render distance 10. The pack runs Sodium 0.6.13, Iris
 1.8.12-snapshot, Flywheel 1.0.6 (indirect backend), Distant Horizons 2.4.5-b and Accelerated Rendering
@@ -39,7 +39,7 @@ On 2026-10-11 the user reported that in 0.5.0, turning the overlay off in the mo
 labels on. The cause: `WorldOverlay` copied `overlayEnabled` the first time it drew labels and never read it again
 (spec addendum §P4.B6 item 4), so a change made while the game ran only took effect after a restart; the instance's
 `renderable-client.toml` did hold `overlayEnabled = false`. The user chose one switch: the setting is the only state,
-read every frame, and `/renderable overlay` and the overlay key write it (§P6.13, `9567f87`).
+read every frame, and `/renderable overlay` and the overlay key write it (§P6.13, `05c31d4`).
 
 ## Session 1: the other player's base
 
@@ -64,7 +64,7 @@ average is 0.22 ms a frame. At this spot in 0.5.0, hitch #3 had about 20 ms of t
 | `sound minecraft:block.candle.extinguish (block)` | 964 | 203 ms |
 
 Create's boiler sound, `create:steam`, is under `create`. It plays in the `neutral` category, the Friendly Creatures
-slider. (These labels are as the build at `9567f87` printed them; since `39f3002` they name the slider, see below.)
+slider. (These labels are as the build at `05c31d4` printed them; since `879c7e8` they name the slider, see below.)
 
 **5. Advice (B1): PASS.** `distant-horizons` fired: "Distant Horizons draws its far terrain in 3.3 ms of each 8.8 ms
 frame." `sound-wait` fired in its stutter form, by the bucket test: "In 5 of 17 hitches, the sound engine took at
@@ -119,7 +119,7 @@ reports holds a UUID. The log's one Renderable-related warning, "Configuration f
 correct. Correcting", is NeoForge rewriting the file once for `overlayEnabled`'s new comment, as expected.
 
 **10. Screen widths (carried from plan 6a): fixed, then PASS.** The checks found three display problems, none a
-measurement error, all fixed before tagging (`39f3002`, `423bbb1`; §P6.14):
+measurement error, all fixed before tagging (`879c7e8`, `a4b043c`; §P6.14):
 
 - **The Hitches tab cut each split at its column**, so a hitch line ended "| terrain 0." and `lod` was never seen.
   A split now continues on rows under its hitch, broken at its `|` separators, and a part too wide for a line after
@@ -131,8 +131,8 @@ measurement error, all fixed before tagging (`39f3002`, `423bbb1`; §P6.14):
   and the JSON keep the internal name. Labels themselves were not cut on the Mods tab.
 
 The user checked each fix in a follow-up session at the spawn power station: the split wraps with `lod` visible
-(`renderable-2026-10-11_12-17-33`, build `39f3002`), sound rows read `(Friendly Creatures)`, and contributor names
-show in full (`renderable-2026-10-11_12-32-34`, build `423bbb1`).
+(`renderable-2026-10-11_12-17-33`, build `879c7e8`), sound rows read `(Friendly Creatures)`, and contributor names
+show in full (`renderable-2026-10-11_12-32-34`, build `a4b043c`).
 
 **11. The overlay switch (§P6.13): PASS.** With labels off in the instance's config, the user turned "Overlay
 Enabled" on in Configured's screen after session 1 and saved: the labels appeared without a restart. Turned off the
@@ -142,9 +142,9 @@ same way, they went.
 
 | Commit | Fix | Tests |
 | --- | --- | --- |
-| `9567f87` | One switch for the overlay: `/renderable overlay` and the key write `overlayEnabled`, and a change in a config screen or the file takes effect at once (§P6.13) | 319 |
-| `39f3002` | The Hitches tab wraps each split; sound rows name the Music & Sounds slider (§P6.14) | 328 |
-| `423bbb1` | Hitches contributors show their name in the wide split column (§P6.14) | 330 |
+| `05c31d4` | One switch for the overlay: `/renderable overlay` and the key write `overlayEnabled`, and a change in a config screen or the file takes effect at once (§P6.13) | 319 |
+| `879c7e8` | The Hitches tab wraps each split; sound rows name the Music & Sounds slider (§P6.14) | 328 |
+| `a4b043c` | Hitches contributors show their name in the wide split column (§P6.14) | 330 |
 
 ## Observations
 

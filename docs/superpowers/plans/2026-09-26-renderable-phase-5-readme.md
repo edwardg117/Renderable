@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26
 **Spec addendum:** `docs/superpowers/specs/2026-09-26-renderable-phase-5-design.md`
-**Baseline:** `main` at `7922030` (the spec), code as of `f9a9acd`, tag `v0.4.1`, 132 JUnit tests.
+**Baseline:** `main` at `da595be` (the spec), code as of `8700af6`, tag `v0.4.1`, 132 JUnit tests.
 
 ## Order
 

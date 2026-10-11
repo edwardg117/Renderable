@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md` §P4.C (all of it), plus §P4.D1's `TabTest`, which lives here because this plan changes `Tab`. Base spec §5.3, §5.4, §6.1.
 
-**Repository:** `H:\repos\Renderable`, branch `phase-4c-screen`, created from `phase-4b-robustness` at `cbbf3a1`. Commits are YubiKey-signed: the orchestrator commits after telling the user to touch the key. **Subagents stage and report; they do not commit.**
+**Repository:** `H:\repos\Renderable`, branch `phase-4c-screen`, created from `phase-4b-robustness` at `63a723d`. Commits are YubiKey-signed: the orchestrator commits after telling the user to touch the key. **Subagents stage and report; they do not commit.**
 
 **Ordering:** Written assuming only plan 4a was on `main`; **executed from 2026-09-25 on top of plan 4b**, which the user chose so that 4b's and 4c's in-pack acceptance can run as one session (Task 8). Every "if 4b has run" branch below takes the 4b side, and the steps that applied only without 4b are gone. `main` stays at the accepted 4a state until the combined acceptance passes; then 4b and 4c merge together.
 
@@ -20,8 +20,8 @@
 
 - `Tab` and `Tab.Columns` are pure Java: `Tab.java` imports only `core.Ranking` and `java.util`, so a JUnit test can exercise it directly. `Ranking`, `RankedEntry`, `MeshEntry` and `FlywheelStats` are likewise Minecraft-free.
 - `Rows` imports `net.minecraft.core.BlockPos` and `WorldOverlay` imports the client renderer, so neither is unit-testable; their proof is the in-pack checks in Task 8.
-- `RowList.Entry.render` truncates left-aligned cells with `font.plainSubstrByWidth(cell, colW[i])` but draws right-aligned cells with a bare `g.drawString(font, cell, ...)`, so a long number overlaps its neighbour. Re-read on `cbbf3a1`.
-- The ranked and particle column names and cell expressions are written twice, term for term, in `TextReportWriter.appendRanked`/`appendParticles` and in `Rows.cells`/`Rows.particles`. Re-read on `cbbf3a1`.
+- `RowList.Entry.render` truncates left-aligned cells with `font.plainSubstrByWidth(cell, colW[i])` but draws right-aligned cells with a bare `g.drawString(font, cell, ...)`, so a long number overlaps its neighbour. Re-read on `63a723d`.
+- The ranked and particle column names and cell expressions are written twice, term for term, in `TextReportWriter.appendRanked`/`appendParticles` and in `Rows.cells`/`Rows.particles`. Re-read on `63a723d`.
 - `ResultsScreen.teleportToSelected` sends `tp @s x (y+1) z` from `selected.pos()`, and `Rows.sections` sets that position to `new BlockPos(k.centerX(), k.centerY(), k.centerZ())` — the section's centre block, which is solid for any section below the surface.
 - `WorldOverlay.setResult` builds entity labels with `dimension = null`, and `drawLabels` treats null as "draw in any dimension". The README claims labels are dimension-scoped.
 - `WorldOverlay.drawHighlight` returns early when **any** of the eight corners has `w <= 0.001f`, so standing inside a highlighted section draws nothing at all.
@@ -2542,7 +2542,7 @@ docs: README and spec for phase 4c
 
 ### Final review (2026-09-25)
 
-After Task 7, one reviewer read the whole branch (`cbbf3a1..9067be4`) for what per-task reviews miss. Verdict:
+After Task 7, one reviewer read the whole branch (`63a723d..5124463`) for what per-task reviews miss. Verdict:
 ready for acceptance; the JSON byte-identical to 4b's over 88 session and environment pairs, the text report
 different only in the Flywheel name column, and every cross-task path traced correct. Its minor findings
 fixed before acceptance, in one commit:

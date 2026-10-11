@@ -3,7 +3,7 @@
 Date: 2026-10-10. Machine: Windows 11 Pro. GPU: `NVIDIA GeForce RTX 4080 SUPER/PCIe/SSE2`,
 `glVersion: 4.6.0 NVIDIA 596.49`.
 
-Build under test: `renderable-0.5.0.jar`, built from branch `phase-5c-readiness` at `6a2fcef`, which carries
+Build under test: `renderable-0.5.0.jar`, built from branch `phase-5c-readiness` at `32f0792`, which carries
 5a, 5b, 5d and 5c, in the real Gears & Frontiers instance (`.MCUpdater/instances/Gears-And-Frontiers`,
 connected to the user's server). Java 21.0.3 (Eclipse Adoptium), 8192 MiB heap, 386 mods, 2560x1440
 fullscreen, GUI scale 3, fps limit 220, vsync off, render distance 10. The pack runs Sodium 0.6.13, Iris

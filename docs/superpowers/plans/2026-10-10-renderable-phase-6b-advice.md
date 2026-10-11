@@ -135,7 +135,7 @@ do not commit.** Tasks 7 and 8 are the orchestrator's, with the user.
 - **The `sound` bucket is never unnamed time.** `Facts.of` takes a hitch's `unnamedTickMs` from
   `FrameRecord.unnamedTickNanos()`: other tick (the tick less every tick bucket, `SOUND` among them), less the
   tick's named time.
-- **The suite is 294 tests** after plan 6a, as executed on `phase-6a-measurement` (`4af0ad0`): its plan's 289, one
+- **The suite is 294 tests** after plan 6a, as executed on `phase-6a-measurement` (`53e6041`): its plan's 289, one
   more `lod` test in `SessionTest`, three `SoundPlays.perSecond` tests in `SoundPlaysTest`, and
   `HookInstallsTest.theThirdPartyConfigIsOptionalSoAMissedTargetOnlyLogs`. This plan's Tasks 1 to 6 were applied
   from their own code blocks to a clone of that branch and run with `./gradlew test --rerun --no-daemon`: every

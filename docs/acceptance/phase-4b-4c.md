@@ -7,7 +7,7 @@ One in-pack session accepted plans 4b and 4c together, as the user chose on 2026
 phase 4a's Check 7 (the results screen) and the one in-pack glance plan 4d needs. It replaces the
 `phase-4b.md` that plan 4b names.
 
-Build under test: `renderable-0.4.1.jar`, built at 12:21 from branch `phase-4d-hygiene` at `8e47674`, which
+Build under test: `renderable-0.4.1.jar`, built at 12:21 from branch `phase-4d-hygiene` at `e12bdef`, which
 carries 4b, 4c and 4d, in the real Gears & Frontiers instance (`.MCUpdater/instances/Gears-And-Frontiers`,
 connected to the user's server). Java 21.0.3 (Eclipse Adoptium), 8192 MiB heap, 386 mods, 2560x1440
 fullscreen, GUI scale 3, fps limit 220, vsync off, render distance 10. The pack runs Sodium 0.6.13, Iris
@@ -111,7 +111,7 @@ columns ending `verts/f | gc f`.
 ## Plan 4d
 
 The `hooks applied` line lists the same twelve hooks as phase 4a's run, so moving `Hook` into `core` changed
-nothing a report shows. The fix in `8e47674`, "no rebuilds" instead of "Sodium hooks were not active", was
+nothing a report shows. The fix in `e12bdef`, "no rebuilds" instead of "Sodium hooks were not active", was
 not exercised: both sessions rebuilt sections. 4d's own acceptance, watching CI on a runner, needs a GitHub
 remote and is separate.
 

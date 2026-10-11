@@ -3,7 +3,7 @@
 Date: 2026-09-20. Machine: Windows 11 Pro. GPU: `NVIDIA GeForce RTX 4080 SUPER/PCIe/SSE2`,
 `glVersion: 4.6.0 NVIDIA 596.49`.
 
-Build under test: `renderable-0.4.0.jar` from branch `phase-4a-numbers` at `7d42d51`, in the real
+Build under test: `renderable-0.4.0.jar` from branch `phase-4a-numbers` at `8514433`, in the real
 Gears & Frontiers instance (`.MCUpdater/instances/Gears-And-Frontiers`, connected to the user's
 server). Java 21.0.3 (Eclipse Adoptium), 8192 MiB heap, 386 mods, 2560x1440 fullscreen, GUI scale 3,
 fps limit 220, vsync off, render distance 10.

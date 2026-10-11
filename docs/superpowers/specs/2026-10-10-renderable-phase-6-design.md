@@ -8,7 +8,7 @@
 addendum `2026-09-20-renderable-phase-4-design.md` and the phase 5 addendum
 `2026-09-26-renderable-phase-5-design.md`. Sections here are numbered `P6.x`. A number with no prefix refers to
 the base spec, and `P4.x` or `P5.x` to an addendum.
-**Baseline:** `main` at `5e600a3`, tag `v0.5.0` (`623beb3`), 264 JUnit tests.
+**Baseline:** `main` at `a15905b`, tag `v0.5.0` (`844019d`), 264 JUnit tests.
 **Evidence:**
 
 - Two 30 s sessions at another player's base on 2026-10-10 (`docs/acceptance/phase-5.md`, "After the tag").

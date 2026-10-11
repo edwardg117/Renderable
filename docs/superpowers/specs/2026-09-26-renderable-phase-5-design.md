@@ -6,7 +6,7 @@ listed at the end of P5.1. Plans not yet written.
 **Extends:** `docs/superpowers/specs/2026-09-19-renderable-fps-profiler-design.md` (the base spec) and
 `docs/superpowers/specs/2026-09-20-renderable-phase-4-design.md` (the phase 4 addendum). Sections here are
 numbered `P5.x`; a number with no prefix refers to the base spec, and `P4.x` to the phase 4 addendum.
-**Baseline:** `main` at `f9a9acd`, tag `v0.4.1` (`v0.4.0` is `88a3fed`), 132 JUnit tests.
+**Baseline:** `main` at `8700af6`, tag `v0.4.1` (`v0.4.0` is `626f278`), 132 JUnit tests.
 **Evidence:**
 
 - `docs/acceptance/phase-4b-4c.md`: two sessions in the Gears & Frontiers instance on 2026-09-26.
@@ -904,7 +904,7 @@ here.
 
 **Observed.** `Probe.hooksApplied()` lists the hooks that have fired at least once since the game started.
 The README says so, but §4.5's "hook did not apply" state cannot be told from "nothing happened", and
-`EmptyStates` guesses between the two. `8e47674` fixed one wrong guess, and further guesses remain.
+`EmptyStates` guesses between the two. `e12bdef` fixed one wrong guess, and further guesses remain.
 
 **Design.**
 
