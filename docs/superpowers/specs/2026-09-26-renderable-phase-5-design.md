@@ -471,7 +471,7 @@ contributors may now name mod handlers, which is what a stall needs.
 
 - **Mods tab.** One row per mod: `mod | share | us/f | peak ms | gc f | calls/f`.
   - A row expands to its members, each labelled with its kind: `event ClientTickEvent.Post`,
-    `layer xaerominimap:minimap`, `packet somemod:sync_data`, and from phase 6 `sound create:steam (block)`
+    `layer xaerominimap:minimap`, `packet somemod:sync_data`, and from phase 6 `sound create:steam (Blocks)`
     (spec addendum §P6.5): one row per sound event and category, under the event id's namespace, timing the whole
     `SoundEngine.play` call, so `calls/f` is plays per frame. A play only names time: the bucket it runs in keeps it.
   - The tab opens sorted by total time, largest first. `share` and `us/f` sort the same way, and the arrow

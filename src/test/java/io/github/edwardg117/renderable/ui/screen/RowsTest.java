@@ -4,7 +4,9 @@ import io.github.edwardg117.renderable.core.Accumulator;
 import io.github.edwardg117.renderable.core.Bucket;
 import io.github.edwardg117.renderable.core.EmptyStates;
 import io.github.edwardg117.renderable.core.Environment;
+import io.github.edwardg117.renderable.core.Fmt;
 import io.github.edwardg117.renderable.core.FlywheelStats;
+import io.github.edwardg117.renderable.core.FrameRecord;
 import io.github.edwardg117.renderable.core.ParticleKey;
 import io.github.edwardg117.renderable.core.ProfileKey;
 import io.github.edwardg117.renderable.core.RankedEntry;
@@ -12,12 +14,14 @@ import io.github.edwardg117.renderable.core.Ranking;
 import io.github.edwardg117.renderable.core.Session;
 import io.github.edwardg117.renderable.core.SessionConfig;
 import io.github.edwardg117.renderable.core.SessionResult;
+import io.github.edwardg117.renderable.core.Splits;
 import io.github.edwardg117.renderable.core.TestSessions;
 import io.github.edwardg117.renderable.core.advice.Recommendation;
 import io.github.edwardg117.renderable.core.advice.Recommendation.Audience;
 import io.github.edwardg117.renderable.core.advice.Recommendation.Kind;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,7 +30,8 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Rows the screen builds: the Advice tab's, and the names and order of the Flywheel and Particles tabs.
+ * Rows the screen builds: the Advice tab's, the Hitches tab's wrapped splits, and the names and order of the Flywheel
+ * and Particles tabs.
  * {@code Rows} imports {@code BlockPos}, which the test classpath lacks, so a test here must never call
  * {@link Row#pos()}; building rows that leave it null loads fine.
  */
@@ -137,6 +142,74 @@ class RowsTest {
         assertEquals(List.of("EmberParticle", "FlameParticle"), screen, "short names; the two tie, so A to Z");
         assertEquals(Ranking.particles(r).stream().map(RankedEntry::label).toList(), screen,
                 "the order and names the report prints (spec §5.3)");
+    }
+
+    @Test
+    void aHitchesSplitContinuesOnRowsUnderItAndBeforeItsContributors() {
+        long ms = 1_000_000L;
+        long[] now = {0};
+        Session s = new Session(new SessionConfig(10_000 * ms, 2.0, 16 * ms, 5, 0, 0), () -> now[0], 0);
+        Accumulator cow = s.accumulator(TestSessions.COW);
+        long t = 0;
+        for (int i = 0; i <= 6; i++) {
+            now[0] = t;
+            s.onRenderPre(0, 0);
+            if (i == 6) break;
+            long start = t;
+            t += 1 * ms;
+            now[0] = t;
+            s.begin(cow, Bucket.ENTITY);
+            t += (i == 3 ? 60 : 2) * ms;
+            now[0] = t;
+            s.end();
+            s.onRenderPost();
+            t = start + (i == 3 ? 80 : 16) * ms;
+        }
+        SessionResult r = s.finish();
+        assertEquals(1, r.hitches().size(), "the one 80 ms frame among 16 ms ones");
+        FrameRecord h = r.hitches().get(0);
+
+        List<String> asked = new ArrayList<>();
+        List<Row> rows = Rows.hitches(r, text -> {
+            asked.add(text);
+            return List.of("tick 1.0 [entity 0.9]", "| terrain 0.2 | lod 5.4", "| swap 0.6 | gc 0 ms");
+        });
+        assertEquals(List.of(Splits.frame(h) + " | gc 0 ms"), asked, "the whole split and its gc figure, wrapped once");
+        assertEquals(4, rows.size(), "the hitch, two more lines of its split, then its one contributor");
+
+        Row hitch = rows.get(0);
+        assertArrayEquals(new String[]{"#1  frame 3 @ " + Fmt.secs(h.startNanos()) + " s", Fmt.ms(h.totalNanos()),
+                "tick 1.0 [entity 0.9]"}, hitch.cells(), "the first line sits in the split column of the hitch's own row");
+        assertTrue(hitch.group());
+        assertEquals(0, hitch.indent());
+        for (int i = 1; i <= 2; i++) {
+            Row more = rows.get(i);
+            assertArrayEquals(new String[]{"", "", i == 1 ? "| terrain 0.2 | lod 5.4" : "| swap 0.6 | gc 0 ms"}, more.cells(),
+                    "a further line holds only the split column");
+            assertTrue(more.group(), "it reads as part of the hitch's row");
+            assertEquals(0, more.indent());
+            assertNull(more.key());
+            assertNull(more.typeId());
+            assertFalse(more.expandable());
+            assertEquals(-1, more.entityId());
+        }
+        Row contributor = rows.get(3);
+        assertEquals(TestSessions.COW.label(), contributor.cells()[0]);
+        assertEquals(TestSessions.COW, contributor.key());
+        assertEquals(1, contributor.indent());
+        assertFalse(contributor.group());
+    }
+
+    @Test
+    void aSessionWithNoHitchesStillGivesTheSingleNoHitchesRow() {
+        List<Row> rows = Rows.hitches(TestSessions.phase6(), text -> {
+            throw new AssertionError("there is no split to wrap: " + text);
+        });
+        assertEquals(1, rows.size());
+        String[] cells = rows.get(0).cells();
+        assertEquals("No hitches", cells[0]);
+        assertEquals("", cells[1]);
+        assertTrue(cells[2].startsWith("No frame exceeded "), cells[2]);
     }
 
     @Test

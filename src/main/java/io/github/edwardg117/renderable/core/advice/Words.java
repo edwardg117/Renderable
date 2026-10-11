@@ -1,6 +1,7 @@
 package io.github.edwardg117.renderable.core.advice;
 
 import io.github.edwardg117.renderable.core.Fmt;
+import io.github.edwardg117.renderable.core.SoundCategories;
 
 import java.util.Locale;
 
@@ -39,24 +40,12 @@ final class Words {
     }
 
     /**
-     * A sound category's slider in Music & Sounds, by its {@code SoundSource} name: the English caption of
-     * {@code soundCategory.<name>} in Minecraft 1.21.1's {@code en_us.json} (spec addendum §P6.9). A category with no
-     * slider here reads as it is.
+     * A sound category's slider in Music & Sounds, by its {@code SoundSource} name (spec addendum §P6.9). The table
+     * lives in {@link SoundCategories#slider}, which a sound row's label uses too; a category with no slider there
+     * reads as it is.
      */
     static String slider(String category) {
-        return switch (category) {
-            case "master" -> "Master Volume";
-            case "music" -> "Music";
-            case "record" -> "Jukebox/Note Blocks";
-            case "weather" -> "Weather";
-            case "block" -> "Blocks";
-            case "hostile" -> "Hostile Creatures";
-            case "neutral" -> "Friendly Creatures";
-            case "player" -> "Players";
-            case "ambient" -> "Ambient/Environment";
-            case "voice" -> "Voice/Speech";
-            default -> category;
-        };
+        return SoundCategories.slider(category);
     }
 
     /** "the Blocks volume", or "the Master Volume", whose caption already says so. */

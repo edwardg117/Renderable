@@ -225,7 +225,7 @@ class KeysTest {
         assertEquals(ModKey.Kind.SOUND, steam.kind());
         assertEquals("create", steam.typeId(), "the event id's namespace names the mod");
         assertEquals("create:steam (block)", steam.name());
-        assertEquals("sound create:steam (block)", steam.label());
+        assertEquals("sound create:steam (Blocks)", steam.label(), "the label names the category as Music & Sounds does");
         assertEquals(steam.label(), steam.memberLabel(), "the event id already names its mod");
         assertEquals("sound@create:create:steam (block)", steam.serialize());
         assertEquals("create:steam", steam.soundEvent());
@@ -239,5 +239,42 @@ class KeysTest {
         ModKey packet = ModKey.packet("minecraft", "minecraft:sound");
         assertEquals("", packet.soundEvent(), "only a sound key has an event");
         assertEquals("", packet.soundCategory(), "or a category");
+    }
+
+    @Test
+    void aSoundLabelNamesTheCategoryAsTheSliderDoesWhileTheKeyKeepsTheInternalName() {
+        ModKey friendly = ModKey.sound("create:steam", "neutral");
+        assertEquals("sound create:steam (Friendly Creatures)", friendly.label());
+        assertEquals(friendly.label(), friendly.memberLabel());
+        assertEquals("sound@create:create:steam (neutral)", friendly.serialize(), "the JSON key stays internal and stable");
+        assertEquals("create:steam (neutral)", friendly.name());
+        assertEquals("neutral", friendly.soundCategory(), "the advice still reads the internal category");
+        assertEquals("create:steam", friendly.soundEvent());
+        assertEquals(ModKey.sound("create:steam", "neutral"), friendly, "equality is by the internal name");
+        assertNotEquals(ModKey.sound("create:steam", "block"), friendly);
+
+        ModKey odd = ModKey.sound("somemod:hum", "somemod_category");
+        assertEquals("sound somemod:hum (somemod_category)", odd.label(), "a category with no slider reads as it is");
+        assertEquals("sound somemod:hum (somemod_category)", odd.memberLabel());
+        assertEquals("sound@somemod:somemod:hum (somemod_category)", odd.serialize());
+
+        assertEquals("sound create:steam (Master Volume)", ModKey.sound("create:steam", "master").label());
+        assertEquals("sound create:steam (Ambient/Environment)", ModKey.sound("create:steam", "ambient").label());
+    }
+
+    @Test
+    void theSoundCategoryTableIsTheMusicAndSoundsSlidersCaptions() {
+        assertEquals("Master Volume", SoundCategories.slider("master"));
+        assertEquals("Music", SoundCategories.slider("music"));
+        assertEquals("Jukebox/Note Blocks", SoundCategories.slider("record"));
+        assertEquals("Weather", SoundCategories.slider("weather"));
+        assertEquals("Blocks", SoundCategories.slider("block"));
+        assertEquals("Hostile Creatures", SoundCategories.slider("hostile"));
+        assertEquals("Friendly Creatures", SoundCategories.slider("neutral"));
+        assertEquals("Players", SoundCategories.slider("player"));
+        assertEquals("Ambient/Environment", SoundCategories.slider("ambient"));
+        assertEquals("Voice/Speech", SoundCategories.slider("voice"));
+        assertEquals("unheard_of", SoundCategories.slider("unheard_of"), "no slider: the category itself");
+        assertEquals("", SoundCategories.slider(""));
     }
 }

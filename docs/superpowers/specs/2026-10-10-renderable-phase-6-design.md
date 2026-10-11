@@ -62,8 +62,9 @@ Phase 6 names both: sound and Distant Horizons, and the terrain draw around them
 
 Two points were settled while writing:
 
-1. **The sound row's category is `SoundSource.getName()`**, so a row reads `sound create:steam (block)`, not
-   `(blocks)` as the design's example had it. The advice uses the slider's name, "Blocks" (P6.9).
+1. **The sound row's category is `SoundSource.getName()`**, so a row's key reads
+   `sound@create:create:steam (block)`, not `(blocks)` as the design's example had it. The advice uses the
+   slider's name, "Blocks" (P6.9), and since P6.14 so does the row's label: `sound create:steam (Blocks)`.
 2. **The DH mixin needs no DH classes at compile time.** It targets `ClientApi` by name, and every method it
    wraps takes no arguments and returns nothing. DH 3.3.3 is still pinned, for the dev client and for javap
    (P6.8).
@@ -192,8 +193,9 @@ the outermost bucket enclosing it is credited its own time less every `lod` call
 
 - `ModKey.Kind` gains `SOUND("sound")`.
 - `modId` is the event id's namespace, and `name` is `<event id> (<category>)`, where the category is
-  `SoundSource.getName()`. A row's label reads `sound create:steam (block)`, under `create`; vanilla sounds go
-  under `minecraft`. The same event played in two categories makes two rows.
+  `SoundSource.getName()`. A row's label reads `sound create:steam (Blocks)`, naming the category as the Music
+  & Sounds screen does (its key keeps the internal name: `sound@create:create:steam (block)`), under `create`;
+  vanilla sounds go under `minecraft`. The same event played in two categories makes two rows.
 - `Probe.beginSound(SoundInstance)` reads `getLocation()` and `getSource()`, which return objects that
   already exist, and looks the key up without allocating: by `ResourceLocation`, then by the category's
   ordinal. Like `beginPacket`, it returns whether it began, and the wrapper ends only what began.
@@ -230,7 +232,7 @@ hitch's top contributors already list the sound rows active in that frame by nam
 
 **Acceptance check (A3).** Unit tests: the label and serialised form of a sound key; one event in two
 categories gives two rows; the sound plays line's sums and wording. In the dev client, walking past a
-running Create boiler lists `sound create:steam (block)` (or the event the boiler uses) under `create` on the
+running Create boiler lists `sound create:steam (Blocks)` (or the event the boiler uses) under `create` on the
 Mods tab.
 
 ## P6.6 The split shows `unnamed`
@@ -364,6 +366,7 @@ rows reach 0.5 ms a frame.
 | P5.4 | "No finer split of other tick" and the `terrain` candidate are now done in part; the rest is P6.12 | 6b |
 | §5.1, §7 | `/renderable overlay` and the overlay key write `overlayEnabled` (P6.13) | 6b |
 | P4.B6 | Item 4's copy taken on first use is superseded by P6.13 | 6b |
+| §5.3, P5.A7, P6.5 | Hitches-tab split wrapping; sound labels name the Music & Sounds slider (P6.14) | 6b |
 
 ## P6.12 What phase 6 does not do
 
@@ -393,3 +396,14 @@ count as on and nothing is written, since NeoForge throws on reading a setting t
 **Acceptance check.** Unit tests in `OverlaySwitchTest`. In the pack: after a session, turn labels off in the
 mod's config screen and see them go without a restart; turn them on again there; `/renderable overlay off`, then
 a restart, keeps them off.
+
+## P6.14 Two display fixes from the acceptance
+
+The user's in-pack acceptance on 2026-10-11 found two display problems, fixed before 0.6.0 was tagged:
+
+- **The Hitches tab cut each split at its column's width,** so `lod` and the rest were hidden. A split now continues
+  on extra rows under its hitch, broken at its `|` separators (`TextWrap.wrapSplit`), as the Advice tab wraps its
+  text.
+- **Sound rows named the category by its internal name** (`neutral`), while the Advice tab and the Music & Sounds
+  screen say "Friendly Creatures". A sound row's label now uses the slider's name (`core.SoundCategories`); its key
+  and serialised form keep the internal name, so the JSON key is stable and the advice reads the same category.

@@ -119,8 +119,11 @@ public final class ResultsScreen extends Screen {
         list.setLayout(colX, colW);
         // A body line is drawn two indents (24 px) in, and a single-cell row loses 8 px of margin.
         int wrapWidth = Math.max(40, list.getRowWidth() - 8 - 24);
+        // The Hitches tab's split is its last column; a long one continues on rows under its hitch.
+        int splitWidth = Math.max(40, colW[colW.length - 1]);
         list.setRows(tab, Rows.build(tab, result, environment, view.sorts.sort(tab), view.sorts.ascending(tab),
-                view.expanded, text -> TextWrap.wrap(text, wrapWidth, font::width)));
+                view.expanded, text -> TextWrap.wrap(text, wrapWidth, font::width),
+                text -> TextWrap.wrapSplit(text, splitWidth, font::width)));
         if (view.selected != null && !list.reselect(view.selected)) view.selected = null;
         updateButtons();
     }

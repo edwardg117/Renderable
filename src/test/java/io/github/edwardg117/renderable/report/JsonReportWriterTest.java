@@ -418,7 +418,8 @@ class JsonReportWriterTest {
         }
         assertNotNull(steam, o.getAsJsonArray("mods").toString());
         assertEquals(RANKED_KEYS, List.copyOf(steam.keySet()), "a ranked row like any other: nothing changes shape");
-        assertEquals("sound create:steam (block)", steam.get("label").getAsString());
+        assertEquals("sound create:steam (Blocks)", steam.get("label").getAsString(),
+                "the label names the category as Music & Sounds does; the key above keeps the internal name");
         assertEquals("create", steam.get("typeId").getAsString());
         assertEquals(0, steam.get("calls").getAsLong());
         assertEquals(4, steam.get("tickCalls").getAsLong(), "two plays a frame, both in the tick");

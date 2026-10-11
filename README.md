@@ -103,8 +103,9 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   other render and tasks as an **in the Mods tab** row under each. Each figure is rounded on its own, so a bracket
   can differ from its total by a tenth or two. A big swap/wait with a low GPU load is not a rendering problem in
   the world.
-- **Hitches** lists the frames that spiked, each with its split and the things that were most
-  expensive in exactly that frame. GC pauses are shown per frame.
+- **Hitches** lists the frames that spiked, each with its split and the things that were most expensive in
+  exactly that frame. GC pauses are shown per frame. A split too long for its column continues on the lines
+  under its hitch.
 - **Block entities** and **entities** are ranked by microseconds per frame; expand a type to see
   each position. A riding entity's own row carries its tick time, which its vehicle's row also counts.
   The **shadow** column is the share of a renderer's time spent in Iris's shadow
@@ -115,12 +116,12 @@ Commands: `start [seconds]`, `stop`, `cancel`, `results`, `copy`, `folder`, `ove
   is the average number of that class rendered per frame; particles culled before rendering are not counted.
 - **Mods** ranks each mod by the time its event handlers, its HUD layers, the packets addressed to it and the
   sounds in its namespace took, in microseconds per frame; expand a mod to see each event type, layer, packet
-  type and sound. A sound row, such as `sound create:steam (block)`, is one sound event played in one category.
-  It times the whole play, the wait for a channel included, and its **calls/f** is plays per frame. A sound only
-  names time: the bucket it was played in keeps it, such as **be tick** for a machine's sound. The Frames
-  section's **Sound plays** line sums the sound rows. A play inside a packet or handler of the same mod counts in
-  both rows, so a mod's total on the Mods tab can read high: the `minecraft` row counts each vanilla sound the
-  server sends in its packet's row and in its sound row. Counting is
+  type and sound. A sound row, such as `sound create:steam (Blocks)`, is one sound event played in one category,
+  named as the Music & Sounds screen names it. It times the whole play, the wait for a channel included, and its
+  **calls/f** is plays per frame. A sound only names time: the bucket it was played in keeps it, such as
+  **be tick** for a machine's sound. The Frames section's **Sound plays** line sums the sound rows. A play inside
+  a packet or handler of the same mod counts in both rows, so a mod's total on the Mods tab can read high: the
+  `minecraft` row counts each vanilla sound the server sends in its packet's row and in its sound row. Counting is
   inclusive: a handler's time includes whatever it calls, so a handler that draws an entity counts that
   entity too, and shares overlap with each other and with the other tables. Events are timed whoever posts
   them: NeoForge, the game or another mod. A library that runs other mods' handlers for them, such as
@@ -197,10 +198,11 @@ The JSON report carries a `schema` number.
 
 Schema 6 (this version) adds four buckets to `avgBucketsMs` and to each frame's `bucketsUs`: `terrain`, `lod`,
 `sound` and `animate tick`. Buckets are written by label, never by position. Sound rows sit in a mod's `entries`
-like its other rows, keyed `sound@<mod>:<event id> (<category>)`, such as `sound@create:create:steam (block)`.
-`terrain` and `lod` are render buckets and `sound` and `animate tick` tick buckets, so `otherRenderUs` and
-`avgOtherRenderMs` no longer include the first two, nor `avgOtherTickMs` the last two. There is no per-frame
-`unnamed` field: it is `max(0, max(0, tickUs − the tick buckets) − namedUs.tick)`. Nothing else changes shape.
+like its other rows, keyed `sound@<mod>:<event id> (<category>)`, such as `sound@create:create:steam (block)`. Its
+`label` names the category as the Music & Sounds screen does, `(Blocks)`. `terrain` and `lod` are render buckets
+and `sound` and `animate tick` tick buckets, so `otherRenderUs` and `avgOtherRenderMs` no longer include the first
+two, nor `avgOtherTickMs` the last two. There is no per-frame `unnamed` field: it is
+`max(0, max(0, tickUs − the tick buckets) − namedUs.tick)`. Nothing else changes shape.
 
 Schema 5 added `tasksUs`, `capUs` and `namedUs` (`render`, `tick` and `tasks`, empty ones left out)
 to every frame; `avgTasksMs`, `avgCapMs` and `avgNamedMs` (all three windows, zeros kept) to `stats`; a `hud`

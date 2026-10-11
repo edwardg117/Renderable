@@ -473,7 +473,7 @@ class TextReportWriterTest {
         assertTrue(s.contains("  Time split (avg ms/frame): tick 4.00 [be tick 1.00, sound 1.50, animate tick 0.50,"
                 + " mods 0.20, unnamed 0.80] | terrain 2.00 | lod 2.00 | other render 4.00 | tasks 2.00 [mods 1.00]"
                 + " | swap/wait 6.00\n"), s);
-        assertTrue(s.contains("\n    sound create:steam (block) "), "a sound row under its mod in the Mods section: " + s);
+        assertTrue(s.contains("\n    sound create:steam (Blocks) "), "a sound row under its mod in the Mods section: " + s);
         assertFalse(TextReportWriter.write(r, env, "0.6.0").contains("Sound plays"), "no plays, no line");
     }
 }

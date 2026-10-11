@@ -49,14 +49,16 @@ public final class Rows {
     /**
      * Rows for one tab. {@code sort} is always the active column's sort ({@link ColumnSort#NONE} on Advice,
      * Frames and Hitches, which ignore it); {@code ascending} its direction. {@code wrap} splits a paragraph
-     * into lines that fit the list, for the Advice tab.
+     * into lines that fit the list, for the Advice tab; {@code wrapSplit} does the same for a hitch's split, which
+     * the Hitches tab continues on rows under the hitch.
      */
     public static List<Row> build(Tab tab, SessionResult r, Environment env, ColumnSort sort, boolean ascending,
-                                  Set<String> expanded, Function<String, List<String>> wrap) {
+                                  Set<String> expanded, Function<String, List<String>> wrap,
+                                  Function<String, List<String>> wrapSplit) {
         return switch (tab) {
             case ADVICE -> advice(Advisor.advise(r, env), wrap);
             case FRAMES -> frames(r);
-            case HITCHES -> hitches(r);
+            case HITCHES -> hitches(r, wrapSplit);
             case MODS -> mods(r, env, sort, ascending, expanded);
             case BLOCK_ENTITIES -> ranked(r, env, ProfileKey.Category.BLOCK_ENTITY, sort, ascending, expanded);
             case ENTITIES -> ranked(r, env, ProfileKey.Category.ENTITY, sort, ascending, expanded);
@@ -172,7 +174,12 @@ public final class Rows {
         if (nanos > 0) rows.add(Row.plain(label, Fmt.ms2(nanos) + " ms"));
     }
 
-    static List<Row> hitches(SessionResult r) {
+    /**
+     * One row per hitch, then its top contributors. The hitch's split can be wider than its column, so it is
+     * wrapped by {@code wrapSplit}: the first line sits in the hitch's own row and each further line is a row of its
+     * own under it, holding only the split column, so none of the split is cut off.
+     */
+    static List<Row> hitches(SessionResult r, Function<String, List<String>> wrapSplit) {
         List<Row> rows = new ArrayList<>();
         if (r.hitches().isEmpty()) {
             rows.add(Row.plain("No hitches", "", "No frame exceeded " + Fmt.ms(r.hitchThresholdNanos()) + " ms"));
@@ -182,8 +189,12 @@ public final class Rows {
         for (FrameRecord h : r.hitches()) {
             n++;
             String frame = "#" + n + "  frame " + h.index() + " @ " + Fmt.secs(h.startNanos()) + " s";
-            rows.add(new Row(new String[]{frame, Fmt.ms(h.totalNanos()), Splits.frame(h) + " | gc " + h.gcMillis() + " ms"},
+            List<String> split = wrapSplit.apply(Splits.frame(h) + " | gc " + h.gcMillis() + " ms");
+            rows.add(new Row(new String[]{frame, Fmt.ms(h.totalNanos()), split.isEmpty() ? "" : split.get(0)},
                     null, null, true, false, 0, null, -1));
+            for (int i = 1; i < split.size(); i++) {
+                rows.add(new Row(new String[]{"", "", split.get(i)}, null, null, true, false, 0, null, -1));
+            }
             for (TopEntry t : h.top()) {
                 rows.add(new Row(new String[]{t.key().label(), Fmt.ms2(t.nanos()), t.gc() ? "[gc]" : ""},
                         t.key(), t.key().typeId(), false, false, 1, posOf(t.key()), entityIdOf(t.key())));

@@ -45,7 +45,7 @@ public record ModKey(Kind kind, String modId, String name) implements ProfileKey
     /**
      * One sound event played in one category (spec addendum §P6.5). The event id's namespace names the mod, as a
      * layer's or packet's does, and the name carries the category, so one event played in two categories is two
-     * rows: {@code sound create:steam (block)}.
+     * rows: {@code sound@create:create:steam (block)}, which reads {@code sound create:steam (Blocks)} in a label.
      *
      * @param eventId  the event's id as {@code namespace:path}, from {@code SoundInstance.getLocation()}; an id with
      *                 no colon is taken to be {@code minecraft}'s
@@ -92,6 +92,11 @@ public record ModKey(Kind kind, String modId, String name) implements ProfileKey
 
     /** The key under its mod's own row in the Mods tab and report, where the mod is already named. */
     public String memberLabel() {
+        if (kind == Kind.SOUND) {
+            // The label names the category as the Music & Sounds screen does; the name and the serialised form keep the
+            // internal one, so the JSON key is stable and the advice reads the same category (spec addendum §P6.14).
+            return kind.word + " " + soundEvent() + " (" + SoundCategories.slider(soundCategory()) + ")";
+        }
         return kind.word + " " + (kind == Kind.EVENT ? simpleEventName(name) : name);
     }
 

@@ -37,7 +37,8 @@ class SoundKeysTest {
         assertSame(steam, s.accumulator(ModKey.sound("create:steam", "block")), "the session's own accumulator");
         Accumulator master = keys.get(s, new Id("create:steam"), 0);
         assertNotSame(steam, master, "one event in two categories is two rows");
-        assertEquals("sound create:steam (master)", master.key.label());
+        assertEquals("sound create:steam (Master Volume)", master.key.label());
+        assertEquals("sound@create:create:steam (master)", master.key.serialize());
 
         Session next = session();
         assertTrue(next.owns(keys.get(next, new Id("create:steam"), 4)), "an earlier session's accumulator is replaced");
